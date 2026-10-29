@@ -1,0 +1,5 @@
+# Game files and anything derived from them never go in the repo.
+re/
+extracted/
+build/
+__pycache__/
