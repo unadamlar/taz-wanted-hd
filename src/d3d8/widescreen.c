@@ -35,6 +35,7 @@ void widescreen_patch(void)
         log_line("widescreen: unexpected code at %p, not patching (different exe?)", ASPECT_CODE);
         return;
     }
+    settings.exe_known = 1; // the exe is the one these addresses come from
     UINT g = gcd(size[0], size[1]), ax = size[0] / g, ay = size[1] / g;
     while (ax > 255 || ay > 255) { // the engine stores each side in a byte
         ax = (ax + 1) / 2;

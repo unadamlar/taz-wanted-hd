@@ -4,4 +4,4 @@ SRC = $(wildcard src/d3d8/*.c)
 
 build/d3d8.dll: $(SRC) $(wildcard src/d3d8/*.h)
 	@mkdir -p build
-	$(CC) $(CFLAGS) -shared -o $@ $(SRC) -Wl,--kill-at -static-libgcc -lole32 -luuid -lwindowscodecs
+	$(CC) $(CFLAGS) -shared -o $@ $(SRC) -Wl,--kill-at -static-libgcc -lole32 -luuid -lwindowscodecs -ldxguid -lgdi32 -luser32

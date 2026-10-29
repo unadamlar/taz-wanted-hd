@@ -67,6 +67,11 @@ static int call_at(BYTE *at, SIZE_T len, const BYTE *expect, void *target)
     return write_code(at, code, len);
 }
 
+void menuspeed_set(float speed)
+{
+    menu_speed = speed;
+}
+
 void menuspeed_patch(float speed)
 {
     static const BYTE store[] = { 0xd9, 0x1d, 0xe0, 0x7e, 0x6c, 0x00 };

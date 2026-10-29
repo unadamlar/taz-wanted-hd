@@ -44,6 +44,7 @@ static int dumping, dumped, replaced, rebind;
 static struct job *todo, *done;
 static HANDLE work;
 static double decode_ms;
+static DWORD frame_no; // Presents so far
 
 static HRESULT (WINAPI *real_CreateTexture)(IDirect3DDevice8 *, UINT, UINT, UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DTexture8 **);
 static HRESULT (WINAPI *real_SetTexture)(IDirect3DDevice8 *, DWORD, IDirect3DBaseTexture8 *);
@@ -200,8 +201,24 @@ static DWORD WINAPI worker(void *arg)
     return 0;
 }
 
+// The lock and the decode thread start on first use (screenshots can come before textures_install).
+static BOOL CALLBACK init_worker(INIT_ONCE *once, void *param, void **ctx)
+{
+    InitializeCriticalSection(&lock);
+    work = CreateEventA(NULL, FALSE, FALSE, NULL);
+    CloseHandle(CreateThread(NULL, 0, worker, NULL, 0, NULL));
+    return TRUE;
+}
+
+static void start_worker(void)
+{
+    static INIT_ONCE once = INIT_ONCE_STATIC_INIT;
+    InitOnceExecuteOnce(&once, init_worker, NULL, NULL);
+}
+
 static void queue(struct job *j)
 {
+    start_worker();
     EnterCriticalSection(&lock);
     j->next = todo;
     todo = j;
@@ -260,6 +277,7 @@ static void queue_load(UINT64 hash, const struct name_entry *n)
 // Called once per frame on the render thread: uploads a few finished replacements.
 void textures_frame(void)
 {
+    frame_no++;
     if (!real_CreateTexture) return;
     for (int n = 0; n < UPLOADS_PER_FRAME; n++) {
         EnterCriticalSection(&lock);
@@ -413,51 +431,144 @@ static HRESULT WINAPI hook_CreateTexture(IDirect3DDevice8 *dev, UINT w, UINT h, 
 }
 
 // Scrolling textures (waterfalls, escalators): each frame the game copies a window of a big texture
-// into a small one (FUN_00574960). A window of an HD texture can't be copied into the small original,
-// so the HD big texture is bound instead and a texture transform picks the window. Table at 0x705f30:
-// 6 entries of {big handle, small handle, speed u, speed v, offset u, offset v}; a handle's Direct3D
-// texture is **(handle + 0x24). The window starts offset * small size into the big texture.
-#define SCROLLERS ((DWORD *)0x705f30)
+// into a small one, FUN_00574960(big handle, small handle, offset u, offset v), called from its
+// scroll update at 0x4db7d1. A window of an HD texture can't be copied into the small original, so
+// the HD big texture is bound instead and a texture transform picks the window, which starts at
+// offset * small size. We hook that call to learn the Direct3D textures (**(handle + 0x24)) while
+// the game is using them: its scroll table can hold freed handles, so it is never read directly.
 #define STAGES 4
-static int scrolling_known, scroll_stage[STAGES] = { -1, -1, -1, -1 };
+#define SCROLLS 6
+static struct { IDirect3DTexture8 *big, *small; float u, v; DWORD frame; } scrolls[SCROLLS];
+static int scroll_stage[STAGES] = { -1, -1, -1, -1 };
 static HRESULT (WINAPI *real_SetTransform)(IDirect3DDevice8 *, D3DTRANSFORMSTATETYPE, CONST D3DMATRIX *);
 static HRESULT (WINAPI *real_GetTransform)(IDirect3DDevice8 *, D3DTRANSFORMSTATETYPE, D3DMATRIX *);
 
+#define POINTER(p) ((UINT_PTR)(p) >= 0x10000 && (UINT_PTR)(p) < 0x7fff0000 && !((UINT_PTR)(p) & 3))
+
 static IDirect3DTexture8 *d3d_of(DWORD handle)
 {
-    DWORD *p = handle ? *(DWORD **)(handle + 0x24) : NULL;
-    return p ? (IDirect3DTexture8 *)*p : NULL;
+    DWORD *p = POINTER(handle) ? *(DWORD **)(handle + 0x24) : NULL;
+    p = POINTER(p) ? (DWORD *)*p : NULL;
+    return POINTER(p) ? (IDirect3DTexture8 *)p : NULL;
 }
 
+static void __cdecl scroll_copy(DWORD big, DWORD small, float u, float v)
+{
+    IDirect3DTexture8 *b = d3d_of(big), *sm = d3d_of(small);
+    int free_slot = -1;
+    for (int i = 0; b && sm && i < SCROLLS; i++) {
+        if (scrolls[i].small == sm || (free_slot < 0 && frame_no - scrolls[i].frame > 1)) free_slot = i;
+        if (scrolls[i].small == sm) break;
+    }
+    if (free_slot >= 0) {
+        scrolls[free_slot].big = b;
+        scrolls[free_slot].small = sm;
+        scrolls[free_slot].u = u;
+        scrolls[free_slot].v = v;
+        scrolls[free_slot].frame = frame_no;
+    }
+    ((void(__cdecl *)(DWORD, DWORD, float, float))0x574960)(big, small, u, v);
+}
+
+// Index of the live scroll record whose small texture is bt, or -1. Compares pointer values only.
 static int scroller_of(IDirect3DBaseTexture8 *bt)
 {
-    for (int i = 0; scrolling_known && i < 6; i++)
-        if (SCROLLERS[i * 6] && SCROLLERS[i * 6 + 1] && (IDirect3DBaseTexture8 *)d3d_of(SCROLLERS[i * 6 + 1]) == bt) return i;
+    for (int i = 0; i < SCROLLS; i++)
+        if (frame_no - scrolls[i].frame <= 1 && (IDirect3DBaseTexture8 *)scrolls[i].small == bt) return i;
     return -1;
 }
 
-// Binds bt, or its replacement; for scrolling textures, the HD big texture.
-static void bind_texture(IDirect3DDevice8 *dev, DWORD stage, IDirect3DBaseTexture8 *bt)
+// What the game has bound on each stage, and what each recorded state block binds. These are the
+// game's own pointers used only as lookup keys: a state block can hold a texture the game has
+// already released, so they are never dereferenced (asking Direct3D with GetTexture crashed).
+#define BLOCKS 256
+static IDirect3DBaseTexture8 *bound[STAGES];
+static struct { DWORD token; BYTE set; IDirect3DBaseTexture8 *tex[STAGES]; } blocks[BLOCKS], recorded;
+static int recording;
+static HRESULT (WINAPI *real_BeginStateBlock)(IDirect3DDevice8 *);
+static HRESULT (WINAPI *real_EndStateBlock)(IDirect3DDevice8 *, DWORD *);
+static HRESULT (WINAPI *real_DeleteStateBlock)(IDirect3DDevice8 *, DWORD);
+
+// Binds the replacement for the game's texture bt (for a scrolling texture, the HD big texture).
+// Returns 0 when there is none, leaving the binding to the caller.
+static int bind_replacement(IDirect3DDevice8 *dev, DWORD stage, IDirect3DBaseTexture8 *bt)
 {
     IDirect3DBaseTexture8 *rep = NULL;
     int k = bt ? scroller_of(bt) : -1;
-    if (k >= 0 && !(rep = replacement_for((IDirect3DBaseTexture8 *)d3d_of(SCROLLERS[k * 6])))) k = -1;
+    if (k >= 0 && !(rep = replacement_for((IDirect3DBaseTexture8 *)scrolls[k].big))) k = -1;
     if (k < 0 && bt) rep = replacement_for(bt);
     if (stage < STAGES) scroll_stage[stage] = k;
-    real_SetTexture(dev, stage, rep ? rep : bt);
+    if (rep) real_SetTexture(dev, stage, rep);
+    return rep != NULL;
+}
+
+// The last texture binds, for crash reports.
+static struct { DWORD stage; void *tex, *caller; } recent[16];
+static LONG nrecent;
+
+void textures_dump_recent(void)
+{
+    for (LONG i = nrecent > 16 ? nrecent - 16 : 0; i < nrecent; i++)
+        log_line("crash: recent SetTexture(%lu, %p) from %p", recent[i % 16].stage, recent[i % 16].tex, recent[i % 16].caller);
 }
 
 static HRESULT WINAPI hook_SetTexture(IDirect3DDevice8 *dev, DWORD stage, IDirect3DBaseTexture8 *bt)
 {
-    bind_texture(dev, stage, bt);
-    return D3D_OK;
+    LONG n = nrecent++ % 16;
+    recent[n].stage = stage;
+    recent[n].tex = bt;
+    recent[n].caller = __builtin_return_address(0);
+    if (stage < STAGES) {
+        bound[stage] = bt;
+        if (recording) {
+            recorded.tex[stage] = bt;
+            recorded.set |= 1 << stage;
+        }
+    }
+    return bind_replacement(dev, stage, bt) ? D3D_OK : real_SetTexture(dev, stage, bt);
 }
 
-// State blocks bind textures without SetTexture; fix up the bindings before the next draw.
+static HRESULT WINAPI hook_BeginStateBlock(IDirect3DDevice8 *dev)
+{
+    recording = 1;
+    recorded.set = 0;
+    return real_BeginStateBlock(dev);
+}
+
+static HRESULT WINAPI hook_EndStateBlock(IDirect3DDevice8 *dev, DWORD *token)
+{
+    HRESULT hr = real_EndStateBlock(dev, token);
+    recording = 0;
+    if (FAILED(hr) || !recorded.set) return hr;
+    for (int i = 0; i < BLOCKS; i++)
+        if (!blocks[i].token) {
+            blocks[i] = recorded;
+            blocks[i].token = *token;
+            break;
+        }
+    return hr;
+}
+
+static HRESULT WINAPI hook_DeleteStateBlock(IDirect3DDevice8 *dev, DWORD token)
+{
+    for (int i = 0; i < BLOCKS; i++)
+        if (blocks[i].token == token) blocks[i].token = 0;
+    return real_DeleteStateBlock(dev, token);
+}
+
+// State blocks bind textures without SetTexture; swap in replacements for the ones they set.
 static HRESULT WINAPI hook_ApplyStateBlock(IDirect3DDevice8 *dev, DWORD token)
 {
     HRESULT hr = real_ApplyStateBlock(dev, token);
-    rebind = 1;
+    for (int i = 0; SUCCEEDED(hr) && i < BLOCKS; i++) {
+        if (blocks[i].token != token) continue;
+        for (DWORD stage = 0; stage < STAGES; stage++)
+            if (blocks[i].set & (1 << stage)) {
+                bound[stage] = blocks[i].tex[stage];
+                bind_replacement(dev, stage, bound[stage]);
+            }
+        break;
+    }
     return hr;
 }
 
@@ -466,32 +577,25 @@ struct saved { DWORD flags; D3DMATRIX m; };
 // Returns a mask of stages whose texture transform was changed for a scrolling texture.
 static int before_draw(IDirect3DDevice8 *dev, struct saved *saved)
 {
-    if (rebind) {
+    if (rebind) { // a replacement finished loading; the original may be bound right now
         rebind = 0;
-        for (DWORD stage = 0; stage < STAGES; stage++) {
-            IDirect3DBaseTexture8 *bt = NULL;
-            if (FAILED(IDirect3DDevice8_GetTexture(dev, stage, &bt)) || !bt) {
-                scroll_stage[stage] = -1;
-                continue;
-            }
-            bind_texture(dev, stage, bt);
-            IDirect3DBaseTexture8_Release(bt);
-        }
+        for (DWORD stage = 0; stage < STAGES; stage++)
+            bind_replacement(dev, stage, bound[stage]);
     }
     int mask = 0;
     for (DWORD stage = 0; stage < STAGES; stage++) {
         int k = scroll_stage[stage];
         if (k < 0) continue;
         D3DSURFACE_DESC big, small;
-        IDirect3DTexture8 *b = d3d_of(SCROLLERS[k * 6]), *s = d3d_of(SCROLLERS[k * 6 + 1]);
+        IDirect3DTexture8 *b = scrolls[k].big, *s = scrolls[k].small;
         if (!b || !s || FAILED(IDirect3DTexture8_GetLevelDesc(b, 0, &big)) || FAILED(IDirect3DTexture8_GetLevelDesc(s, 0, &small)))
             continue;
         float ku = (float)small.Width / big.Width, kv = (float)small.Height / big.Height;
         D3DMATRIX m = { 0 };
         m._11 = ku;
         m._22 = kv;
-        m._31 = *(float *)&SCROLLERS[k * 6 + 4] * ku;
-        m._32 = *(float *)&SCROLLERS[k * 6 + 5] * kv;
+        m._31 = scrolls[k].u * ku;
+        m._32 = scrolls[k].v * kv;
         m._33 = m._44 = 1.0f;
         IDirect3DDevice8_GetTextureStageState(dev, stage, D3DTSS_TEXTURETRANSFORMFLAGS, &saved[stage].flags);
         real_GetTransform(dev, D3DTS_TEXTURE0 + stage, &saved[stage].m);
@@ -549,24 +653,34 @@ static HRESULT WINAPI hook_SetTextureStageState(IDirect3DDevice8 *dev, DWORD sta
 void textures_install(IDirect3DDevice8 *dev)
 {
     if (real_CreateTexture) return;
-    InitializeCriticalSection(&lock);
+    start_worker();
     device = dev;
     DWORD attr = GetFileAttributesA(DUMP_DIR);
     dumping = attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY);
     log_line("texture dump %s", dumping ? "on (" DUMP_DIR ")" : "off (create " DUMP_DIR " to enable)");
     load_names();
-    work = CreateEventA(NULL, FALSE, FALSE, NULL);
-    CloseHandle(CreateThread(NULL, 0, worker, NULL, 0, NULL));
 
     IDirect3DDevice8Vtbl *vt = dev->lpVtbl;
     patch((void **)&vt->CreateTexture, hook_CreateTexture, (void **)&real_CreateTexture);
     patch((void **)&vt->SetTexture, hook_SetTexture, (void **)&real_SetTexture);
     real_SetTransform = vt->SetTransform;
     real_GetTransform = vt->GetTransform;
-    static const BYTE scroll_update[] = { 0x55, 0x8b, 0xec, 0x51, 0x56, 0xbe, 0x1c, 0x60, 0x70, 0x00 }; // FUN_004db6d0
-    scrolling_known = !memcmp((void *)0x4db6d0, scroll_update, sizeof scroll_update);
-    log_line("scrolling textures %s", scrolling_known ? "handled" : "left alone (unknown exe)");
+    static const BYTE copy_call[] = { 0xe8, 0x8a, 0x91, 0x09, 0x00 }; // call 0x574960 at 0x4db7d1
+    if (!memcmp((void *)0x4db7d1, copy_call, sizeof copy_call)) {
+        BYTE call[5] = { 0xe8 };
+        DWORD old;
+        *(INT32 *)(call + 1) = (INT32)((BYTE *)scroll_copy - ((BYTE *)0x4db7d1 + 5));
+        VirtualProtect((void *)0x4db7d1, 5, PAGE_EXECUTE_READWRITE, &old);
+        memcpy((void *)0x4db7d1, call, 5);
+        VirtualProtect((void *)0x4db7d1, 5, old, &old);
+        log_line("scrolling textures handled");
+    } else {
+        log_line("scrolling textures left alone (unknown exe)");
+    }
     patch((void **)&vt->ApplyStateBlock, hook_ApplyStateBlock, (void **)&real_ApplyStateBlock);
+    patch((void **)&vt->BeginStateBlock, hook_BeginStateBlock, (void **)&real_BeginStateBlock);
+    patch((void **)&vt->EndStateBlock, hook_EndStateBlock, (void **)&real_EndStateBlock);
+    patch((void **)&vt->DeleteStateBlock, hook_DeleteStateBlock, (void **)&real_DeleteStateBlock);
     patch((void **)&vt->DrawPrimitive, hook_DrawPrimitive, (void **)&real_DrawPrimitive);
     patch((void **)&vt->DrawIndexedPrimitive, hook_DrawIndexedPrimitive, (void **)&real_DrawIndexedPrimitive);
     patch((void **)&vt->DrawPrimitiveUP, hook_DrawPrimitiveUP, (void **)&real_DrawPrimitiveUP);

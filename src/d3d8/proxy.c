@@ -2,9 +2,11 @@
 #define COBJMACROS
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 #include "proxy.h"
 
 static FILE *logf;
+static void (WINAPI *real_OutputDebugStringA)(LPCSTR);
 static HRESULT (WINAPI *real_CreateDevice)(IDirect3D8 *, UINT, D3DDEVTYPE, HWND, DWORD, D3DPRESENT_PARAMETERS *, IDirect3DDevice8 **);
 static HRESULT (WINAPI *real_Present)(IDirect3DDevice8 *, CONST RECT *, CONST RECT *, HWND, CONST RGNDATA *);
 
@@ -74,10 +76,44 @@ static HRESULT WINAPI hook_Present(IDirect3DDevice8 *dev, CONST RECT *src, CONST
         start = now;
         frames = 0;
     }
+    static int scene = -1;
+    if (settings.exe_known && *(BYTE *)0x704cf0 != scene) log_line("scene %d", scene = *(BYTE *)0x704cf0);
     textures_frame();
+    overlay_frame(dev);
     screenshot_frame(dev);
     if (settings.fps_limit > 0) limit_frame_rate(settings.fps_limit);
     return real_Present(dev, src, dst, wnd, dirty);
+}
+
+// Points one import of the exe at hook; returns the previous target.
+void *patch_import(const char *dll, const char *func, void *hook)
+{
+    BYTE *base = (BYTE *)GetModuleHandleA(NULL);
+    IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
+    IMAGE_DATA_DIRECTORY dir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+    for (IMAGE_IMPORT_DESCRIPTOR *d = (void *)(base + dir.VirtualAddress); dir.VirtualAddress && d->Name; d++) {
+        if (_stricmp((char *)base + d->Name, dll)) continue;
+        IMAGE_THUNK_DATA *names = (void *)(base + (d->OriginalFirstThunk ? d->OriginalFirstThunk : d->FirstThunk));
+        IMAGE_THUNK_DATA *slots = (void *)(base + d->FirstThunk);
+        for (; names->u1.AddressOfData; names++, slots++) {
+            if (IMAGE_SNAP_BY_ORDINAL(names->u1.Ordinal)) continue;
+            if (strcmp((char *)((IMAGE_IMPORT_BY_NAME *)(base + names->u1.AddressOfData))->Name, func)) continue;
+            void *orig;
+            patch((void **)&slots->u1.Function, hook, &orig);
+            return orig;
+        }
+    }
+    return NULL;
+}
+
+// The game's own debug prints (bkPrintf, asserts) go to OutputDebugString; keep them in our log.
+static void WINAPI hook_OutputDebugStringA(LPCSTR s)
+{
+    char line[512];
+    snprintf(line, sizeof line, "%s", s ? s : "");
+    line[strcspn(line, "\r\n")] = 0;
+    if (*line) log_line("game: %s", line);
+    real_OutputDebugStringA(s);
 }
 
 static HRESULT WINAPI hook_CreateDevice(IDirect3D8 *d3d, UINT adapter, D3DDEVTYPE type, HWND wnd, DWORD flags,
@@ -91,7 +127,7 @@ static HRESULT WINAPI hook_CreateDevice(IDirect3D8 *d3d, UINT adapter, D3DDEVTYP
     log_line("CreateDevice -> 0x%08lx", hr);
     if (SUCCEEDED(hr) && !real_Present) {
         patch((void **)&(*dev)->lpVtbl->Present, hook_Present, (void **)&real_Present);
-        textures_install(*dev);
+        if (!settings.passthrough) textures_install(*dev);
     }
     return hr;
 }
@@ -120,8 +156,12 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         logf = fopen("taz-hd.log", "a"); // the game relaunches itself; both processes log here
         log_line("taz-hd proxy loaded: %s", GetCommandLineA());
         settings_load();
+        if (settings.passthrough) return TRUE;
         if (settings.widescreen) widescreen_patch();
-        if (settings.menu_speed != 1.0f) menuspeed_patch(settings.menu_speed);
+        menuspeed_patch(settings.menu_speed); // also at 1x, so the overlay can change it live
+        input_patch();
+        asserts_patch();
+        real_OutputDebugStringA = patch_import("KERNEL32.dll", "OutputDebugStringA", hook_OutputDebugStringA);
     } else if (reason == DLL_PROCESS_DETACH) {
         textures_report();
     }
