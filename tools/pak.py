@@ -3,10 +3,11 @@
 
 Format (from MuxaJlbl4's patcher): offsets in the header and file table are in
 units of the pak alignment; a hidden entry holds the names block.
-Textures (.bmp entries): 32-byte header starting with width and height, then
-top-down A1R5G5B5 pixels.
+Textures: header starting with width and height, then top-down A1R5G5B5 pixels
+(see images() for the variants).
 """
 import hashlib
+import re
 import struct
 import sys
 import zlib
@@ -26,58 +27,125 @@ def entries(data):
         yield name.replace("\\", "/"), data[off * align:off * align + size]
 
 
-def texture_rgba(blob):
+A1R5G5B5, A4R4G4B4 = 25, 26  # D3DFORMAT values, as the game uploads them
+FONT_HEADER = 1872
+
+
+def images(name, blob):
+    """(suffix, width, height, format, pixels) for each image in a texture entry; empty if it isn't one.
+    .bmp/.tga: one image. .gif: animation frames, after a frame count at byte 15 and one duration
+    per frame. Splash screens are split into numbered tiles (name.bmp.0 ...), each a plain image.
+    .ttf: Babel fonts, a glyph table then a 256-wide A4R4G4B4 letter sheet."""
+    if name.lower().endswith(".ttf") and len(blob) > FONT_HEADER:
+        h = (len(blob) - FONT_HEADER) // 512
+        return [("", 256, h, A4R4G4B4, blob[FONT_HEADER:FONT_HEADER + 512 * h])]
+    if len(blob) < 32:
+        return []
     w, h = struct.unpack_from("<II", blob, 0)
-    if not w or not h or len(blob) < 32 + w * h * 2:
-        return None
-    px = struct.unpack_from(f"<{w * h}H", blob, 32)
+    size = w * h * 2
+    if not w or not h:
+        return []
+    if name.lower().endswith(".gif"):
+        n, base = blob[15], 28 + blob[15] * 4
+        if len(blob) < base + n * size:
+            return []
+        return [(f".frame{i}", w, h, A1R5G5B5, blob[base + i * size:base + (i + 1) * size]) for i in range(n)]
+    if name.lower().endswith((".bmp", ".tga")) or SPLASH_TILE.search(name):
+        return [("", w, h, A1R5G5B5, blob[32:32 + size])] if len(blob) >= 32 + size else []
+    return []
+
+
+SPLASH_TILE = re.compile(r"\.bmp\.(\d+)$", re.IGNORECASE)
+
+
+def rgba_rows(w, h, data, fmt=A1R5G5B5):
+    """16-bit pixels as PNG scanlines (filter byte + RGBA)."""
+    px = struct.unpack(f"<{w * h}H", data)
     x5 = lambda v: (v << 3) | (v >> 2)
+    if fmt == A4R4G4B4:
+        conv = lambda v: ((v >> 8 & 15) * 17, (v >> 4 & 15) * 17, (v & 15) * 17, (v >> 12) * 17)
+    else:
+        conv = lambda v: (x5(v >> 10 & 31), x5(v >> 5 & 31), x5(v & 31), 255 if v >> 15 else 0)
     rows = []
     for y in range(h):
-        row = bytearray(b"\0")  # PNG filter type: none
+        row = bytearray(b"\0")
         for v in px[y * w:(y + 1) * w]:
-            row += bytes((x5(v >> 10 & 31), x5(v >> 5 & 31), x5(v & 31), 255 if v >> 15 else 0))
+            row += bytes(conv(v))
         rows.append(bytes(row))
-    return w, h, b"".join(rows)
+    return rows
 
 
-def fingerprint(blob):
-    """Same FNV-1a 64 the d3d8 proxy computes when the game uploads the texture (format 25, rows as stored)."""
-    w, h = struct.unpack_from("<II", blob, 0)
+def fingerprint(w, h, data, fmt=A1R5G5B5):
+    """Same FNV-1a 64 the d3d8 proxy computes when the game uploads the image (rows as stored)."""
     v = 0xcbf29ce484222325
-    for b in struct.pack("<III", w, h, 25) + blob[32:32 + w * h * 2]:
+    for b in struct.pack("<III", w, h, fmt) + data:
         v = ((v ^ b) * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF
     return v | 1
 
 
-def write_png(path, w, h, raw):
+def write_png(path, w, h, rows):
     chunk = lambda tag, body: struct.pack(">I", len(body)) + tag + body + struct.pack(">I", zlib.crc32(tag + body))
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
-                     + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
+                     + chunk(b"IDAT", zlib.compress(b"".join(rows), 9)) + chunk(b"IEND", b""))
+
+
+def stitch_splash(desc, tiles):
+    """Splash tiles back into one image. The descriptor holds the screen size and tile size; the
+    bottom row of tiles runs past the screen, so the image keeps the full tile height."""
+    full_w, full_h, tw, th = struct.unpack_from("<IIII", desc, 0x20)
+    cols, rows = -(-full_w // tw), -(-full_h // th)
+    canvas = [bytearray(b"\0" + bytes(full_w * 4)) for _ in range(rows * th)]
+    rects = {}
+    for i, (w, h, data) in tiles.items():
+        x, y = (i % cols) * tw, (i // cols) * th
+        for r, line in enumerate(rgba_rows(w, h, data)):
+            if y + r < len(canvas):
+                canvas[y + r][1 + x * 4:1 + (x + w) * 4] = line[1:1 + min(w, full_w - x) * 4]
+        rects[i] = (x, y, w, h)
+    return full_w, rows * th, [bytes(r) for r in canvas], rects
 
 
 def extract_textures(out, paks):
-    """Each unique texture is written once, under the first pak that has it; index.tsv lists every occurrence.
-    fingerprints.tsv maps the proxy's fingerprint to that file, so replacements can keep the original names."""
+    """Each unique image is written once, under the first pak that has it; index.tsv lists every occurrence.
+    fingerprints.tsv maps the proxy's fingerprint to that file (plus a tile rectangle for splash screens),
+    so replacements can keep the original names."""
     written = {}
     with open(out / "index.tsv", "w") as index, open(out / "fingerprints.tsv", "w") as fps:
         index.write("pak\tname\twidth\theight\tfile\n")
         for pak in paks:
-            for name, blob in entries(Path(pak).read_bytes()):
-                if not name.lower().endswith(".bmp"):
-                    continue
-                key = hashlib.sha1(blob).digest()
-                if key not in written:
-                    tex = texture_rgba(blob)
-                    if tex is None:
+            stem = Path(pak).stem
+            content = dict(entries(Path(pak).read_bytes()))
+            splash = {}
+            for name, blob in content.items():
+                tile = SPLASH_TILE.search(name)
+                for suffix, w, h, fmt, data in images(name, blob):
+                    if tile:
+                        splash.setdefault(name[:tile.start()] + ".bmp", {})[int(tile.group(1))] = (w, h, data)
                         continue
-                    dest = Path(Path(pak).stem) / Path(name).with_suffix(".png")
-                    (out / dest).parent.mkdir(parents=True, exist_ok=True)
-                    write_png(out / dest, *tex)
-                    written[key] = (tex[0], tex[1], dest)
-                    fps.write(f"{fingerprint(blob):016x}\t{dest}\n")
-                w, h, dest = written[key]
-                index.write(f"{Path(pak).stem}\t{name}\t{w}\t{h}\t{dest}\n")
+                    key = hashlib.sha1(struct.pack("<III", w, h, fmt) + data).digest()
+                    if key not in written:
+                        dest = Path(stem) / (str(Path(name).with_suffix("")) + suffix + ".png")
+                        write_png(out / dest, w, h, rgba_rows(w, h, data, fmt))
+                        written[key] = (w, h, dest)
+                        fps.write(f"{fingerprint(w, h, data, fmt):016x}\t{dest}\n")
+                    w, h, dest = written[key]
+                    index.write(f"{stem}\t{name}{suffix}\t{w}\t{h}\t{dest}\n")
+            for desc_name, tiles in splash.items():
+                desc = content.get(desc_name)
+                if desc is None or len(desc) < 0x30:
+                    continue
+                key = hashlib.sha1(b"".join(d for _, (_, _, d) in sorted(tiles.items()))).digest()
+                if key not in written:
+                    fw, fh, rows, rects = stitch_splash(desc, tiles)
+                    dest = Path(stem) / (str(Path(desc_name).with_suffix("")) + ".png")
+                    write_png(out / dest, fw, fh, rows)
+                    written[key] = (fw, fh, dest)
+                    for i, (w, h, data) in tiles.items():
+                        x, y, tw, th = rects[i]
+                        fps.write(f"{fingerprint(w, h, data):016x}\t{dest}\t{x} {y} {tw} {th} {fw} {fh}\n")
+                fw, fh, dest = written[key]
+                index.write(f"{stem}\t{desc_name}\t{fw}\t{fh}\t{dest}\n")
     return len(written)
 
 

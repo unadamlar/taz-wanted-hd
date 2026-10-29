@@ -1,4 +1,4 @@
-// PNG read/write through Windows Imaging Component (Wine provides it).
+// PNG read/write through Windows Imaging Component (Wine provides it). Use from one thread only.
 #define COBJMACROS
 #include <windows.h>
 #include <wincodec.h>
@@ -8,10 +8,8 @@
 static IWICImagingFactory *factory(void)
 {
     static IWICImagingFactory *f;
-    if (!f) {
-        CoInitializeEx(NULL, COINIT_APARTMENTTHREADED); // what the game would use; no-op if it already did
+    if (!f) // the calling thread must have initialised COM
         CoCreateInstance(&CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, &IID_IWICImagingFactory, (void **)&f);
-    }
     return f;
 }
 

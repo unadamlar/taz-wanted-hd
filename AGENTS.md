@@ -8,11 +8,16 @@ Shape: a loader DLL and asset packs applied to the user's own copy; later an opt
 - Dev install: `~/Games/taz-wanted` (btrfs reflink copy). `d3d8.dll` there is a symlink to `build/d3d8.dll`; it writes `taz-hd.log` in the game folder.
 - Wine prefix: `~/.local/share/wineprefixes/tazwanted`, now Proton-format (system `wine` can't open it; edit `*.reg` directly with nothing running). The game needs `Software\Infogrames\TazWanted\Release` `Location` = install dir; a preinstalled copy has no installer to write it.
 - The game checks for its CD (volume label). Disc image: `~/Games/taz-wanted-cd/taz-wanted.iso` (label TAZWANTED; its exes are byte-identical to the install). `tools/mount-cd.sh` mounts it and points the prefix's `D:` at it.
-- Lutris entry: dev install, that prefix, override `d3d8=n,b`, pre-launch `tools/mount-cd.sh`.
+- Lutris entry: dev install, that prefix, override `d3d8=n,b`, pre-launch `tools/mount-cd.sh`, arg `Launched`.
+- `taz.exe` alone starts `TazLauncher.exe`, whose Play runs `taz.exe Launched`; passing `Launched` skips the launcher.
+- `tools/run-dev.sh [--headless]` launches like Lutris; `--headless` runs in an invisible gamescope (X display `:2`). Hold keys ~120 ms (`xdotool keydown/keyup`) or the game misses them. Screenshots: F12, or `echo N > <game>/taz-hd/shot` (N>1: N frames at 1/8 size, timestamps in the log).
+- Settings: `<game>/taz-hd.ini` `[taz-hd]` resolution (auto = desktop, written into taz.dat), widescreen, hd_textures, vsync, fps_limit, menu_speed.
 - Texture pipeline (in the proxy): fingerprint = FNV-1a 64 over (w, h, D3DFORMAT as 3 u32) + level-0 rows, `|1`. Pak textures are uploaded unchanged as format 25, so `tools/pak.py textures` writes the same fingerprints to `fingerprints.tsv`; copy it to `<game>/taz-hd/fingerprints.tsv`. Replacement lookup: `<game>/taz-hd/textures/<pak>/<path>.png` by name, then `<fingerprint>.png`. Any size; mipmaps generated. If `<game>/taz-hd/dump/` exists, every uploaded texture is saved as `<fingerprint>.png` (about 85% of a level's textures come from paks).
+- Engine facts: current scene byte 0x704cf0 (table of names at 0x646d9c; 0 language, 1 frontend). Main loop timing at 0x4dc13c..0x4dc1ae: fps 0x642cdc, seconds per frame 0x6f4c48, 60/fps 0x6c6c14, unpaused frame time 0x6c7ee0 (menu page effects). Timer calibrates RDTSC at startup (0x578450), accurate here. Aspect bytes 0x6c6b88/89, screen size 0x6c6b78/7c.
+- Menu slides are time-based (same duration with vsync off); menu_speed=2 halves the Game Options transition (2.8 s -> 1.45 s, measured).
 - Ghidra project lives in `re/` (ignored). `make` builds the proxy with mingw-w64.
 - `tools/pak.py list|unpack|textures` reads `.pc` paks; `textures` writes each unique texture once as PNG plus `index.tsv` (all occurrences). Output goes in `extracted/` (ignored). Textures are 16-bit, mostly 64-128 px, max 512; 6,512 unique.
 
 ## Rules
-- The game exe is a downloaded copy: agents analyse it statically; the user launches it.
+- The game files are verified retail (2026-10-29): `taz.exe` and `TazLauncher.exe` are byte-identical to the disc and known to VirusTotal since 2009 with 0 detections; `binkw32.dll` has 1/71 (Cynet heuristic, first seen 2009). Agents may launch the dev install for testing; recheck hashes if the install is replaced.
 - Never commit game binaries, pak files, or anything extracted from them. Public releases ship only our code and our assets.

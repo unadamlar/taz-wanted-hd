@@ -6,6 +6,7 @@
 
 static FILE *logf;
 static HRESULT (WINAPI *real_CreateDevice)(IDirect3D8 *, UINT, D3DDEVTYPE, HWND, DWORD, D3DPRESENT_PARAMETERS *, IDirect3DDevice8 **);
+static HRESULT (WINAPI *real_Present)(IDirect3DDevice8 *, CONST RECT *, CONST RECT *, HWND, CONST RGNDATA *);
 
 void log_line(const char *fmt, ...)
 {
@@ -28,16 +29,70 @@ void patch(void **slot, void *hook, void **orig)
     VirtualProtect(slot, sizeof *slot, old, &old);
 }
 
+// Compares the game's measured cycle-counter rate (bInitTimer, 0x750010/0x750018) with the real one.
+static void timer_check(void)
+{
+    static LARGE_INTEGER q0;
+    static UINT64 t0;
+    LARGE_INTEGER q, f;
+    UINT64 t = __builtin_ia32_rdtsc();
+    QueryPerformanceCounter(&q);
+    QueryPerformanceFrequency(&f);
+    if (t0)
+        log_line("game timer mode %u, game thinks %.1f MHz, measured %.1f MHz", *(UINT *)0x750010,
+                 *(UINT64 *)0x750018 / 1e6, (t - t0) / ((double)(q.QuadPart - q0.QuadPart) / f.QuadPart) / 1e6);
+    t0 = t;
+    q0 = q;
+}
+
+// Sleeps until 1/fps after the previous frame; spins the last millisecond for accuracy.
+static void limit_frame_rate(int fps)
+{
+    static LARGE_INTEGER next;
+    LARGE_INTEGER now, f;
+    QueryPerformanceFrequency(&f);
+    QueryPerformanceCounter(&now);
+    LONGLONG period = f.QuadPart / fps;
+    if (!next.QuadPart || now.QuadPart - next.QuadPart > period) next = now;
+    while (now.QuadPart < next.QuadPart) {
+        LONGLONG left_ms = (next.QuadPart - now.QuadPart) * 1000 / f.QuadPart;
+        if (left_ms > 1) Sleep((DWORD)(left_ms - 1));
+        QueryPerformanceCounter(&now);
+    }
+    next.QuadPart += period;
+}
+
+// Logs the average frame rate every 10 seconds.
+static HRESULT WINAPI hook_Present(IDirect3DDevice8 *dev, CONST RECT *src, CONST RECT *dst, HWND wnd, CONST RGNDATA *dirty)
+{
+    static DWORD start, frames;
+    DWORD now = GetTickCount();
+    if (!start) start = now;
+    if (++frames, now - start >= 10000) {
+        log_line("fps: %.1f", frames * 1000.0 / (now - start));
+        timer_check();
+        start = now;
+        frames = 0;
+    }
+    textures_frame();
+    screenshot_frame(dev);
+    if (settings.fps_limit > 0) limit_frame_rate(settings.fps_limit);
+    return real_Present(dev, src, dst, wnd, dirty);
+}
+
 static HRESULT WINAPI hook_CreateDevice(IDirect3D8 *d3d, UINT adapter, D3DDEVTYPE type, HWND wnd, DWORD flags,
                                         D3DPRESENT_PARAMETERS *pp, IDirect3DDevice8 **dev)
 {
     log_line("CreateDevice %ux%u backbuffer_format=%d windowed=%d refresh=%u interval=%u flags=0x%lx",
              pp->BackBufferWidth, pp->BackBufferHeight, pp->BackBufferFormat, pp->Windowed,
              pp->FullScreen_RefreshRateInHz, pp->FullScreen_PresentationInterval, flags);
+    if (!settings.vsync && !pp->Windowed) pp->FullScreen_PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
     HRESULT hr = real_CreateDevice(d3d, adapter, type, wnd, flags, pp, dev);
     log_line("CreateDevice -> 0x%08lx", hr);
-    if (SUCCEEDED(hr))
+    if (SUCCEEDED(hr) && !real_Present) {
+        patch((void **)&(*dev)->lpVtbl->Present, hook_Present, (void **)&real_Present);
         textures_install(*dev);
+    }
     return hr;
 }
 
@@ -64,6 +119,9 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
     if (reason == DLL_PROCESS_ATTACH) {
         logf = fopen("taz-hd.log", "a"); // the game relaunches itself; both processes log here
         log_line("taz-hd proxy loaded: %s", GetCommandLineA());
+        settings_load();
+        if (settings.widescreen) widescreen_patch();
+        if (settings.menu_speed != 1.0f) menuspeed_patch(settings.menu_speed);
     } else if (reason == DLL_PROCESS_DETACH) {
         textures_report();
     }
