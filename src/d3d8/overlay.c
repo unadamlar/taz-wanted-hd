@@ -1,5 +1,4 @@
-// In-game settings panel (F1) and short messages, drawn before Present over the finished frame. Changes
-// apply at once and are written to taz-hd.ini.
+// Short messages (quicksave) drawn before Present over the finished frame, and draw_2d for our 2D.
 #define COBJMACROS
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,70 +9,12 @@
 #define ATLAS_H 512
 #define MAX_QUADS 2048
 
-struct item {
-    const char *label, *key, *def;
-    const char *choices[12];
-    int count, cur;
-};
-
-static struct item items[] = {
-    { "Resolution", "resolution", "auto", { "auto" }, 1, 0 },
-    { "HD textures", "hd_textures", "1", { "0", "1" }, 2, 0 },
-    { "Vsync", "vsync", "1", { "0", "1" }, 2, 0 },
-    { "Frame cap", "fps_limit", "0", { "0", "30", "60", "120", "144" }, 5, 0 },
-    { "Menu text speed", "menu_text_speed", "3", { "1", "2", "3", "4" }, 4, 0 },
-};
-#define ITEMS (int)(sizeof items / sizeof *items)
-
 static IDirect3DTexture8 *atlas;
 static int glyph_x[96], glyph_row[96];
 static float glyph_w[96], line_h;
-static int selected, ready;
+static int ready;
 static struct vertex quads[MAX_QUADS * 6];
 static int nquads;
-
-static char resolutions[11][16];
-
-static void fill_resolutions(struct item *it)
-{
-    DEVMODEA m = { .dmSize = sizeof m };
-    it->count = 1;
-    for (DWORD i = 0; EnumDisplaySettingsA(NULL, i, &m) && it->count < 12; i++) {
-        char s[16];
-        snprintf(s, sizeof s, "%lux%lu", m.dmPelsWidth, m.dmPelsHeight);
-        int dup = 0;
-        for (int k = 1; k < it->count; k++) dup |= !strcmp(it->choices[k], s);
-        if (dup || m.dmPelsWidth < 800) continue;
-        strcpy(resolutions[it->count - 1], s);
-        it->choices[it->count] = resolutions[it->count - 1];
-        it->count++;
-    }
-}
-
-static const char *shown(const struct item *it)
-{
-    const char *v = it->choices[it->cur];
-    if (!strcmp(it->key, "fps_limit") && !strcmp(v, "0")) return "off";
-    if (!strcmp(it->key, "menu_text_speed")) {
-        static char s[8];
-        snprintf(s, sizeof s, "%sx", v);
-        return s;
-    }
-    if (it->count == 2 && !strcmp(it->choices[0], "0")) return it->cur ? "on" : "off";
-    return v;
-}
-
-static void load_current(void)
-{
-    char v[32];
-    fill_resolutions(&items[0]);
-    for (int i = 0; i < ITEMS; i++) {
-        GetPrivateProfileStringA("taz-hd", items[i].key, items[i].def, v, sizeof v, ".\\taz-hd.ini");
-        items[i].cur = 0;
-        for (int k = 0; k < items[i].count; k++)
-            if (!_stricmp(items[i].choices[k], v)) items[i].cur = k;
-    }
-}
 
 // Renders printable ASCII with GDI into the atlas; the top-left 4x4 block stays white for solid quads.
 static void build_atlas(IDirect3DDevice8 *dev, UINT screen_h)
@@ -161,55 +102,6 @@ static void text(float x, float y, const char *s, DWORD color)
     }
 }
 
-static int pressed(int vk)
-{
-    static BYTE was[256];
-    int down = (GetAsyncKeyState(vk) & 0x8000) != 0, edge = down && !was[vk];
-    was[vk] = (BYTE)down;
-    return edge;
-}
-
-static void apply(struct item *it)
-{
-    const char *v = it->choices[it->cur];
-    settings_save(it->key, v);
-    log_line("overlay: %s = %s", it->key, v);
-    if (!strcmp(it->key, "menu_text_speed")) menuspeed_set(settings.menu_speed = (float)atof(v));
-    else if (!strcmp(it->key, "fps_limit")) settings.fps_limit = atoi(v);
-    else if (!strcmp(it->key, "hd_textures")) settings.hd_textures = atoi(v), textures_apply();
-    else if (!strcmp(it->key, "vsync")) settings.vsync = atoi(v), display_change(0, 0, settings.vsync);
-    else if (!strcmp(it->key, "resolution")) {
-        UINT w, h;
-        if (settings_resolution(v, &w, &h)) display_change(w, h, settings.vsync);
-    }
-}
-
-static void handle_keys(void)
-{
-    int f1 = pressed(VK_F1), esc = pressed(VK_ESCAPE), up = pressed(VK_UP), down = pressed(VK_DOWN);
-    int left = pressed(VK_LEFT), right = pressed(VK_RIGHT), enter = pressed(VK_RETURN);
-    if (!overlay_open) {
-        if (f1) {
-            load_current();
-            overlay_open = 1;
-            log_line("overlay: open");
-        }
-        return;
-    }
-    if (f1 || esc) {
-        overlay_open = 0;
-        log_line("overlay: closed");
-        return;
-    }
-    if (up) selected = (selected + ITEMS - 1) % ITEMS;
-    if (down) selected = (selected + 1) % ITEMS;
-    struct item *it = &items[selected];
-    if (left || right || enter) {
-        it->cur = (it->cur + (left ? it->count - 1 : 1)) % it->count;
-        apply(it);
-    }
-}
-
 static DWORD state_block; // draw_2d's copy of the game's state; it holds the game's buffers
 
 // Before a device Reset: the state block would keep the game's released buffers alive, and the font
@@ -233,9 +125,7 @@ void overlay_toast(const char *msg)
 
 void overlay_frame(IDirect3DDevice8 *dev)
 {
-    handle_keys();
-    int show_toast = (int)(toast_until - GetTickCount()) > 0;
-    if (!overlay_open && !show_toast) return;
+    if ((int)(toast_until - GetTickCount()) <= 0) return;
 
     IDirect3DSurface8 *bb;
     D3DSURFACE_DESC d;
@@ -249,32 +139,9 @@ void overlay_frame(IDirect3DDevice8 *dev)
     }
     if (!atlas) return;
     nquads = 0;
-    if (!overlay_open) {
-        float pad = line_h * 0.6f, w = text_width(toast) + pad * 2, x0 = line_h, y0 = line_h; // top left: menus use the middle and bottom
-        rect(x0, y0, x0 + w, y0 + line_h + pad, 0xd0101828);
-        text(x0 + pad, y0 + pad / 2, toast, 0xffffffff);
-        draw_2d(dev, atlas, quads, nquads * 2);
-        return;
-    }
-
-    // Layout, in pixels.
-    float pad = line_h * 0.8f, row = line_h * 1.35f, w = line_h * 18, h = pad * 2 + row * (ITEMS + 3.2f);
-    float x0 = (d.Width - w) / 2, y0 = (d.Height - h) / 2, y = y0 + pad;
-    rect(x0, y0, x0 + w, y0 + h, 0xf0101828);
-    rect(x0, y0, x0 + w, y0 + line_h * 0.15f, 0xffffa020);
-    text(x0 + pad, y, "Taz: Wanted HD", 0xffffc040);
-    text(x0 + w - pad - text_width("F1 closes"), y, "F1 closes", 0xff8090a0);
-    y += row * 1.4f;
-    for (int i = 0; i < ITEMS; i++, y += row) {
-        DWORD c = i == selected ? 0xffffffff : 0xffb0b8c8;
-        if (i == selected) rect(x0 + pad * 0.5f, y - row * 0.12f, x0 + w - pad * 0.5f, y + row * 0.88f, 0x40ffffff);
-        text(x0 + pad, y, items[i].label, c);
-        char v[40];
-        snprintf(v, sizeof v, "< %s >", shown(&items[i]));
-        text(x0 + w - pad - text_width(v), y, v, c);
-    }
-    y += row * 0.4f;
-    text(x0 + pad, y, "Up/Down select, Left/Right change", 0xff8090a0);
+    float pad = line_h * 0.6f, w = text_width(toast) + pad * 2, x0 = line_h, y0 = line_h; // top left: menus use the middle and bottom
+    rect(x0, y0, x0 + w, y0 + line_h + pad, 0xd0101828);
+    text(x0 + pad, y0 + pad / 2, toast, 0xffffffff);
     draw_2d(dev, atlas, quads, nquads * 2);
 }
 

@@ -10,7 +10,8 @@ What it does
 - Replaces the game's textures, fonts and loading screens with 4x upscaled versions.
 - Plays the intro videos upscaled and full screen.
 - Faster menu text (lands in about a quarter of the time; the camera and characters keep their pace).
-  Menu text speed, frame cap and vsync are set from an in-game panel (press F1).
+- Its settings live in the game's own menus (Game Options, and Options in the pause menu), with
+  keyboard or controller.
 - Quicksave (F5) and quickload (F9) anywhere in a level. The quicksave lasts until you leave the
   level or quit the game; the game's own save slots work as before.
 
@@ -27,9 +28,11 @@ Same files, plus tell Wine to use the mod's d3d8.dll:
 The disc or disc image must be visible to Wine as a CD drive.
 
 Settings
-Press F1 in game. Changes apply at once (a resolution or vsync change takes about a second) and
-are saved in taz-hd.ini in the game folder. Changing the resolution or vsync discards the quicksave.
-The game's own "Widescreen" option does nothing now: the picture always matches your screen.
+Game Options (main menu) and Options (pause menu) have rows for Resolution, HD Textures, Vsync,
+Frame Cap and Menu Text Speed: press Select to change one. Changes apply at once (a resolution or
+vsync change takes about a second) and are saved in taz-hd.ini in the game folder. Changing the
+resolution or vsync discards the quicksave.
+The game's Widescreen option is gone: the picture always matches your screen's shape.
 F12 saves a screenshot to taz-hd\shots.
 
 Supported game version

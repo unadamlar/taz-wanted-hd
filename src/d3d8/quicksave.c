@@ -125,8 +125,8 @@ static int pressed(int vk)
 static void frame(void)
 {
     int save = pressed(VK_F5), load = pressed(VK_F9);
-    if (!overlay_open && save) quicksave();
-    else if (!overlay_open && load) quickload();
+    if (save) quicksave();
+    else if (load) quickload();
     game_frame();
 }
 

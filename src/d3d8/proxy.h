@@ -15,10 +15,8 @@ extern struct settings settings;
 void settings_load(void);
 void menuspeed_patch(float speed);
 void menuspeed_set(float speed);
-void input_patch(void);
 void asserts_patch(void);
 void *patch_import(const char *dll, const char *func, void *hook);
-extern int overlay_open; // the game sees no keyboard input while set
 void overlay_frame(IDirect3DDevice8 *dev);
 struct vertex { float x, y, z, rhw; DWORD color; float u, v; };
 #define FVF (D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1)
@@ -40,3 +38,10 @@ void overlay_reset(IDirect3DDevice8 *dev);
 void display_install(IDirect3DDevice8 *dev);
 void display_change(UINT w, UINT h, int vsync); // w, h 0: keep the size
 int settings_resolution(const char *value, UINT *w, UINT *h);
+int setting_count(void);
+const char *setting_label(int i);
+const char *setting_shown(int i);
+const char *setting_about(int i);
+void setting_step(int i, int dir);
+void settings_refresh(void);
+void menu_patch(void);

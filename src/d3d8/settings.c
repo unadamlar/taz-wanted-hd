@@ -3,6 +3,7 @@
 // reads it.
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "proxy.h"
 
 #define INI ".\\taz-hd.ini"
@@ -27,7 +28,7 @@ static void write_resolution(UINT w, UINT h)
     fclose(f);
 }
 
-// "auto" (the desktop size) or "WxH"; also written into taz.dat, where the game reads it.
+// "auto" (the desktop size) or "WxH".
 int settings_resolution(const char *value, UINT *w, UINT *h)
 {
     static DEVMODEA desktop = { .dmSize = sizeof desktop }; // read once, before the game changes the mode
@@ -42,9 +43,7 @@ int settings_resolution(const char *value, UINT *w, UINT *h)
     } else if (sscanf(value, "%ux%u", w, h) != 2) {
         *w = *h = 0;
     }
-    if (!*w || !*h) return 0;
-    write_resolution(*w, *h);
-    return 1;
+    return *w && *h;
 }
 
 void settings_save(const char *key, const char *value)
@@ -64,8 +63,104 @@ void settings_load(void)
     if (settings.menu_speed < 0.25f || settings.menu_speed > 8.0f) settings.menu_speed = 3.0f;
     GetPrivateProfileStringA("taz-hd", "resolution", "auto", res, sizeof res, INI);
     UINT w, h;
-    settings_resolution(res, &w, &h);
+    if (settings_resolution(res, &w, &h)) write_resolution(w, h); // taz.dat, where the game reads it
     log_line("settings: resolution=%s hd_textures=%d vsync=%d fps_limit=%d menu_text_speed=%.2f%s", res,
              settings.hd_textures, settings.vsync, settings.fps_limit, settings.menu_speed,
              settings.passthrough ? " passthrough" : "");
+}
+
+// The settings players change in game, in the game's option menus (menu.c). Changes apply at once.
+struct item {
+    const char *label, *about, *key, *def;
+    const char *choices[12];
+    int count, cur;
+};
+
+static struct item items[] = {
+    { "Resolution", "Desktop matches your screen", "resolution", "auto", { "auto" }, 1, 0 },
+    { "HD Textures", "Sharper, upscaled textures", "hd_textures", "1", { "0", "1" }, 2, 0 },
+    { "Vsync", "Stops the picture tearing", "vsync", "1", { "0", "1" }, 2, 0 },
+    { "Frame Cap", "Limits the frame rate", "fps_limit", "0", { "0", "30", "60", "120", "144" }, 5, 0 },
+    { "Menu Text Speed", "How fast menu text slides in", "menu_text_speed", "3", { "1", "2", "3", "4" }, 4, 0 },
+};
+
+static char resolutions[11][16];
+
+// Desktop first, then the screen's largest modes, biggest first.
+static void fill_resolutions(struct item *it)
+{
+    DWORD best[11][2] = { { 0 } };
+    DEVMODEA m = { .dmSize = sizeof m };
+    for (DWORD i = 0; EnumDisplaySettingsA(NULL, i, &m); i++) {
+        DWORD w = m.dmPelsWidth, h = m.dmPelsHeight, k = 0;
+        if (w < 800) continue;
+        while (k < 11 && (best[k][0] > w || (best[k][0] == w && best[k][1] > h))) k++;
+        if (k == 11 || (best[k][0] == w && best[k][1] == h)) continue;
+        memmove(best[k + 1], best[k], (10 - k) * sizeof best[0]);
+        best[k][0] = w;
+        best[k][1] = h;
+    }
+    it->count = 1;
+    for (int k = 0; k < 11 && best[k][0]; k++) {
+        snprintf(resolutions[k], sizeof resolutions[k], "%lux%lu", best[k][0], best[k][1]);
+        it->choices[it->count++] = resolutions[k];
+    }
+}
+
+int setting_count(void)
+{
+    return sizeof items / sizeof *items;
+}
+
+const char *setting_label(int i)
+{
+    return items[i].label;
+}
+
+const char *setting_about(int i)
+{
+    return items[i].about;
+}
+
+const char *setting_shown(int i)
+{
+    const struct item *it = &items[i];
+    const char *v = it->choices[it->cur];
+    static char s[24];
+    if (!strcmp(it->key, "fps_limit") && !strcmp(v, "0")) return "Off";
+    if (!strcmp(it->key, "menu_text_speed")) return snprintf(s, sizeof s, "%sx", v), s;
+    if (!strcmp(it->key, "resolution") && !strcmp(v, "auto")) return "Desktop";
+    if (it->count == 2 && !strcmp(it->choices[0], "0")) return it->cur ? "On" : "Off";
+    return v;
+}
+
+// Re-reads the saved values (and the screen's modes).
+void settings_refresh(void)
+{
+    char v[32];
+    fill_resolutions(&items[0]);
+    for (int i = 0; i < setting_count(); i++) {
+        GetPrivateProfileStringA("taz-hd", items[i].key, items[i].def, v, sizeof v, INI);
+        items[i].cur = 0;
+        for (int k = 0; k < items[i].count; k++)
+            if (!_stricmp(items[i].choices[k], v)) items[i].cur = k;
+    }
+}
+
+// Moves setting i to its next (dir 1) or previous (dir -1) value, applies and saves it.
+void setting_step(int i, int dir)
+{
+    struct item *it = &items[i];
+    it->cur = (it->cur + it->count + dir) % it->count;
+    const char *v = it->choices[it->cur];
+    settings_save(it->key, v);
+    log_line("setting: %s = %s", it->key, v);
+    if (!strcmp(it->key, "menu_text_speed")) menuspeed_set(settings.menu_speed = (float)atof(v));
+    else if (!strcmp(it->key, "fps_limit")) settings.fps_limit = atoi(v);
+    else if (!strcmp(it->key, "hd_textures")) settings.hd_textures = atoi(v), textures_apply();
+    else if (!strcmp(it->key, "vsync")) settings.vsync = atoi(v), display_change(0, 0, settings.vsync);
+    else if (!strcmp(it->key, "resolution")) {
+        UINT w, h;
+        if (settings_resolution(v, &w, &h)) write_resolution(w, h), display_change(w, h, settings.vsync);
+    }
 }
