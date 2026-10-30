@@ -35,7 +35,6 @@ void settings_save(const char *key, const char *value)
 void settings_load(void)
 {
     char res[32];
-    settings.widescreen = GetPrivateProfileIntA("taz-hd", "widescreen", 1, INI);
     settings.hd_textures = GetPrivateProfileIntA("taz-hd", "hd_textures", 1, INI);
     settings.vsync = GetPrivateProfileIntA("taz-hd", "vsync", 1, INI);
     settings.fps_limit = GetPrivateProfileIntA("taz-hd", "fps_limit", 0, INI);
@@ -56,7 +55,7 @@ void settings_load(void)
         w = h = 0;
     }
     if (w && h) write_resolution(w, h);
-    log_line("settings: resolution=%s widescreen=%d hd_textures=%d vsync=%d fps_limit=%d menu_text_speed=%.2f%s", res,
-             settings.widescreen, settings.hd_textures, settings.vsync, settings.fps_limit, settings.menu_speed,
+    log_line("settings: resolution=%s hd_textures=%d vsync=%d fps_limit=%d menu_text_speed=%.2f%s", res,
+             settings.hd_textures, settings.vsync, settings.fps_limit, settings.menu_speed,
              settings.passthrough ? " passthrough" : "");
 }

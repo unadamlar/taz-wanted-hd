@@ -146,7 +146,7 @@ static void check_version(void)
     if (!GetPrivateProfileIntA("taz-hd", "version_warning", 1, ".\\taz-hd.ini")) return;
     settings_save("version_warning", "0");
     MessageBoxA(NULL, "This taz.exe is not the 2002 retail PC version that Taz: Wanted HD was made for.\n\n"
-                "HD textures and videos still work, but widescreen, menu speed and other fixes may stay off. "
+                "HD textures and videos still work, but the screen shape, menu speed and other fixes may stay off. "
                 "Details are in taz-hd.log in the game folder.", "Taz: Wanted HD", MB_OK | MB_ICONWARNING | MB_TOPMOST | MB_SETFOREGROUND);
 }
 
@@ -183,7 +183,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         settings_load();
         if (settings.passthrough) return TRUE;
         startup_patch();
-        if (settings.widescreen) widescreen_patch();
+        widescreen_patch();
         menuspeed_patch(settings.menu_speed); // also at 1x, so the overlay can change it live
         input_patch();
         video_patch();

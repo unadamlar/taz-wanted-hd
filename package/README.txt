@@ -5,7 +5,8 @@ A free fan remaster for the PC version of Taz: Wanted (2002). It is a mod: you n
 itself, installed. Nothing from the original game is included except upscaled textures and videos.
 
 What it does
-- Runs at your desktop resolution, in widescreen, without the 2002 launcher.
+- Runs at your desktop resolution and your screen's shape (16:9, 16:10, ultrawide), without the 2002
+  launcher.
 - Replaces the game's textures, fonts and loading screens with 4x upscaled versions.
 - Plays the intro videos upscaled and full screen.
 - Faster menu text (lands in about a quarter of the time; the camera and characters keep their pace).
@@ -26,9 +27,9 @@ Same files, plus tell Wine to use the mod's d3d8.dll:
 The disc or disc image must be visible to Wine as a CD drive.
 
 Settings
-Press F1 in game. Resolution, widescreen, HD textures and vsync apply after restarting the game;
-menu text speed and the frame cap apply at once. They are saved in taz-hd.ini in the game folder.
-Leave the game's own "Widescreen" option off: the mod already uses your screen's real shape.
+Press F1 in game. Resolution and vsync apply after restarting the game; HD textures, menu text
+speed and the frame cap apply at once. They are saved in taz-hd.ini in the game folder.
+The game's own "Widescreen" option does nothing now: the picture always matches your screen.
 F12 saves a screenshot to taz-hd\shots.
 
 Supported game version

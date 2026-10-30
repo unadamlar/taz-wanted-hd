@@ -18,8 +18,7 @@ struct item {
 
 static struct item items[] = {
     { "Resolution", "resolution", "auto", { "auto" }, 1, 0, 0 },
-    { "Widescreen", "widescreen", "1", { "0", "1" }, 2, 0, 0 },
-    { "HD textures", "hd_textures", "1", { "0", "1" }, 2, 0, 0 },
+    { "HD textures", "hd_textures", "1", { "0", "1" }, 2, 1, 0 },
     { "Vsync", "vsync", "1", { "0", "1" }, 2, 0, 0 },
     { "Frame cap", "fps_limit", "0", { "0", "30", "60", "120", "144" }, 5, 1, 0 },
     { "Menu text speed", "menu_text_speed", "3", { "1", "2", "3", "4" }, 4, 1, 0 },
@@ -177,6 +176,7 @@ static void apply(struct item *it)
     log_line("overlay: %s = %s", it->key, v);
     if (!strcmp(it->key, "menu_text_speed")) menuspeed_set(settings.menu_speed = (float)atof(v));
     else if (!strcmp(it->key, "fps_limit")) settings.fps_limit = atoi(v);
+    else if (!strcmp(it->key, "hd_textures")) settings.hd_textures = atoi(v), textures_apply();
     if (!it->live) changed_restart = 1;
 }
 

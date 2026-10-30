@@ -10,7 +10,7 @@ void textures_frame(void);
 void textures_dump_recent(void);
 void widescreen_patch(void);
 
-struct settings { int widescreen, hd_textures, vsync, fps_limit; float menu_speed; int exe_known, passthrough; };
+struct settings { int hd_textures, vsync, fps_limit; float menu_speed; int exe_known, passthrough; };
 extern struct settings settings;
 void settings_load(void);
 void menuspeed_patch(float speed);
@@ -33,3 +33,5 @@ void screenshot_frame(IDirect3DDevice8 *dev);
 void quicksave_patch(void);
 void overlay_toast(const char *msg);
 extern DWORD textures_created; // Direct3D textures taz.exe has created so far
+void widescreen_apply(void);
+void textures_apply(void);

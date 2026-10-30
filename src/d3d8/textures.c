@@ -311,6 +311,33 @@ void textures_frame(void)
     }
 }
 
+static DWORD WINAPI load_missing(void *arg)
+{
+    static UINT64 hashes[TABLE];
+    int n = 0;
+    EnterCriticalSection(&lock);
+    for (int i = 0; i < TABLE; i++)
+        if (reps[i].hash && !reps[i].rep) hashes[n++] = reps[i].hash;
+    LeaveCriticalSection(&lock);
+    for (int i = 0; i < n; i++) queue_load(hashes[i], name_of(hashes[i]));
+    log_line("hd textures on: %d to load", n);
+    return 0;
+}
+
+// HD textures were switched in game. Loaded replacements are kept while off, so switching back is quick;
+// textures first seen while off are loaded now.
+void textures_apply(void)
+{
+    static HANDLE loading;
+    EnterCriticalSection(&lock);
+    rebind = 1;
+    LeaveCriticalSection(&lock);
+    if (!settings.hd_textures || !real_CreateTexture) return;
+    if (loading && WaitForSingleObject(loading, 0) == WAIT_TIMEOUT) return;
+    if (loading) CloseHandle(loading);
+    loading = CreateThread(NULL, 0, load_missing, NULL, 0, NULL);
+}
+
 static void load_names(void)
 {
     FILE *f = fopen(NAMES_FILE, "r");
@@ -374,6 +401,7 @@ static void fingerprint(IDirect3DTexture8 *t, struct tex_entry *e)
 
 static IDirect3DBaseTexture8 *replacement_for(IDirect3DBaseTexture8 *bt)
 {
+    if (!settings.hd_textures) return NULL;
     EnterCriticalSection(&lock);
     struct tex_entry *e = tex_lookup((IDirect3DTexture8 *)bt, 0);
     struct rep_entry *r = e && e->hash ? rep_lookup(e->hash, NULL) : NULL;
@@ -581,10 +609,11 @@ struct saved { DWORD flags; D3DMATRIX m; };
 // Returns a mask of stages whose texture transform was changed for a scrolling texture.
 static int before_draw(IDirect3DDevice8 *dev, struct saved *saved)
 {
-    if (rebind) { // a replacement finished loading; the original may be bound right now
+    if (rebind) { // a replacement finished loading or HD textures were switched; rebind what the game bound
         rebind = 0;
         for (DWORD stage = 0; stage < STAGES; stage++)
-            bind_replacement(dev, stage, bound[stage]);
+            if (!bind_replacement(dev, stage, bound[stage]) && stage < 2) // the game unbinds 0 and 1 before freeing
+                real_SetTexture(dev, stage, bound[stage]);
     }
     int mask = 0;
     for (DWORD stage = 0; stage < STAGES; stage++) {
