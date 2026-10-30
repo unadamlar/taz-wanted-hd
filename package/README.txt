@@ -8,7 +8,8 @@ What it does
 - Runs at your desktop resolution, in widescreen, without the 2002 launcher.
 - Replaces the game's textures, fonts and loading screens with 4x upscaled versions.
 - Plays the intro videos upscaled and full screen.
-- Optional faster menus, frame cap and vsync, set from an in-game panel (press F1).
+- Faster menu text (lands in about a quarter of the time; the camera and characters keep their pace).
+  Menu text speed, frame cap and vsync are set from an in-game panel (press F1).
 
 Install (Windows 10 or 11)
 1. Copy everything in this folder into the game folder, next to taz.exe.
@@ -24,7 +25,7 @@ The disc or disc image must be visible to Wine as a CD drive.
 
 Settings
 Press F1 in game. Resolution, widescreen, HD textures and vsync apply after restarting the game;
-menu speed and the frame cap apply at once. They are saved in taz-hd.ini in the game folder.
+menu text speed and the frame cap apply at once. They are saved in taz-hd.ini in the game folder.
 Leave the game's own "Widescreen" option off: the mod already uses your screen's real shape.
 F12 saves a screenshot to taz-hd\shots.
 

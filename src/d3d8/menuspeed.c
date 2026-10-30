@@ -1,7 +1,6 @@
-// Menu speed. In the frontend scenes (0 language select, 1 frontend; current scene byte at 0x704cf0)
-// the main loop's frame rate is divided by menu_speed, so everything there, camera flights included,
-// runs faster. Menu page effects (slides, fades) use the unpaused frame time at 0x6c7ee0; their 42
-// reads are pointed at a copy scaled by menu_speed, which also speeds up the in-game pause menu.
+// Menu text speed. Menu item effects (slides, letters flying off, fades; PageItemFX.cpp) use the
+// unpaused frame time at 0x6c7ee0; their 42 reads are pointed at a copy scaled by menu_speed. Camera
+// flights and characters keep their pace. Also applies to the in-game pause menu.
 #include <string.h>
 #include "proxy.h"
 
@@ -25,27 +24,29 @@ __attribute__((naked)) static void store_frame_time(void)
             "ret");
 }
 
-// Replaces "call 0x578650" (ticks to frames per second) at 0x4dc13c in the main loop's timing.
-__attribute__((naked)) static void frontend_fps(void)
-{
-    __asm__("pushl 8(%esp)\n\t"
-            "pushl 8(%esp)\n\t"
-            "movl $0x578650, %eax\n\t"
-            "call *%eax\n\t"
-            "addl $8, %esp\n\t"
-            "cmpb $1, 0x704cf0\n\t"
-            "ja 1f\n\t"
-            "fdivs _menu_speed\n"
-            "1:\n\t"
-            "ret");
-}
-
 // Replaces "movl $0,0x6c7ee0" at 0x4dc10c (frames where time stands still).
 __attribute__((naked)) static void zero_frame_time(void)
 {
     __asm__("movl $0, 0x6c7ee0\n\t"
             "movl $0, _menu_time\n\t"
             "ret");
+}
+
+// The slide-in update (FUN_00537840) caps each time step at 0.05 s and damps its landing wobble by a
+// fixed factor per call, so a scaled clock alone barely speeds it up. Run it several times a frame
+// instead, each with a normal-sized step, as if the game ran that much faster for this effect.
+static DWORD *const SLIDE_SLOT = (DWORD *)0x5f8940; // its vtable entry
+static char (__fastcall *real_slide)(void *, int);
+
+static char __fastcall slide_update(void *fx, int unused)
+{
+    int steps = (int)(menu_speed + 0.99f);
+    float t = menu_time;
+    char done = 0;
+    menu_time = t / steps;
+    for (int i = 0; i < steps && !done; i++) done = real_slide(fx, 0);
+    menu_time = t;
+    return done;
 }
 
 static int write_code(BYTE *at, const BYTE *bytes, SIZE_T n)
@@ -89,18 +90,20 @@ void menuspeed_patch(float speed)
             return;
         }
     }
-    static const BYTE fps_call[] = { 0xe8, 0x0f, 0xc5, 0x09, 0x00 }; // call 0x578650
-    if (memcmp((BYTE *)0x4dc124, store, sizeof store) || memcmp((BYTE *)0x4dc10c, zero, sizeof zero) ||
-        memcmp((BYTE *)0x4dc13c, fps_call, sizeof fps_call)) {
+    if (memcmp((BYTE *)0x4dc124, store, sizeof store) || memcmp((BYTE *)0x4dc10c, zero, sizeof zero)) {
         log_line("menu speed: unexpected frame-time code, not patching");
         return;
     }
     menu_speed = speed;
     call_at((BYTE *)0x4dc124, sizeof store, store, store_frame_time);
     call_at((BYTE *)0x4dc10c, sizeof zero, zero, zero_frame_time);
-    call_at((BYTE *)0x4dc13c, sizeof fps_call, fps_call, frontend_fps);
     float *copy = &menu_time;
     for (UINT i = 0; i < sizeof SITES / sizeof *SITES; i++)
         write_code(operand[i], (BYTE *)&copy, 4);
+    if (*SLIDE_SLOT == (DWORD)0x537840) {
+        real_slide = (void *)*SLIDE_SLOT;
+        DWORD to = (DWORD)slide_update;
+        write_code((BYTE *)SLIDE_SLOT, (BYTE *)&to, 4);
+    }
     log_line("menu speed: %.2fx (%u sites)", speed, (UINT)(sizeof SITES / sizeof *SITES));
 }

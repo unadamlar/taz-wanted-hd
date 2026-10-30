@@ -22,7 +22,7 @@ static struct item items[] = {
     { "HD textures", "hd_textures", "1", { "0", "1" }, 2, 0, 0 },
     { "Vsync", "vsync", "1", { "0", "1" }, 2, 0, 0 },
     { "Frame cap", "fps_limit", "0", { "0", "30", "60", "120", "144" }, 5, 1, 0 },
-    { "Menu speed", "menu_speed", "1", { "1", "1.5", "2", "3" }, 4, 1, 0 },
+    { "Menu text speed", "menu_text_speed", "3", { "1", "2", "3", "4" }, 4, 1, 0 },
 };
 #define ITEMS (int)(sizeof items / sizeof *items)
 
@@ -55,7 +55,7 @@ static const char *shown(const struct item *it)
 {
     const char *v = it->choices[it->cur];
     if (!strcmp(it->key, "fps_limit") && !strcmp(v, "0")) return "off";
-    if (!strcmp(it->key, "menu_speed")) {
+    if (!strcmp(it->key, "menu_text_speed")) {
         static char s[8];
         snprintf(s, sizeof s, "%sx", v);
         return s;
@@ -175,7 +175,7 @@ static void apply(struct item *it)
     const char *v = it->choices[it->cur];
     settings_save(it->key, v);
     log_line("overlay: %s = %s", it->key, v);
-    if (!strcmp(it->key, "menu_speed")) menuspeed_set(settings.menu_speed = (float)atof(v));
+    if (!strcmp(it->key, "menu_text_speed")) menuspeed_set(settings.menu_speed = (float)atof(v));
     else if (!strcmp(it->key, "fps_limit")) settings.fps_limit = atoi(v);
     if (!it->live) changed_restart = 1;
 }
