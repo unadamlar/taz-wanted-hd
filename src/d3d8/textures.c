@@ -412,11 +412,15 @@ static HRESULT WINAPI hook_UnlockRect(IDirect3DTexture8 *t, UINT level)
     return real_UnlockRect(t, level);
 }
 
+DWORD textures_created;
+
 static HRESULT WINAPI hook_CreateTexture(IDirect3DDevice8 *dev, UINT w, UINT h, UINT levels, DWORD usage,
                                          D3DFORMAT fmt, D3DPOOL pool, IDirect3DTexture8 **tex)
 {
     HRESULT hr = real_CreateTexture(dev, w, h, levels, usage, fmt, pool, tex);
     if (SUCCEEDED(hr)) {
+        BYTE *caller = __builtin_return_address(0);
+        if (caller >= (BYTE *)0x401000 && caller < (BYTE *)0x5f7000) textures_created++; // taz.exe's code, not ours
         // A freed texture's address can be reused; forget what was there.
         EnterCriticalSection(&lock);
         struct tex_entry *e = tex_lookup(*tex, 0);

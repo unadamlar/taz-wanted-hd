@@ -187,6 +187,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         menuspeed_patch(settings.menu_speed); // also at 1x, so the overlay can change it live
         input_patch();
         video_patch();
+        quicksave_patch();
         asserts_patch();
         real_OutputDebugStringA = patch_import("KERNEL32.dll", "OutputDebugStringA", hook_OutputDebugStringA);
     } else if (reason == DLL_PROCESS_DETACH) {

@@ -10,6 +10,8 @@ What it does
 - Plays the intro videos upscaled and full screen.
 - Faster menu text (lands in about a quarter of the time; the camera and characters keep their pace).
   Menu text speed, frame cap and vsync are set from an in-game panel (press F1).
+- Quicksave (F5) and quickload (F9) anywhere in a level. The quicksave lasts until you leave the
+  level or quit the game; the game's own save slots work as before.
 
 Install (Windows 10 or 11)
 1. Copy everything in this folder into the game folder, next to taz.exe.

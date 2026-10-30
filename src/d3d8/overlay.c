@@ -1,5 +1,5 @@
-// In-game settings panel (F1), drawn before Present over the finished frame. Changes are written to
-// taz-hd.ini; menu speed and the frame cap apply at once, the rest on the next start.
+// In-game settings panel (F1) and short messages, drawn before Present over the finished frame. Changes
+// are written to taz-hd.ini; menu speed and the frame cap apply at once, the rest on the next start.
 #define COBJMACROS
 #include <stdio.h>
 #include <stdlib.h>
@@ -206,10 +206,21 @@ static void handle_keys(void)
     }
 }
 
+static char toast[64];
+static DWORD toast_until;
+
+// A short message in the top left corner for two seconds.
+void overlay_toast(const char *msg)
+{
+    snprintf(toast, sizeof toast, "%s", msg);
+    toast_until = GetTickCount() + 2000;
+}
+
 void overlay_frame(IDirect3DDevice8 *dev)
 {
     handle_keys();
-    if (!overlay_open) return;
+    int show_toast = (int)(toast_until - GetTickCount()) > 0;
+    if (!overlay_open && !show_toast) return;
 
     IDirect3DSurface8 *bb;
     D3DSURFACE_DESC d;
@@ -222,11 +233,18 @@ void overlay_frame(IDirect3DDevice8 *dev)
         if (!atlas) log_line("overlay: could not build the font atlas");
     }
     if (!atlas) return;
+    nquads = 0;
+    if (!overlay_open) {
+        float pad = line_h * 0.6f, w = text_width(toast) + pad * 2, x0 = line_h, y0 = line_h; // top left: menus use the middle and bottom
+        rect(x0, y0, x0 + w, y0 + line_h + pad, 0xd0101828);
+        text(x0 + pad, y0 + pad / 2, toast, 0xffffffff);
+        draw_2d(dev, atlas, quads, nquads * 2);
+        return;
+    }
 
     // Layout, in pixels.
     float pad = line_h * 0.8f, row = line_h * 1.35f, w = line_h * 18, h = pad * 2 + row * (ITEMS + 3.2f);
     float x0 = (d.Width - w) / 2, y0 = (d.Height - h) / 2, y = y0 + pad;
-    nquads = 0;
     rect(x0, y0, x0 + w, y0 + h, 0xf0101828);
     rect(x0, y0, x0 + w, y0 + line_h * 0.15f, 0xffffa020);
     text(x0 + pad, y, "Taz: Wanted HD", 0xffffc040);
