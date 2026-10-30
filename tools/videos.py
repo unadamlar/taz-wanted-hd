@@ -6,12 +6,13 @@ usage: videos.py <game_dir> <out_dir>
 Writes <out_dir>/<video name>/NNNN.jpg (1-based, 1920x1440). The game still plays the Bink file for
 sound and timing; the proxy shows the matching upscaled frame instead of Bink's 640x480 one.
 """
+import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-ESRGAN = Path.home() / ".local/share/devtools/realesrgan/realesrgan-ncnn-vulkan"
+ESRGAN = os.environ.get("REALESRGAN", "realesrgan-ncnn-vulkan")
 SIZE = "1920x1440"
 
 

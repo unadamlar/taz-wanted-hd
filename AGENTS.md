@@ -4,10 +4,11 @@ HD remaster mod for the 2002 PC release of Taz: Wanted (Blitz Games, Babel engin
 Shape: a loader DLL and asset packs applied to the user's own copy; later an optional modern render mode by hooking Babel's PC render layer (`C:\Babel\PC\Src\bDisplay`, `bActor`).
 
 ## Local setup
+- Local paths live in `dev.env` (git-ignored; see README.md), which `tools/run-dev.sh` and `tools/mount-cd.sh` read. Never put machine paths in tracked files.
 - Pristine install: a retail install kept outside the repo (never modify). `taz.exe` linked 2002-07-22.
-- Dev install: `~/Games/taz-wanted` (btrfs reflink copy). `d3d8.dll` there is a symlink to `build/d3d8.dll`; it writes `taz-hd.log` in the game folder.
-- Wine prefix: `~/.local/share/wineprefixes/tazwanted`, now Proton-format (system `wine` can't open it; edit `*.reg` directly with nothing running). The game reads its folder from `Software\Infogrames\TazWanted\Release` `Location` (80-byte buffer); the proxy now answers that itself (`startup.c`: makes the game folder current and returns "."), so no registry entry is needed.
-- The game checks for its CD (volume label). Disc image: `~/Games/taz-wanted-cd/taz-wanted.iso` (label TAZWANTED; its exes are byte-identical to the install). `tools/mount-cd.sh` mounts it and points the prefix's `D:` at it.
+- Dev install: `TAZ_GAME` (btrfs reflink copy of the pristine one). `d3d8.dll` there is a symlink to `build/d3d8.dll`; it writes `taz-hd.log` in the game folder.
+- Wine prefix: `WINEPREFIX`, Proton-format (system `wine` can't open it; edit `*.reg` directly with nothing running). The game reads its folder from `Software\Infogrames\TazWanted\Release` `Location` (80-byte buffer); the proxy now answers that itself (`startup.c`: makes the game folder current and returns "."), so no registry entry is needed.
+- The game checks for its CD (volume label). Disc image: `ISO` (label TAZWANTED; its exes are byte-identical to the install). `tools/mount-cd.sh` mounts it and points the prefix's `D:` at it.
 - Lutris entry: dev install, that prefix, override `d3d8=n,b`, pre-launch `tools/mount-cd.sh`, arg `Launched`.
 - Unpatched, `taz.exe` alone starts `TazLauncher.exe`, whose Play runs `taz.exe Launched`. The proxy patches the check (0x4aa0dc) so it always starts as if `Launched` was given; the argument is now optional. A taz.exe with a different link timestamp gets a one-time warning box (`version_warning` in the ini).
 - The CD check (volume label TAZWANTED, FUN_004a1de0 at each scene load) is still in place on purpose: removing it would turn the public mod into a no-CD crack.

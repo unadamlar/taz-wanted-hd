@@ -8,6 +8,7 @@ padding is cropped, so tiled surfaces don't get seams. The transparency mask goe
 upscaler as its own image; on/off masks (cut-outs) are cut back to hard edges, soft ones (fonts) stay soft.
 Invisible pixels are first filled with neighbouring colours so dark fringes don't bleed into edges.
 """
+import os
 import subprocess
 import sys
 import tempfile
@@ -16,7 +17,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-ESRGAN = Path.home() / ".local/share/devtools/realesrgan/realesrgan-ncnn-vulkan"
+ESRGAN = os.environ.get("REALESRGAN", "realesrgan-ncnn-vulkan")
 MODEL = "realesrgan-x4plus-anime"
 PAD = 8
 
