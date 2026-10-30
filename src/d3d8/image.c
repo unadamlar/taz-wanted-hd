@@ -1,4 +1,4 @@
-// PNG read/write through Windows Imaging Component (Wine provides it). Use from one thread only.
+// Image read/write through Windows Imaging Component (Wine provides it). Callers must be COM MTA threads.
 #define COBJMACROS
 #include <windows.h>
 #include <wincodec.h>
@@ -7,9 +7,14 @@
 
 static IWICImagingFactory *factory(void)
 {
-    static IWICImagingFactory *f;
-    if (!f) // the calling thread must have initialised COM
-        CoCreateInstance(&CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, &IID_IWICImagingFactory, (void **)&f);
+    static IWICImagingFactory *shared;
+    IWICImagingFactory *f = shared, *old;
+    if (f) return f;
+    CoCreateInstance(&CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, &IID_IWICImagingFactory, (void **)&f);
+    if (f && (old = InterlockedCompareExchangePointer((void **)&shared, f, NULL))) {
+        IWICImagingFactory_Release(f); // another thread got there first
+        f = old;
+    }
     return f;
 }
 
@@ -42,7 +47,7 @@ int png_write(const char *path, UINT w, UINT h, const BYTE *bgra)
     return SUCCEEDED(hr);
 }
 
-BYTE *png_read(const char *path, UINT *w, UINT *h)
+BYTE *image_read(const char *path, UINT *w, UINT *h)
 {
     IWICImagingFactory *f = factory();
     IWICBitmapDecoder *dec = NULL;

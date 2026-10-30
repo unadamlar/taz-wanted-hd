@@ -175,7 +175,7 @@ static DWORD WINAPI worker(void *arg)
             LARGE_INTEGER t0, t1, freq;
             QueryPerformanceCounter(&t0);
             UINT w, h;
-            BYTE *px = png_read(j->path, &w, &h);
+            BYTE *px = image_read(j->path, &w, &h);
             if (!px) log_line("could not read %s", j->path);
             if (px && j->crop) px = crop(px, &w, &h, j->crop);
             for (j->levels = 0; px && j->levels < MAX_LEVELS; j->levels++) {
