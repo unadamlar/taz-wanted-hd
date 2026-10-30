@@ -5,6 +5,8 @@
 #include <string.h>
 #include "proxy.h"
 
+#define RETAIL_TIMESTAMP 0x3d3bc9b0 // taz.exe linked 2002-07-22
+
 static FILE *logf;
 static void (WINAPI *real_OutputDebugStringA)(LPCSTR);
 static HRESULT (WINAPI *real_CreateDevice)(IDirect3D8 *, UINT, D3DDEVTYPE, HWND, DWORD, D3DPRESENT_PARAMETERS *, IDirect3DDevice8 **);
@@ -133,8 +135,25 @@ static HRESULT WINAPI hook_CreateDevice(IDirect3D8 *d3d, UINT adapter, D3DDEVTYP
     return hr;
 }
 
+// Tells the player once when taz.exe isn't the build our code patches were made for (each patch checks
+// its bytes and skips itself; textures and videos work regardless).
+static void check_version(void)
+{
+    BYTE *base = (BYTE *)GetModuleHandleA(NULL);
+    IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
+    if (nt->FileHeader.TimeDateStamp == RETAIL_TIMESTAMP) return;
+    log_line("taz.exe build %08lx is not the 2002 retail one (%08x)", nt->FileHeader.TimeDateStamp, RETAIL_TIMESTAMP);
+    if (!GetPrivateProfileIntA("taz-hd", "version_warning", 1, ".\\taz-hd.ini")) return;
+    settings_save("version_warning", "0");
+    MessageBoxA(NULL, "This taz.exe is not the 2002 retail PC version that Taz: Wanted HD was made for.\n\n"
+                "HD textures and videos still work, but widescreen, menu speed and other fixes may stay off. "
+                "Details are in taz-hd.log in the game folder.", "Taz: Wanted HD", MB_OK | MB_ICONWARNING | MB_TOPMOST | MB_SETFOREGROUND);
+}
+
 __declspec(dllexport) IDirect3D8 *WINAPI Direct3DCreate8(UINT sdk)
 {
+    static int checked;
+    if (!checked++ && !settings.passthrough) check_version();
     char path[MAX_PATH];
     GetSystemDirectoryA(path, MAX_PATH);
     strcat(path, "\\d3d8.dll");
@@ -154,10 +173,16 @@ __declspec(dllexport) IDirect3D8 *WINAPI Direct3DCreate8(UINT sdk)
 BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
 {
     if (reason == DLL_PROCESS_ATTACH) {
+        char dir[MAX_PATH]; // everything (game data, our ini and log) is relative to the game folder
+        DWORD n = GetModuleFileNameA(NULL, dir, sizeof dir);
+        while (n && dir[n - 1] != '\\') n--;
+        dir[n] = 0;
+        if (n) SetCurrentDirectoryA(dir);
         logf = fopen("taz-hd.log", "a"); // the game relaunches itself; both processes log here
         log_line("taz-hd proxy loaded: %s", GetCommandLineA());
         settings_load();
         if (settings.passthrough) return TRUE;
+        startup_patch();
         if (settings.widescreen) widescreen_patch();
         menuspeed_patch(settings.menu_speed); // also at 1x, so the overlay can change it live
         input_patch();

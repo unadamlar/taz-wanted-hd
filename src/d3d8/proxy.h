@@ -24,6 +24,7 @@ struct vertex { float x, y, z, rhw; DWORD color; float u, v; };
 #define FVF (D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1)
 void draw_2d(IDirect3DDevice8 *dev, IDirect3DTexture8 *tex, const struct vertex *v, int triangles);
 void video_patch(void);
+void startup_patch(void);
 void video_frame(IDirect3DDevice8 *dev);
 void settings_save(const char *key, const char *value);
 void to_bgra(D3DFORMAT f, const BYTE *src, UINT n, BYTE *out);

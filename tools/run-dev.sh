@@ -1,5 +1,5 @@
 #!/bin/sh
-# Launches the dev install the way Lutris does, minus the 2002 launcher: taz.exe on its own starts
+# Launches the dev install the way Lutris does. Unpatched, taz.exe on its own starts
 # TazLauncher.exe, whose Play button runs "taz.exe Launched", so we pass that directly.
 # --headless runs it inside an invisible gamescope screen, which keeps working while the desktop is
 # locked; send input to gamescope's X display.

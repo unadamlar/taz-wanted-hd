@@ -3,3 +3,5 @@ re/
 extracted/
 build/
 __pycache__/
+dist/
+qa/

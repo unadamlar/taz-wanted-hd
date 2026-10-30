@@ -6,10 +6,11 @@ Shape: a loader DLL and asset packs applied to the user's own copy; later an opt
 ## Local setup
 - Pristine install: a retail install kept outside the repo (never modify). `taz.exe` linked 2002-07-22.
 - Dev install: `~/Games/taz-wanted` (btrfs reflink copy). `d3d8.dll` there is a symlink to `build/d3d8.dll`; it writes `taz-hd.log` in the game folder.
-- Wine prefix: `~/.local/share/wineprefixes/tazwanted`, now Proton-format (system `wine` can't open it; edit `*.reg` directly with nothing running). The game needs `Software\Infogrames\TazWanted\Release` `Location` = install dir; a preinstalled copy has no installer to write it.
+- Wine prefix: `~/.local/share/wineprefixes/tazwanted`, now Proton-format (system `wine` can't open it; edit `*.reg` directly with nothing running). The game reads its folder from `Software\Infogrames\TazWanted\Release` `Location` (80-byte buffer); the proxy now answers that itself (`startup.c`: makes the game folder current and returns "."), so no registry entry is needed.
 - The game checks for its CD (volume label). Disc image: `~/Games/taz-wanted-cd/taz-wanted.iso` (label TAZWANTED; its exes are byte-identical to the install). `tools/mount-cd.sh` mounts it and points the prefix's `D:` at it.
 - Lutris entry: dev install, that prefix, override `d3d8=n,b`, pre-launch `tools/mount-cd.sh`, arg `Launched`.
-- `taz.exe` alone starts `TazLauncher.exe`, whose Play runs `taz.exe Launched`; passing `Launched` skips the launcher.
+- Unpatched, `taz.exe` alone starts `TazLauncher.exe`, whose Play runs `taz.exe Launched`. The proxy patches the check (0x4aa0dc) so it always starts as if `Launched` was given; the argument is now optional. A taz.exe with a different link timestamp gets a one-time warning box (`version_warning` in the ini).
+- The CD check (volume label TAZWANTED, FUN_004a1de0 at each scene load) is still in place on purpose: removing it would turn the public mod into a no-CD crack.
 - `tools/run-dev.sh [--headless]` launches like Lutris; `--headless` runs in an invisible gamescope (X display `:2`). Hold keys ~120 ms (`xdotool keydown/keyup`) or the game misses them. Screenshots: F12, or `echo N > <game>/taz-hd/shot` (N>1: N frames at 1/8 size, timestamps in the log).
 - Settings: `<game>/taz-hd.ini` `[taz-hd]` resolution (auto = desktop, written into taz.dat), widescreen, hd_textures, vsync, fps_limit, menu_speed, passthrough (1 = no patches, for comparing with the original). F1 opens an in-game panel that edits them (menu speed and frame cap apply live). Keep `=` out of comment lines: Wine's profile writer rewrites them.
 - Diagnostics in `taz-hd.log`: crashes (module + offset, registers, last SetTexture calls), game asserts, scene loads, CD check failures. The DLL often loads away from its preferred base 0x70180000, so map crash addresses by the logged offset.
@@ -21,6 +22,10 @@ Shape: a loader DLL and asset packs applied to the user's own copy; later an opt
 - Only the three logo idents are Bink videos (640x480, 25 fps); the story intro is in-engine. The game copies frames into the back buffer at 2x, centred (FUN_00478290); `video.c` takes the copy and draws it scaled to the screen height, using `taz-hd/videos/<name>/NNNN.jpg` from `tools/videos.py` when present (Bink frame numbers count from 1, matching ffmpeg's order; checked on frame 100 of each video).
 - Ghidra project lives in `re/` (ignored). `make` builds the proxy with mingw-w64.
 - `tools/pak.py list|unpack|textures` reads `.pc` paks; `textures` writes each unique texture once as PNG plus `index.tsv` (all occurrences). Output goes in `extracted/` (ignored). Textures are 16-bit, mostly 64-128 px, max 512; 6,512 unique.
+
+## Testing and release
+- Test rig scripts live in `qa/` (untracked): `stop.sh`, `key.sh`, `step.sh <out.jpg> [wait] [keys]` (screenshot), `tomenu.sh` (to main menu via `similar.py` + `ref-mainmenu.jpg`), `idletest.sh`, `measure.sh`/`analyze.py` (menu timing), `fresh.sh <prefix>` and `player.sh <prefix> <game dir>` (no-argument start, like a player). Back up `TazWanted.sav` before runs that might reach a save.
+- Release: `tools/package.sh <version>` builds `dist/taz-wanted-hd-<version>.zip` (DLL, `extracted/upscaled` as `taz-hd/textures`, `fingerprints.tsv`, `extracted/videos`, `package/README.txt`, LICENSE). Player test: reflink-copy the pristine install somewhere with a long path, unzip into it, run `qa/player.sh` with a fresh prefix (mount the ISO into it with `WINEPREFIX=<prefix> tools/mount-cd.sh`). 0.1 passed this on 2026-10-30 up to the in-engine intro. Release plan: mod zip only (player brings the game); never ship game files.
 
 ## Rules
 - The game files are verified retail (2026-10-29): `taz.exe` and `TazLauncher.exe` are byte-identical to the disc and known to VirusTotal since 2009 with 0 detections; `binkw32.dll` has 1/71 (Cynet heuristic, first seen 2009). Agents may launch the dev install for testing; recheck hashes if the install is replaced.
