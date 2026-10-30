@@ -35,3 +35,8 @@ void overlay_toast(const char *msg);
 extern DWORD textures_created; // Direct3D textures taz.exe has created so far
 void widescreen_apply(void);
 void textures_apply(void);
+void textures_reset(IDirect3DDevice8 *dev);
+void overlay_reset(IDirect3DDevice8 *dev);
+void display_install(IDirect3DDevice8 *dev);
+void display_change(UINT w, UINT h, int vsync); // w, h 0: keep the size
+int settings_resolution(const char *value, UINT *w, UINT *h);

@@ -683,6 +683,21 @@ static HRESULT WINAPI hook_SetTextureStageState(IDirect3DDevice8 *dev, DWORD sta
     return real_SetTextureStageState(dev, stage, type, value);
 }
 
+// After a device Reset: the game recreated all its textures, so every texture we tracked is gone.
+void textures_reset(IDirect3DDevice8 *dev)
+{
+    EnterCriticalSection(&lock);
+    memset(texs, 0, sizeof texs);
+    ntexs = 0;
+    LeaveCriticalSection(&lock);
+    memset(scrolls, 0, sizeof scrolls);
+    memset(bound, 0, sizeof bound);
+    for (DWORD s = 0; s < STAGES; s++) {
+        scroll_stage[s] = -1;
+        real_SetTextureStageState(dev, s, D3DTSS_MIPFILTER, D3DTEXF_LINEAR); // Reset cleared it; the game thinks it's set
+    }
+}
+
 void textures_install(IDirect3DDevice8 *dev)
 {
     if (real_CreateTexture) return;

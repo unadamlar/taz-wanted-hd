@@ -27,6 +27,26 @@ static void write_resolution(UINT w, UINT h)
     fclose(f);
 }
 
+// "auto" (the desktop size) or "WxH"; also written into taz.dat, where the game reads it.
+int settings_resolution(const char *value, UINT *w, UINT *h)
+{
+    static DEVMODEA desktop = { .dmSize = sizeof desktop }; // read once, before the game changes the mode
+    static BOOL known;
+    if (!known) known = EnumDisplaySettingsA(NULL, ENUM_CURRENT_SETTINGS, &desktop);
+    *w = *h = 0;
+    if (!_stricmp(value, "auto")) {
+        if (known) {
+            *w = desktop.dmPelsWidth;
+            *h = desktop.dmPelsHeight;
+        }
+    } else if (sscanf(value, "%ux%u", w, h) != 2) {
+        *w = *h = 0;
+    }
+    if (!*w || !*h) return 0;
+    write_resolution(*w, *h);
+    return 1;
+}
+
 void settings_save(const char *key, const char *value)
 {
     WritePrivateProfileStringA("taz-hd", key, value, INI);
@@ -43,18 +63,8 @@ void settings_load(void)
     settings.menu_speed = (float)atof(res);
     if (settings.menu_speed < 0.25f || settings.menu_speed > 8.0f) settings.menu_speed = 3.0f;
     GetPrivateProfileStringA("taz-hd", "resolution", "auto", res, sizeof res, INI);
-
-    UINT w = 0, h = 0;
-    DEVMODEA mode = { .dmSize = sizeof mode };
-    if (!_stricmp(res, "auto")) {
-        if (EnumDisplaySettingsA(NULL, ENUM_CURRENT_SETTINGS, &mode)) {
-            w = mode.dmPelsWidth;
-            h = mode.dmPelsHeight;
-        }
-    } else if (sscanf(res, "%ux%u", &w, &h) != 2) {
-        w = h = 0;
-    }
-    if (w && h) write_resolution(w, h);
+    UINT w, h;
+    settings_resolution(res, &w, &h);
     log_line("settings: resolution=%s hd_textures=%d vsync=%d fps_limit=%d menu_text_speed=%.2f%s", res,
              settings.hd_textures, settings.vsync, settings.fps_limit, settings.menu_speed,
              settings.passthrough ? " passthrough" : "");

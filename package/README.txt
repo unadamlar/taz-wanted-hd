@@ -27,8 +27,8 @@ Same files, plus tell Wine to use the mod's d3d8.dll:
 The disc or disc image must be visible to Wine as a CD drive.
 
 Settings
-Press F1 in game. Resolution and vsync apply after restarting the game; HD textures, menu text
-speed and the frame cap apply at once. They are saved in taz-hd.ini in the game folder.
+Press F1 in game. Changes apply at once (a resolution or vsync change takes about a second) and
+are saved in taz-hd.ini in the game folder. Changing the resolution or vsync discards the quicksave.
 The game's own "Widescreen" option does nothing now: the picture always matches your screen.
 F12 saves a screenshot to taz-hd\shots.
 

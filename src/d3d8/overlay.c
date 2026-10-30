@@ -1,5 +1,5 @@
 // In-game settings panel (F1) and short messages, drawn before Present over the finished frame. Changes
-// are written to taz-hd.ini; menu speed and the frame cap apply at once, the rest on the next start.
+// apply at once and are written to taz-hd.ini.
 #define COBJMACROS
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,22 +13,22 @@
 struct item {
     const char *label, *key, *def;
     const char *choices[12];
-    int count, live, cur;
+    int count, cur;
 };
 
 static struct item items[] = {
-    { "Resolution", "resolution", "auto", { "auto" }, 1, 0, 0 },
-    { "HD textures", "hd_textures", "1", { "0", "1" }, 2, 1, 0 },
-    { "Vsync", "vsync", "1", { "0", "1" }, 2, 0, 0 },
-    { "Frame cap", "fps_limit", "0", { "0", "30", "60", "120", "144" }, 5, 1, 0 },
-    { "Menu text speed", "menu_text_speed", "3", { "1", "2", "3", "4" }, 4, 1, 0 },
+    { "Resolution", "resolution", "auto", { "auto" }, 1, 0 },
+    { "HD textures", "hd_textures", "1", { "0", "1" }, 2, 0 },
+    { "Vsync", "vsync", "1", { "0", "1" }, 2, 0 },
+    { "Frame cap", "fps_limit", "0", { "0", "30", "60", "120", "144" }, 5, 0 },
+    { "Menu text speed", "menu_text_speed", "3", { "1", "2", "3", "4" }, 4, 0 },
 };
 #define ITEMS (int)(sizeof items / sizeof *items)
 
 static IDirect3DTexture8 *atlas;
 static int glyph_x[96], glyph_row[96];
 static float glyph_w[96], line_h;
-static int selected, changed_restart, ready;
+static int selected, ready;
 static struct vertex quads[MAX_QUADS * 6];
 static int nquads;
 
@@ -177,7 +177,11 @@ static void apply(struct item *it)
     if (!strcmp(it->key, "menu_text_speed")) menuspeed_set(settings.menu_speed = (float)atof(v));
     else if (!strcmp(it->key, "fps_limit")) settings.fps_limit = atoi(v);
     else if (!strcmp(it->key, "hd_textures")) settings.hd_textures = atoi(v), textures_apply();
-    if (!it->live) changed_restart = 1;
+    else if (!strcmp(it->key, "vsync")) settings.vsync = atoi(v), display_change(0, 0, settings.vsync);
+    else if (!strcmp(it->key, "resolution")) {
+        UINT w, h;
+        if (settings_resolution(v, &w, &h)) display_change(w, h, settings.vsync);
+    }
 }
 
 static void handle_keys(void)
@@ -204,6 +208,17 @@ static void handle_keys(void)
         it->cur = (it->cur + (left ? it->count - 1 : 1)) % it->count;
         apply(it);
     }
+}
+
+static DWORD state_block; // draw_2d's copy of the game's state; it holds the game's buffers
+
+// Before a device Reset: the state block would keep the game's released buffers alive, and the font
+// size follows the screen height.
+void overlay_reset(IDirect3DDevice8 *dev)
+{
+    if (state_block) IDirect3DDevice8_DeleteStateBlock(dev, state_block), state_block = 0;
+    if (atlas) IDirect3DTexture8_Release(atlas), atlas = NULL;
+    ready = 0;
 }
 
 static char toast[64];
@@ -255,18 +270,17 @@ void overlay_frame(IDirect3DDevice8 *dev)
         if (i == selected) rect(x0 + pad * 0.5f, y - row * 0.12f, x0 + w - pad * 0.5f, y + row * 0.88f, 0x40ffffff);
         text(x0 + pad, y, items[i].label, c);
         char v[40];
-        snprintf(v, sizeof v, "< %s >%s", shown(&items[i]), items[i].live ? "" : " *");
+        snprintf(v, sizeof v, "< %s >", shown(&items[i]));
         text(x0 + w - pad - text_width(v), y, v, c);
     }
     y += row * 0.4f;
-    text(x0 + pad, y, changed_restart ? "* applies after restarting the game" : "Up/Down select, Left/Right change", 0xff8090a0);
+    text(x0 + pad, y, "Up/Down select, Left/Right change", 0xff8090a0);
     draw_2d(dev, atlas, quads, nquads * 2);
 }
 
 // Draws screen-space triangles over the frame, leaving the game's render state as it was.
 void draw_2d(IDirect3DDevice8 *dev, IDirect3DTexture8 *tex, const struct vertex *v, int triangles)
 {
-    static DWORD state_block;
     if (!state_block && FAILED(IDirect3DDevice8_CreateStateBlock(dev, D3DSBT_ALL, &state_block))) return;
     IDirect3DDevice8_CaptureStateBlock(dev, state_block);
     IDirect3DDevice8_BeginScene(dev);

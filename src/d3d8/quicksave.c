@@ -1,7 +1,7 @@
 // Quicksave (F5) and quickload (F9). Between two frames, copies all the game's own memory: its one
 // heap block (bInitHeap, allocated once at startup) and taz.exe's globals; quickload copies it back.
-// Textures and sound buffers live outside that memory and are replaced when a level loads, so a
-// quicksave only loads in the same level, before any new textures were created.
+// Textures and sound buffers live outside that memory and are replaced when a level loads or the
+// display is reset, so a quicksave only loads in the same level, before any new textures were created.
 #include <string.h>
 #include "proxy.h"
 #include <tlhelp32.h>
@@ -104,8 +104,8 @@ static void quickload(void)
     if (saved_scene < 0) { overlay_toast("No quicksave yet"); return; }
     if (SCENE != saved_scene || textures_created != saved_textures || HEAP_BASE != saved_heap_base) {
         log_line("quickload refused: scene %d (saved %d), textures %lu (saved %lu)", SCENE, saved_scene, textures_created, saved_textures);
-        saved_scene = -1; // that level is gone; its quicksave can't come back
-        overlay_toast("Quicksave was in another level");
+        saved_scene = -1; // that level or display is gone; its quicksave can't come back
+        overlay_toast("Quicksave lost: level or display changed since");
         return;
     }
     DWORD t = GetTickCount();
