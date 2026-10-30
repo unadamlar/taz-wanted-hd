@@ -10,9 +10,6 @@
 #define ATLAS_H 512
 #define MAX_QUADS 2048
 
-struct vertex { float x, y, z, rhw; DWORD color; float u, v; };
-#define FVF (D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1)
-
 struct item {
     const char *label, *key, *def;
     const char *choices[12];
@@ -32,7 +29,6 @@ static struct item items[] = {
 static IDirect3DTexture8 *atlas;
 static int glyph_x[96], glyph_row[96];
 static float glyph_w[96], line_h;
-static DWORD state_block;
 static int selected, changed_restart, ready;
 static struct vertex quads[MAX_QUADS * 6];
 static int nquads;
@@ -223,10 +219,9 @@ void overlay_frame(IDirect3DDevice8 *dev)
     if (!ready) {
         ready = 1;
         build_atlas(dev, d.Height);
-        IDirect3DDevice8_CreateStateBlock(dev, D3DSBT_ALL, &state_block);
-        if (!atlas || !state_block) log_line("overlay: could not set up (atlas %p, state block %lu)", atlas, state_block);
+        if (!atlas) log_line("overlay: could not build the font atlas");
     }
-    if (!atlas || !state_block) return;
+    if (!atlas) return;
 
     // Layout, in pixels.
     float pad = line_h * 0.8f, row = line_h * 1.35f, w = line_h * 18, h = pad * 2 + row * (ITEMS + 3.2f);
@@ -247,7 +242,14 @@ void overlay_frame(IDirect3DDevice8 *dev)
     }
     y += row * 0.4f;
     text(x0 + pad, y, changed_restart ? "* applies after restarting the game" : "Up/Down select, Left/Right change", 0xff8090a0);
+    draw_2d(dev, atlas, quads, nquads * 2);
+}
 
+// Draws screen-space triangles over the frame, leaving the game's render state as it was.
+void draw_2d(IDirect3DDevice8 *dev, IDirect3DTexture8 *tex, const struct vertex *v, int triangles)
+{
+    static DWORD state_block;
+    if (!state_block && FAILED(IDirect3DDevice8_CreateStateBlock(dev, D3DSBT_ALL, &state_block))) return;
     IDirect3DDevice8_CaptureStateBlock(dev, state_block);
     IDirect3DDevice8_BeginScene(dev);
     IDirect3DDevice8_SetRenderState(dev, D3DRS_ZENABLE, FALSE);
@@ -262,7 +264,7 @@ void overlay_frame(IDirect3DDevice8 *dev)
     IDirect3DDevice8_SetRenderState(dev, D3DRS_STENCILENABLE, FALSE);
     IDirect3DDevice8_SetVertexShader(dev, FVF);
     IDirect3DDevice8_SetPixelShader(dev, 0);
-    IDirect3DDevice8_SetTexture(dev, 0, (IDirect3DBaseTexture8 *)atlas);
+    IDirect3DDevice8_SetTexture(dev, 0, (IDirect3DBaseTexture8 *)tex);
     IDirect3DDevice8_SetTexture(dev, 1, NULL);
     IDirect3DDevice8_SetTextureStageState(dev, 0, D3DTSS_COLOROP, D3DTOP_MODULATE);
     IDirect3DDevice8_SetTextureStageState(dev, 0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
@@ -276,7 +278,7 @@ void overlay_frame(IDirect3DDevice8 *dev)
     IDirect3DDevice8_SetTextureStageState(dev, 0, D3DTSS_ADDRESSU, D3DTADDRESS_CLAMP);
     IDirect3DDevice8_SetTextureStageState(dev, 0, D3DTSS_ADDRESSV, D3DTADDRESS_CLAMP);
     IDirect3DDevice8_SetTextureStageState(dev, 1, D3DTSS_COLOROP, D3DTOP_DISABLE);
-    IDirect3DDevice8_DrawPrimitiveUP(dev, D3DPT_TRIANGLELIST, nquads * 2, quads, sizeof *quads);
+    IDirect3DDevice8_DrawPrimitiveUP(dev, D3DPT_TRIANGLELIST, triangles, v, sizeof *v);
     IDirect3DDevice8_EndScene(dev);
     IDirect3DDevice8_ApplyStateBlock(dev, state_block);
 }

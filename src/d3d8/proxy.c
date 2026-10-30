@@ -79,6 +79,7 @@ static HRESULT WINAPI hook_Present(IDirect3DDevice8 *dev, CONST RECT *src, CONST
     static int scene = -1;
     if (settings.exe_known && *(BYTE *)0x704cf0 != scene) log_line("scene %d", scene = *(BYTE *)0x704cf0);
     textures_frame();
+    video_frame(dev);
     overlay_frame(dev);
     screenshot_frame(dev);
     if (settings.fps_limit > 0) limit_frame_rate(settings.fps_limit);
@@ -160,6 +161,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         if (settings.widescreen) widescreen_patch();
         menuspeed_patch(settings.menu_speed); // also at 1x, so the overlay can change it live
         input_patch();
+        video_patch();
         asserts_patch();
         real_OutputDebugStringA = patch_import("KERNEL32.dll", "OutputDebugStringA", hook_OutputDebugStringA);
     } else if (reason == DLL_PROCESS_DETACH) {

@@ -20,6 +20,11 @@ void asserts_patch(void);
 void *patch_import(const char *dll, const char *func, void *hook);
 extern int overlay_open; // the game sees no keyboard input while set
 void overlay_frame(IDirect3DDevice8 *dev);
+struct vertex { float x, y, z, rhw; DWORD color; float u, v; };
+#define FVF (D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1)
+void draw_2d(IDirect3DDevice8 *dev, IDirect3DTexture8 *tex, const struct vertex *v, int triangles);
+void video_patch(void);
+void video_frame(IDirect3DDevice8 *dev);
 void settings_save(const char *key, const char *value);
 void to_bgra(D3DFORMAT f, const BYTE *src, UINT n, BYTE *out);
 void queue_png(const char *path, UINT w, UINT h, BYTE *bgra);
