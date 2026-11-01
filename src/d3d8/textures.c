@@ -657,7 +657,7 @@ static void after_draw(IDirect3DDevice8 *dev, int mask, struct saved *saved)
 
 static HRESULT WINAPI hook_DrawPrimitive(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE t, UINT start, UINT count)
 {
-    DRAW(real_DrawPrimitive(dev, t, start, count));
+    DRAW(smooth_draw(dev, t, start, count, real_DrawPrimitive));
 }
 
 static HRESULT WINAPI hook_DrawIndexedPrimitive(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE t, UINT min, UINT n, UINT start, UINT count)

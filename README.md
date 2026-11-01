@@ -2,7 +2,8 @@
 
 An unofficial fan remaster mod for the 2002 PC release of Taz: Wanted. It runs the game at your
 desktop resolution and screen shape, replaces its textures and intro videos with 4x upscaled
-versions, speeds up the menu text and adds quicksave/quickload (F5/F9).
+versions, rounds off the characters' low-poly models, speeds up the menu text and adds
+quicksave/quickload (F5/F9).
 
 It is a mod, not a copy of the game: you need your own retail install and its disc (or disc image).
 

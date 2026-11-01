@@ -29,7 +29,7 @@ The disc or disc image must be visible to Wine as a CD drive.
 
 Settings
 Game Options (main menu) and Options (pause menu) have rows for Resolution, HD Textures, Vsync,
-Frame Cap and Menu Text Speed: press Select to change one. Changes apply at once (a resolution or
+Smooth Characters, Frame Cap and Menu Text Speed: press Select to change one. Changes apply at once (a resolution or
 vsync change takes about a second) and are saved in taz-hd.ini in the game folder. Changing the
 resolution or vsync discards the quicksave.
 The game's Widescreen option is gone: the picture always matches your screen's shape.
