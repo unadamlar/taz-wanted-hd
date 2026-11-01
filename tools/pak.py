@@ -27,7 +27,7 @@ def entries(data):
         yield name.replace("\\", "/"), data[off * align:off * align + size]
 
 
-A1R5G5B5, A4R4G4B4 = 25, 26  # D3DFORMAT values, as the game uploads them
+A8R8G8B8, A1R5G5B5, A4R4G4B4 = 21, 25, 26  # D3DFORMAT values, as the game uploads them
 FONT_HEADER = 1872
 
 
@@ -51,6 +51,8 @@ def images(name, blob):
             return []
         return [(f".frame{i}", w, h, A1R5G5B5, blob[base + i * size:base + (i + 1) * size]) for i in range(n)]
     if name.lower().endswith((".bmp", ".tga")) or SPLASH_TILE.search(name):
+        if blob[8] == 1:  # 32-bit with a full alpha channel (soft sprites, mostly .tga)
+            return [("", w, h, A8R8G8B8, blob[32:32 + 2 * size])] if len(blob) >= 32 + 2 * size else []
         return [("", w, h, A1R5G5B5, blob[32:32 + size])] if len(blob) >= 32 + size else []
     return []
 
@@ -59,7 +61,10 @@ SPLASH_TILE = re.compile(r"\.bmp\.(\d+)$", re.IGNORECASE)
 
 
 def rgba_rows(w, h, data, fmt=A1R5G5B5):
-    """16-bit pixels as PNG scanlines (filter byte + RGBA)."""
+    """Pixels as PNG scanlines (filter byte + RGBA)."""
+    if fmt == A8R8G8B8:  # stored B, G, R, A
+        return [b"\0" + bytes(c for i in range(y * w, (y + 1) * w) for c in (data[4 * i + 2], data[4 * i + 1], data[4 * i], data[4 * i + 3]))
+                for y in range(h)]
     px = struct.unpack(f"<{w * h}H", data)
     x5 = lambda v: (v << 3) | (v >> 2)
     if fmt == A4R4G4B4:

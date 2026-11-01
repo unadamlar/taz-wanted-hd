@@ -6,6 +6,7 @@ usage: upscale.py <extracted_dir> <out_dir> [name_filter]
 Each texture is padded with its own opposite edges (as it repeats in game), upscaled, then the
 padding is cropped, so tiled surfaces don't get seams. The transparency mask goes through the
 upscaler as its own image; on/off masks (cut-outs) are cut back to hard edges, soft ones (fonts) stay soft.
+Mostly see-through sprites (glows, smoke) are just enlarged smoothly, since there is no detail to recover.
 Invisible pixels are first filled with neighbouring colours so dark fringes don't bleed into edges.
 """
 import os
@@ -47,12 +48,14 @@ def bleed(px):
 def main():
     src, out = Path(sys.argv[1]), Path(sys.argv[2])
     wanted = sys.argv[3] if len(sys.argv) > 3 else ""
-    files = sorted(p for p in src.rglob("*.png") if wanted in str(p.relative_to(src)))
+    # ramps.png is a shading lookup strip, not a picture: upscaling smears the cartoon shading.
+    files = sorted(p for p in src.rglob("*.png") if wanted in str(p.relative_to(src)) and p.stem != "ramps")
     with tempfile.TemporaryDirectory() as tmp:
         stage, done = Path(tmp, "in"), Path(tmp, "out")
         stage.mkdir()
         done.mkdir()
         alpha = {}  # index -> mask is on/off only
+        soft = set()  # mostly see-through gradients (glows, smoke): the upscaler hardens them
         for i, p in enumerate(files):
             px = np.asarray(Image.open(p).convert("RGBA"))
             pad = min(PAD, *px.shape[:2])
@@ -60,6 +63,9 @@ def main():
             Image.fromarray(bleed(padded)).save(stage / f"{i}.png")
             if (px[..., 3] < 255).any():
                 alpha[i] = bool(np.isin(px[..., 3], (0, 255)).all())
+                a = px[..., 3][px[..., 3] > 8]
+                if a.size and ((a < 247).mean() > 0.35):
+                    soft.add(i)
                 Image.fromarray(padded[..., 3]).convert("RGB").save(stage / f"{i}a.png")
         subprocess.run([str(ESRGAN), "-i", str(stage), "-o", str(done), "-n", MODEL, "-s", "4", "-f", "png"],
                        check=True, stdout=subprocess.DEVNULL)
@@ -68,7 +74,10 @@ def main():
             h, w = Image.open(p).size[::-1]
             pad = min(PAD, h, w) * 4
             rgb = rgb[pad:pad + h * 4, pad:pad + w * 4]
-            if i in alpha:
+            if i in soft:
+                px = np.asarray(Image.open(p).convert("RGBA"))
+                img = Image.fromarray(np.dstack([bleed(px), px[..., 3]]), "RGBA").resize((w * 4, h * 4), Image.BICUBIC)
+            elif i in alpha:
                 a = np.asarray(Image.open(done / f"{i}a.png").convert("L"))[pad:pad + h * 4, pad:pad + w * 4]
                 a = np.where(a >= 128, 255, 0).astype(np.uint8) if alpha[i] else a
                 img = Image.fromarray(np.dstack([rgb, a]), "RGBA")
