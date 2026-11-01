@@ -81,7 +81,7 @@ static struct item items[] = {
     { "HD Textures", "Sharper, upscaled textures", "hd_textures", "1", { "0", "1" }, 2, 0 },
     { "Vsync", "Stops the picture tearing", "vsync", "1", { "0", "1" }, 2, 0 },
     { "Frame Cap", "Limits the frame rate", "fps_limit", "0", { "0", "30", "60", "120", "144" }, 5, 0 },
-    { "Menu Text Speed", "How fast menu text slides in", "menu_text_speed", "3", { "1", "2", "3", "4" }, 4, 0 },
+    { "Menu Text Speed", "How fast menu text slides in. 1x is the original speed", "menu_text_speed", "3", { "1", "2", "3", "4" }, 4, 0 },
 };
 
 static char resolutions[11][16];
