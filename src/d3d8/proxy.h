@@ -10,7 +10,7 @@ void textures_frame(void);
 void textures_dump_recent(void);
 void widescreen_patch(void);
 
-struct settings { int hd_textures, vsync, fps_limit, smooth, mouse; float menu_speed; int exe_known, passthrough; };
+struct settings { int hd_textures, vsync, fps_limit, smooth, wasd, mouse; float menu_speed; int exe_known, passthrough; };
 extern struct settings settings;
 void settings_load(void);
 void menuspeed_patch(float speed);
@@ -42,12 +42,14 @@ int setting_count(void);
 const char *setting_label(int i);
 const char *setting_shown(int i);
 const char *setting_about(int i);
+int setting_main_menu_only(int i);
 void setting_step(int i, int dir);
 void settings_refresh(void);
 void menu_patch(void);
 void smooth_install(IDirect3DDevice8 *dev);
 void controls_patch(void);
 void controls_frame(void);
+void controls_set(int wasd);
 int redirect_call(BYTE *at, void *expect, void *to);
 HRESULT smooth_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
                     HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT));

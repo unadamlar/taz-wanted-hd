@@ -23,7 +23,7 @@ typedef void *(__attribute__((thiscall)) *add_item_fn)(void *page, void *item, i
 #define PAUSE_INFO (*(BYTE **)(*(BYTE **)0x70230c + 0x20))
 
 struct menu {
-    void *items[8];
+    void *items[16]; // per setting; NULL where the page has no row for it
     void (*game_callback)(int *event);
     void *about;            // a text item on an info page the game never shows otherwise
     const char *about_page; // that page's name
@@ -82,6 +82,8 @@ static void add_rows(struct menu *m, BYTE *page, void (*callback)(int *))
 {
     settings_refresh();
     for (int i = 0; i < setting_count(); i++) {
+        m->items[i] = NULL;
+        if (m == &pause_menu && setting_main_menu_only(i)) continue;
         BYTE *item = ADD_TEXT(page, LENT_STRING, 1);
         *(DWORD *)(item + 0x108) &= ~2u; // as the game does for its rows
         snprintf((char *)item + 4, 32, "TAZHD_%d", i);

@@ -59,6 +59,8 @@ void settings_load(void)
     settings.fps_limit = GetPrivateProfileIntA("taz-hd", "fps_limit", 0, INI);
     settings.smooth = GetPrivateProfileIntA("taz-hd", "smooth_characters", 1, INI);
     settings.mouse = GetPrivateProfileIntA("taz-hd", "mouse_sensitivity", 5, INI);
+    GetPrivateProfileStringA("taz-hd", "controls", "wasd", res, sizeof res, INI);
+    settings.wasd = _stricmp(res, "classic") != 0;
     settings.passthrough = GetPrivateProfileIntA("taz-hd", "passthrough", 0, INI); // testing: no patches at all
     GetPrivateProfileStringA("taz-hd", "menu_text_speed", "3", res, sizeof res, INI);
     settings.menu_speed = (float)atof(res);
@@ -66,8 +68,8 @@ void settings_load(void)
     GetPrivateProfileStringA("taz-hd", "resolution", "auto", res, sizeof res, INI);
     UINT w, h;
     if (settings_resolution(res, &w, &h)) write_resolution(w, h); // taz.dat, where the game reads it
-    log_line("settings: resolution=%s hd_textures=%d vsync=%d fps_limit=%d smooth_characters=%d mouse_sensitivity=%d menu_text_speed=%.2f%s", res,
-             settings.hd_textures, settings.vsync, settings.fps_limit, settings.smooth, settings.mouse, settings.menu_speed,
+    log_line("settings: resolution=%s hd_textures=%d vsync=%d fps_limit=%d smooth_characters=%d controls=%s mouse_sensitivity=%d menu_text_speed=%.2f%s", res,
+             settings.hd_textures, settings.vsync, settings.fps_limit, settings.smooth, settings.wasd ? "wasd" : "classic", settings.mouse, settings.menu_speed,
              settings.passthrough ? " passthrough" : "");
 }
 
@@ -76,16 +78,18 @@ struct item {
     const char *label, *about, *key, *def;
     const char *choices[12];
     int count, cur;
+    int main_menu_only; // display settings; the pause menu has no room for every row
 };
 
 static struct item items[] = {
-    { "Resolution", "Desktop matches your screen", "resolution", "auto", { "auto" }, 1, 0 },
-    { "HD Textures", "Sharper, upscaled textures", "hd_textures", "1", { "0", "1" }, 2, 0 },
-    { "Vsync", "Stops the picture tearing", "vsync", "1", { "0", "1" }, 2, 0 },
-    { "Smooth Characters", "Rounder characters with smoother shading", "smooth_characters", "1", { "0", "1" }, 2, 0 },
-    { "Mouse Look", "Camera speed when turning with the mouse", "mouse_sensitivity", "5", { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }, 11, 0 },
-    { "Frame Cap", "Limits the frame rate", "fps_limit", "0", { "0", "30", "60", "120", "144" }, 5, 0 },
-    { "Menu Text Speed", "How fast menu text slides in. 1x is the original speed", "menu_text_speed", "3", { "1", "2", "3", "4" }, 4, 0 },
+    { "Resolution", "Desktop matches your screen", "resolution", "auto", { "auto" }, 1, 0, 1 },
+    { "HD Textures", "Sharper, upscaled textures", "hd_textures", "1", { "0", "1" }, 2, 0, 0 },
+    { "Vsync", "Stops the picture tearing", "vsync", "1", { "0", "1" }, 2, 0, 1 },
+    { "Smooth Characters", "Rounder characters with smoother shading", "smooth_characters", "1", { "0", "1" }, 2, 0, 0 },
+    { "Controls", "WASD and mouse, or the original keys", "controls", "wasd", { "wasd", "classic" }, 2, 0, 0 },
+    { "Mouse Look", "Camera speed when turning with the mouse", "mouse_sensitivity", "5", { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }, 11, 0, 0 },
+    { "Frame Cap", "Limits the frame rate", "fps_limit", "0", { "0", "30", "60", "120", "144" }, 5, 0, 1 },
+    { "Menu Text Speed", "How fast menu text slides in. 1x is the original speed", "menu_text_speed", "3", { "1", "2", "3", "4" }, 4, 0, 0 },
 };
 
 static char resolutions[11][16];
@@ -121,6 +125,11 @@ const char *setting_label(int i)
     return items[i].label;
 }
 
+int setting_main_menu_only(int i)
+{
+    return items[i].main_menu_only;
+}
+
 const char *setting_about(int i)
 {
     return items[i].about;
@@ -134,6 +143,7 @@ const char *setting_shown(int i)
     if ((!strcmp(it->key, "fps_limit") || !strcmp(it->key, "mouse_sensitivity")) && !strcmp(v, "0")) return "Off";
     if (!strcmp(it->key, "menu_text_speed")) return snprintf(s, sizeof s, "%sx", v), s;
     if (!strcmp(it->key, "resolution") && !strcmp(v, "auto")) return "Desktop";
+    if (!strcmp(it->key, "controls")) return strcmp(v, "classic") ? "WASD + Mouse" : "Classic";
     if (it->count == 2 && !strcmp(it->choices[0], "0")) return it->cur ? "On" : "Off";
     return v;
 }
@@ -163,6 +173,7 @@ void setting_step(int i, int dir)
     else if (!strcmp(it->key, "fps_limit")) settings.fps_limit = atoi(v);
     else if (!strcmp(it->key, "smooth_characters")) settings.smooth = atoi(v);
     else if (!strcmp(it->key, "mouse_sensitivity")) settings.mouse = atoi(v);
+    else if (!strcmp(it->key, "controls")) controls_set(strcmp(v, "classic") != 0);
     else if (!strcmp(it->key, "hd_textures")) settings.hd_textures = atoi(v), textures_apply();
     else if (!strcmp(it->key, "vsync")) settings.vsync = atoi(v), display_change(0, 0, settings.vsync);
     else if (!strcmp(it->key, "resolution")) {

@@ -29,7 +29,8 @@ The disc or disc image must be visible to Wine as a CD drive.
 
 Settings
 Game Options (main menu) and Options (pause menu) have rows for Resolution, HD Textures, Vsync,
-Smooth Characters, Mouse Look, Frame Cap and Menu Text Speed: press Select to change one. Changes apply at once (a resolution or
+Smooth Characters, Controls, Mouse Look, Frame Cap and Menu Text Speed (Resolution, Vsync and Frame
+Cap only on the main menu's Game Options): press Select to change one. Changes apply at once (a resolution or
 vsync change takes about a second) and are saved in taz-hd.ini in the game folder. Changing the
 resolution or vsync discards the quicksave.
 The game's Widescreen option is gone: the picture always matches your screen's shape.
@@ -39,7 +40,8 @@ Controls
 WASD moves (arrows still work) and the mouse turns and tilts the camera while you play; Mouse Look
 sets its speed (Off turns it off). Space jumps, left click spins, right click bites, middle click
 looks around, Q rants (D now moves), Shift tiptoes and Tab opens the map. The original keys (C, F, R,
-X, V, E, T) still work. A gamepad works as before.
+X, V, E, T) still work. Set Controls to Classic for the original keys only (D rants, Space opens
+the map, no mouse look). A gamepad works as before.
 
 Supported game version
 The retail PC release, taz.exe dated 2002-07-22

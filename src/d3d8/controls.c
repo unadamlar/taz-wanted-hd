@@ -1,7 +1,8 @@
-// WASD and mouse look. Keys: after the game binds player 1's keyboard defaults (FUN_0048c100) we
-// add W/A/S/D to the movement channels, Space to Jump, Shift to Tiptoe, the mouse buttons to Spin,
-// Bite and Look Around, and move Rant from D to Q and the map from Space to Tab. The old keys still
-// work. Mouse look: around the camera control (FUN_004e0f00) the mouse is added to the pad's
+// WASD and mouse look (the Controls setting; Classic leaves the game's keys alone). Keys: after the
+// game binds player 1's keyboard defaults (FUN_0048c100) we add W/A/S/D to the movement channels,
+// Space to Jump, Shift to Tiptoe, the mouse buttons to Spin, Bite and Look Around, and move Rant
+// from D to Q and the map from Space to Tab; switching back takes exactly those off again. The old
+// keys still work. Mouse look: around the camera control (FUN_004e0f00) the mouse is added to the pad's
 // camera stick for that call only, so the game's own camera rules still apply. The mouse is held
 // (DirectInput exclusive, which hides it) only while that camera control runs, so menus get it back.
 #include <math.h>
@@ -27,7 +28,9 @@ enum { X1 = 0x38, Y1 = 0x3c, X1DB = 0x48, Y1DB = 0x4c, JUMP = 0x60, BITE = 0x64,
 
 static float pitch;             // held camera tilt from the mouse, -1..1 like the stick
 static DWORD camera_frame, now; // frames: last camera control call, current
-static int held;
+static int held, applied;     // mouse held; WASD layout on p1_pad
+static BYTE *p1_pad;           // player 1's pad as set up for the keyboard...
+static void *p1_x1;            // ...and its movement channel then, to tell a pad set up again since
 
 static UINT key(DWORD dik)
 {
@@ -38,44 +41,65 @@ static UINT key(DWORD dik)
 
 static void *channel(BYTE *pad, int off) { return *(void **)(pad + off); }
 
-// Replaces binding code `from` with `to` on a channel (codes sit at +0x24, one 0x1c-byte slot per binding).
+// A channel's bindings: slot k at +0x24 + k * 0x1c holds its codes, the count of slots is at +0xcc.
+static UINT *slot(void *ch, int k) { return (UINT *)((BYTE *)ch + 0x24 + k * 0x1c); }
+static int *slots(void *ch) { return (int *)((BYTE *)ch + 0xcc); }
+
 static void rebind(void *ch, UINT from, UINT to)
 {
-    int n = *(int *)((BYTE *)ch + 0xcc);
-    for (int k = 0; k < n; k++) {
-        UINT *code = (UINT *)((BYTE *)ch + 0x24 + k * 0x1c);
-        if (*code == from) *code = to;
-    }
+    for (int k = 0; k < *slots(ch); k++)
+        if (slot(ch, k)[0] == from) slot(ch, k)[0] = to;
 }
 
-static void bind_both(BYTE *pad, int off, UINT code)
+static void unbind(void *ch, UINT code, UINT code2)
 {
-    BIND_INPUT(channel(pad, off), code, 0);
-    BIND_INPUT(channel(pad, off + DB), code, 0);
+    for (int k = 0; k < *slots(ch); k++)
+        if (slot(ch, k)[0] == code && slot(ch, k)[1] == code2) {
+            memmove(slot(ch, k), slot(ch, k + 1), (*slots(ch) - k - 1) * 0x1c);
+            --*slots(ch);
+            return;
+        }
 }
 
-static void __cdecl keyboard_defaults(BYTE *pad, int player)
+// Adds (on) or takes off (off) the WASD layout on player 1's pad.
+static void layout(BYTE *pad, int on)
 {
-    KEYBOARD_DEFAULTS(pad, player);
-    if (player != 0) return;
     UINT w = key(0x11), a = key(0x1e), s = key(0x1f), d = key(0x20), q = key(0x10), space = key(0x39),
          tab = key(0x0f), shift = key(0x2a);
     if (!w || !a || !s || !d || !q || !space || !tab || !shift) {
         log_line("controls: keys not found, WASD not bound");
         return;
     }
-    for (int off = RANT; off <= RANT + DB; off += DB) rebind(channel(pad, off), d, q);
-    for (int off = MAP; off <= MAP + DB; off += DB) rebind(channel(pad, off), space, tab);
-    BIND_INPUT(channel(pad, X1), d, a);
-    BIND_INPUT(channel(pad, Y1), s, w);
-    BIND_INPUT(channel(pad, X1DB), d | DIGITAL, a | DIGITAL);
-    BIND_INPUT(channel(pad, Y1DB), s | DIGITAL, w | DIGITAL);
-    bind_both(pad, JUMP, space);
-    bind_both(pad, TIPTOE, shift);
-    bind_both(pad, SPIN, MOUSE_LEFT);
-    bind_both(pad, BITE, MOUSE_RIGHT);
-    bind_both(pad, LOOK, MOUSE_MIDDLE);
-    log_line("controls: WASD and mouse buttons bound");
+    struct { int off; UINT code, code2; } add[] = {
+        { X1, d, a }, { Y1, s, w }, { X1DB, d | DIGITAL, a | DIGITAL }, { Y1DB, s | DIGITAL, w | DIGITAL },
+        { JUMP, space, 0 }, { JUMP + DB, space, 0 }, { TIPTOE, shift, 0 }, { TIPTOE + DB, shift, 0 },
+        { SPIN, MOUSE_LEFT, 0 }, { SPIN + DB, MOUSE_LEFT, 0 }, { BITE, MOUSE_RIGHT, 0 }, { BITE + DB, MOUSE_RIGHT, 0 },
+        { LOOK, MOUSE_MIDDLE, 0 }, { LOOK + DB, MOUSE_MIDDLE, 0 },
+    };
+    for (int off = RANT; off <= RANT + DB; off += DB) rebind(channel(pad, off), on ? d : q, on ? q : d);
+    for (int off = MAP; off <= MAP + DB; off += DB) rebind(channel(pad, off), on ? space : tab, on ? tab : space);
+    for (UINT i = 0; i < sizeof add / sizeof *add; i++)
+        if (on) BIND_INPUT(channel(pad, add[i].off), add[i].code, add[i].code2);
+        else unbind(channel(pad, add[i].off), add[i].code, add[i].code2);
+    applied = on;
+    log_line("controls: %s", on ? "WASD and mouse" : "classic keys");
+}
+
+static void __cdecl keyboard_defaults(BYTE *pad, int player)
+{
+    KEYBOARD_DEFAULTS(pad, player);
+    if (player != 0) return;
+    p1_pad = pad;
+    p1_x1 = channel(pad, X1);
+    applied = 0;
+    if (settings.wasd) layout(pad, 1);
+}
+
+// Switches layouts on the pad's current bindings; a pad set up since then already follows the setting.
+void controls_set(int wasd)
+{
+    settings.wasd = wasd;
+    if (p1_pad && channel(p1_pad, X1) == p1_x1 && applied != wasd) layout(p1_pad, wasd);
 }
 
 static void __cdecl camera_control(void **cc)
@@ -83,7 +107,7 @@ static void __cdecl camera_control(void **cc)
     BYTE *cam = cc[1];
     float *pad = cc[2];
     camera_frame = now;
-    if (*(int *)((BYTE *)pad + 0x180) != 0 || !settings.mouse || !held || FPS <= 0) { // keyboard player only
+    if (*(int *)((BYTE *)pad + 0x180) != 0 || !settings.wasd || !settings.mouse || !held || FPS <= 0) { // keyboard player only
         CAMERA_CONTROL(cc);
         return;
     }
@@ -133,7 +157,7 @@ static void hold_mouse(int on)
 void controls_frame(void)
 {
     now++;
-    int want = settings.mouse && now - camera_frame <= 2 && GetForegroundWindow() == GAME_WINDOW;
+    int want = settings.wasd && settings.mouse && now - camera_frame <= 2 && GetForegroundWindow() == GAME_WINDOW;
     if (want != held) hold_mouse(want);
 }
 
