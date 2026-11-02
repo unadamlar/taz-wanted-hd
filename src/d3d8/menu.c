@@ -124,7 +124,7 @@ static void *__attribute__((thiscall)) pause_vibration(void *page, int string_id
     return pause_menu.about = ADD_TEXT(page, string_id, new_row);
 }
 
-static int redirect_call(BYTE *at, void *expect, void *to)
+int redirect_call(BYTE *at, void *expect, void *to)
 {
     if (at[0] != 0xe8 || at + 5 + *(INT32 *)(at + 1) != expect) return 0;
     DWORD old;

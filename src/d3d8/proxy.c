@@ -81,6 +81,7 @@ static HRESULT WINAPI hook_Present(IDirect3DDevice8 *dev, CONST RECT *src, CONST
     static int scene = -1;
     if (settings.exe_known && *(BYTE *)0x704cf0 != scene) log_line("scene %d", scene = *(BYTE *)0x704cf0);
     textures_frame();
+    controls_frame();
     video_frame(dev);
     overlay_frame(dev);
     screenshot_frame(dev);
@@ -188,6 +189,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         video_patch();
         quicksave_patch();
         menu_patch();
+        controls_patch();
         asserts_patch();
         real_OutputDebugStringA = patch_import("KERNEL32.dll", "OutputDebugStringA", hook_OutputDebugStringA);
     } else if (reason == DLL_PROCESS_DETACH) {

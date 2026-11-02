@@ -58,6 +58,7 @@ void settings_load(void)
     settings.vsync = GetPrivateProfileIntA("taz-hd", "vsync", 1, INI);
     settings.fps_limit = GetPrivateProfileIntA("taz-hd", "fps_limit", 0, INI);
     settings.smooth = GetPrivateProfileIntA("taz-hd", "smooth_characters", 1, INI);
+    settings.mouse = GetPrivateProfileIntA("taz-hd", "mouse_sensitivity", 5, INI);
     settings.passthrough = GetPrivateProfileIntA("taz-hd", "passthrough", 0, INI); // testing: no patches at all
     GetPrivateProfileStringA("taz-hd", "menu_text_speed", "3", res, sizeof res, INI);
     settings.menu_speed = (float)atof(res);
@@ -65,8 +66,8 @@ void settings_load(void)
     GetPrivateProfileStringA("taz-hd", "resolution", "auto", res, sizeof res, INI);
     UINT w, h;
     if (settings_resolution(res, &w, &h)) write_resolution(w, h); // taz.dat, where the game reads it
-    log_line("settings: resolution=%s hd_textures=%d vsync=%d fps_limit=%d smooth_characters=%d menu_text_speed=%.2f%s", res,
-             settings.hd_textures, settings.vsync, settings.fps_limit, settings.smooth, settings.menu_speed,
+    log_line("settings: resolution=%s hd_textures=%d vsync=%d fps_limit=%d smooth_characters=%d mouse_sensitivity=%d menu_text_speed=%.2f%s", res,
+             settings.hd_textures, settings.vsync, settings.fps_limit, settings.smooth, settings.mouse, settings.menu_speed,
              settings.passthrough ? " passthrough" : "");
 }
 
@@ -82,6 +83,7 @@ static struct item items[] = {
     { "HD Textures", "Sharper, upscaled textures", "hd_textures", "1", { "0", "1" }, 2, 0 },
     { "Vsync", "Stops the picture tearing", "vsync", "1", { "0", "1" }, 2, 0 },
     { "Smooth Characters", "Rounder characters with smoother shading", "smooth_characters", "1", { "0", "1" }, 2, 0 },
+    { "Mouse Look", "Camera speed when turning with the mouse", "mouse_sensitivity", "5", { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }, 11, 0 },
     { "Frame Cap", "Limits the frame rate", "fps_limit", "0", { "0", "30", "60", "120", "144" }, 5, 0 },
     { "Menu Text Speed", "How fast menu text slides in. 1x is the original speed", "menu_text_speed", "3", { "1", "2", "3", "4" }, 4, 0 },
 };
@@ -129,7 +131,7 @@ const char *setting_shown(int i)
     const struct item *it = &items[i];
     const char *v = it->choices[it->cur];
     static char s[24];
-    if (!strcmp(it->key, "fps_limit") && !strcmp(v, "0")) return "Off";
+    if ((!strcmp(it->key, "fps_limit") || !strcmp(it->key, "mouse_sensitivity")) && !strcmp(v, "0")) return "Off";
     if (!strcmp(it->key, "menu_text_speed")) return snprintf(s, sizeof s, "%sx", v), s;
     if (!strcmp(it->key, "resolution") && !strcmp(v, "auto")) return "Desktop";
     if (it->count == 2 && !strcmp(it->choices[0], "0")) return it->cur ? "On" : "Off";
@@ -160,6 +162,7 @@ void setting_step(int i, int dir)
     if (!strcmp(it->key, "menu_text_speed")) menuspeed_set(settings.menu_speed = (float)atof(v));
     else if (!strcmp(it->key, "fps_limit")) settings.fps_limit = atoi(v);
     else if (!strcmp(it->key, "smooth_characters")) settings.smooth = atoi(v);
+    else if (!strcmp(it->key, "mouse_sensitivity")) settings.mouse = atoi(v);
     else if (!strcmp(it->key, "hd_textures")) settings.hd_textures = atoi(v), textures_apply();
     else if (!strcmp(it->key, "vsync")) settings.vsync = atoi(v), display_change(0, 0, settings.vsync);
     else if (!strcmp(it->key, "resolution")) {
