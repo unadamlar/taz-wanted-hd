@@ -33,6 +33,15 @@ typedef void (__attribute__((thiscall)) *show_page_fn)(void *book, const char *n
 #define OPTIONS_STATE (*(int **)0x739b50)          // 7 or 8: the Game Options update leaves Back alone
 #define KEYS_PAGE "TAZHD_KEYS"
 #define SELECT_ITEM ((void *(__attribute__((thiscall)) *)(void *page, void *item))0x5449c0)
+// A page title as Game Options builds its own (FUN_00524db0 at 0x524e70..0x524f36).
+#define GAME_ALLOC ((BYTE *(*)(int size, const char *file, int line, int flags))0x559610)
+#define TEXT_BOX ((void (__attribute__((thiscall)) *)(void *))0x4500a0)
+#define COLOUR ((void (__attribute__((thiscall)) *)(void *, int, int, int, int))0x41f5c0)
+#define TITLE_VTABLE ((void *)0x5f749c)
+#define TEXT_INIT ((void (__attribute__((thiscall)) *)(void *, int string_id))0x53f690)
+#define TEXT_STYLE ((void *(__attribute__((thiscall)) *)(void *, void *style))0x540610)
+#define TITLE_STYLE ((void *)0x73e550)
+#define TEXT_FLAGS ((void (__attribute__((thiscall)) *)(void *, int, int))0x541cf0)
 
 struct menu {
     void *items[16]; // per setting; NULL where the page has no row for it
@@ -188,6 +197,18 @@ static void __cdecl build_options(BYTE *frontend)
     if (!page) return;
     *(DWORD *)(page + 0x124) |= 1;           // as Game Options sets its page up (FUN_00547220, FUN_005472b0)
     *(DWORD *)(page + 0x124) = (*(DWORD *)(page + 0x124) & ~0x3f00u) | 0x800;
+    BYTE *title = GAME_ALLOC(0x38c, "taz-hd", 0, 0x1001);
+    if (title) {
+        TEXT_BOX(title);
+        for (int i = 0; i < 2; i++) COLOUR(title + 0x380 + i * 4, 0xff, 0, 0xff, 0xff);
+        *(void **)title = TITLE_VTABLE;
+        TEXT_INIT(title, LENT_STRING);
+        set_text(title, "Controls");
+        ADD_ITEM(page, title, 0);
+        TEXT_STYLE(title, TITLE_STYLE);
+        ((void *(__attribute__((thiscall)) *)(void *, int))(*(void ***)title)[0x6c / 4])(title, 0x80);
+        TEXT_FLAGS(title, 0, 0);
+    }
     keys.count = KEYS_FIRST + controls_row_count();
     for (int r = 0; r <= keys.count && r < 20; r++) {
         BYTE *item = ADD_TEXT(page, LENT_STRING, 1);
