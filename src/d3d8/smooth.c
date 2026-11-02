@@ -30,7 +30,7 @@ struct mesh { IDirect3DVertexBuffer8 *src; UINT n; float (*gn)[3]; BYTE *sharp; 
 
 static struct entry table[TABLE];
 static struct mesh meshes[MESHES];
-static int nentries, nmeshes;
+static int nentries, nmeshes, creating;
 static DWORD shaders[16];
 static int nshaders;
 
@@ -58,7 +58,7 @@ static HRESULT WINAPI hook_CreateVertexShader(IDirect3DDevice8 *dev, CONST DWORD
 static HRESULT WINAPI hook_CreateVertexBuffer(IDirect3DDevice8 *dev, UINT len, DWORD usage, DWORD fvf, D3DPOOL pool, IDirect3DVertexBuffer8 **vb)
 {
     HRESULT hr = real_CreateVertexBuffer(dev, len, usage, fvf, pool, vb);
-    if (SUCCEEDED(hr))
+    if (SUCCEEDED(hr) && !creating) // ours can land at a freed buffer's address too; that's no reason to drop the cache
         for (int i = 0; i < nmeshes; i++)
             if (meshes[i].src == *vb) { flush(); break; }
     return hr;
@@ -269,8 +269,11 @@ static struct entry *build(IDirect3DDevice8 *dev, struct entry *e)
     IDirect3DVertexBuffer8_Unlock(e->src);
 
     BYTE *dst;
-    if (!tris || FAILED(IDirect3DDevice8_CreateVertexBuffer(dev, tris * 3 * sizeof *out, d.Usage & ~D3DUSAGE_DYNAMIC, d.FVF, D3DPOOL_MANAGED, &e->vb)))
-        return NULL;
+    if (!tris) return NULL;
+    creating = 1;
+    HRESULT hr = IDirect3DDevice8_CreateVertexBuffer(dev, tris * 3 * sizeof *out, d.Usage & ~D3DUSAGE_DYNAMIC, d.FVF, D3DPOOL_MANAGED, &e->vb);
+    creating = 0;
+    if (FAILED(hr)) return NULL;
     if (SUCCEEDED(IDirect3DVertexBuffer8_Lock(e->vb, 0, 0, &dst, 0))) {
         memcpy(dst, out, tris * 3 * sizeof *out);
         IDirect3DVertexBuffer8_Unlock(e->vb);
