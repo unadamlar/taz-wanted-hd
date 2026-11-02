@@ -39,7 +39,7 @@ F12 saves a screenshot to taz-hd\shots.
 
 Controls
 WASD moves (arrows still work) and the mouse turns and tilts the camera while you play; Mouse Look
-sets its speed (Off turns it off). Space jumps, Shift or left click spins, right click bites,
+sets its speed (Off turns it off). Space jumps, Shift or right click spins, left click bites,
 middle click looks around, Q rants, Ctrl tiptoes and Tab opens the map. Original keys the layout
 doesn't use (C, F, R, X, V, E, T, arrows) still work. Set Controls to Classic for the original keys
 only (D rants, Space opens the map, no mouse look). A gamepad works as before.
@@ -48,7 +48,7 @@ To change keys, open Game Options > Controls, pick an action and press the new k
 (Esc keeps the old one); Reset to Defaults puts them all back. They can also be set in taz-hd.ini
 under [taz-hd], one or two inputs each, for example:
     key_jump=Space
-    key_spin=LShift MouseLeft
+    key_spin=LShift MouseRight
 Actions: key_forward, key_back, key_left, key_right (one key each), key_jump, key_spin, key_bite,
 key_rant, key_tiptoe, key_look, key_map. Names: letters, digits, F1-F4, F6-F8, F10, F11, Space, Tab,
 Enter, Backspace, LShift, RShift, LCtrl, RCtrl, LAlt, RAlt, CapsLock, Up, Down, Left, Right, Home,

@@ -1,6 +1,6 @@
 // WASD and mouse look (the Controls setting; Classic is the game's own keys). Keys: after the game
 // binds player 1's keyboard defaults (FUN_0048c100) we bind each action to the keys in taz-hd.ini
-// (key_jump=Space, key_spin=LShift MouseLeft, ...), first taking those keys off whatever the game
+// (key_jump=Space, key_spin=LShift MouseRight, ...), first taking those keys off whatever the game
 // had them do, so D moves instead of ranting and Space jumps instead of opening the map. Keys the
 // layout doesn't use keep their old jobs (C, F, R, X, V, E, T, arrows). Mouse look: around the
 // camera control (FUN_004e0f00) the mouse is added to the pad's camera stick for that call only, so
@@ -40,7 +40,7 @@ static const int GAME_KEYS[] = { X1, Y1, X1DB, Y1DB, 0x60, 0x64, 0x68, 0x6c, 0x7
 static const struct action { const char *label, *key, *def; int off; } ACTIONS[] = {
     { "Forward", "key_forward", "W", -1 }, { "Back", "key_back", "S", -1 }, { "Left", "key_left", "A", -1 },
     { "Right", "key_right", "D", -1 }, { "Jump", "key_jump", "Space", JUMP },
-    { "Spin", "key_spin", "LShift MouseLeft", SPIN }, { "Bite", "key_bite", "MouseRight", BITE },
+    { "Spin", "key_spin", "LShift MouseRight", SPIN }, { "Bite", "key_bite", "MouseLeft", BITE },
     { "Rant", "key_rant", "Q", RANT }, { "Tiptoe", "key_tiptoe", "LCtrl", TIPTOE },
     { "Look Around", "key_look", "MouseMiddle", LOOK }, { "Map", "key_map", "Tab", MAP },
 };
@@ -90,7 +90,7 @@ static UINT code_of(const char *name)
     return 0;
 }
 
-// Up to two codes from an action's setting ("LShift MouseLeft").
+// Up to two codes from an action's setting ("LShift MouseRight").
 static int codes_of(const struct action *a, UINT *out)
 {
     char v[64], *save = NULL;
@@ -237,7 +237,7 @@ static void key_names(int i, char *out, int size, const char *sep)
     }
 }
 
-// "Move: W S A D", "Spin: Left Shift or Left Click"; "Jump: press a key" while capturing it.
+// "Move: W A S D", "Spin: Left Shift or Right Click"; "Jump: press a key" while capturing it.
 void controls_row_text(int row, char *out, int size)
 {
     char k[48];
