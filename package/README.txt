@@ -30,7 +30,8 @@ The disc or disc image must be visible to Wine as a CD drive.
 Settings
 Game Options (main menu) and Options (pause menu) have rows for Resolution, HD Textures, Vsync,
 Smooth Characters, Controls, Mouse Look, Frame Cap and Menu Text Speed (Resolution, Vsync and Frame
-Cap only on the main menu's Game Options): press Select to change one. Changes apply at once (a resolution or
+Cap only on the main menu's Game Options; there Controls opens a page with Controls, Mouse Look and
+the keys): press Select to change one. Changes apply at once (a resolution or
 vsync change takes about a second) and are saved in taz-hd.ini in the game folder. Changing the
 resolution or vsync discards the quicksave.
 The game's Widescreen option is gone: the picture always matches your screen's shape.
@@ -43,7 +44,9 @@ middle click looks around, Q rants, Ctrl tiptoes and Tab opens the map. Original
 doesn't use (C, F, R, X, V, E, T, arrows) still work. Set Controls to Classic for the original keys
 only (D rants, Space opens the map, no mouse look). A gamepad works as before.
 
-To change keys, add lines to taz-hd.ini under [taz-hd], one or two inputs each, for example:
+To change keys, open Game Options > Controls, pick an action and press the new key or mouse button
+(Esc keeps the old one); Reset to Defaults puts them all back. They can also be set in taz-hd.ini
+under [taz-hd], one or two inputs each, for example:
     key_jump=Space
     key_spin=LShift MouseLeft
 Actions: key_forward, key_back, key_left, key_right (one key each), key_jump, key_spin, key_bite,

@@ -83,17 +83,20 @@ struct item {
     const char *label, *about, *key, *def;
     const char *choices[12];
     int count, cur;
-    int main_menu_only; // display settings; the pause menu has no room for every row
+    int where; // 0 both menus, MAIN Game Options only, PAUSE pause menu (and the Controls page) only
 };
 
+enum { MAIN = 1, PAUSE = 2 };
+
 static struct item items[] = {
-    { "Resolution", "Desktop matches your screen", "resolution", "auto", { "auto" }, 1, 0, 1 },
+    { "Resolution", "Desktop matches your screen", "resolution", "auto", { "auto" }, 1, 0, MAIN },
     { "HD Textures", "Sharper, upscaled textures", "hd_textures", "1", { "0", "1" }, 2, 0, 0 },
-    { "Vsync", "Stops the picture tearing", "vsync", "1", { "0", "1" }, 2, 0, 1 },
+    { "Vsync", "Stops the picture tearing", "vsync", "1", { "0", "1" }, 2, 0, MAIN },
     { "Smooth Characters", "Rounder characters with smoother shading", "smooth_characters", "1", { "0", "1" }, 2, 0, 0 },
-    { "Controls", "WASD and mouse, or the original keys", "controls", "wasd", { "wasd", "classic" }, 2, 0, 0 },
-    { "Mouse Look", "Camera speed when turning with the mouse", "mouse_sensitivity", "5", { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }, 11, 0, 0 },
-    { "Frame Cap", "Limits the frame rate", "fps_limit", "0", { "0", "30", "60", "120", "144" }, 5, 0, 1 },
+    { "Controls", "WASD and mouse, or the original keys", "controls", "wasd", { "wasd", "classic" }, 2, 0, PAUSE },
+    { "Controls", "Keys, mouse look and layout", "keys", "", { "" }, 0, 0, MAIN },
+    { "Mouse Look", "Camera speed when turning with the mouse", "mouse_sensitivity", "5", { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }, 11, 0, PAUSE },
+    { "Frame Cap", "Limits the frame rate", "fps_limit", "0", { "0", "30", "60", "120", "144" }, 5, 0, MAIN },
     { "Menu Text Speed", "How fast menu text slides in. 1x is the original speed", "menu_text_speed", "3", { "1", "2", "3", "4" }, 4, 0, 0 },
 };
 
@@ -130,9 +133,21 @@ const char *setting_label(int i)
     return items[i].label;
 }
 
-int setting_main_menu_only(int i)
+int setting_is_link(int i)
 {
-    return items[i].main_menu_only;
+    return items[i].count == 0;
+}
+
+int setting_on_page(int i, int pause)
+{
+    return items[i].where != (pause ? MAIN : PAUSE);
+}
+
+int setting_find(const char *key)
+{
+    for (int i = 0; i < setting_count(); i++)
+        if (!strcmp(items[i].key, key)) return i;
+    return 0;
 }
 
 const char *setting_about(int i)
@@ -170,6 +185,7 @@ void settings_refresh(void)
 void setting_step(int i, int dir)
 {
     struct item *it = &items[i];
+    if (!it->count) return;
     it->cur = (it->cur + it->count + dir) % it->count;
     const char *v = it->choices[it->cur];
     settings_save(it->key, v);

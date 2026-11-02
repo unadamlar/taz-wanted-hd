@@ -23,6 +23,10 @@
 #define TURN_RATE (*(const float *)0x5f7364) // camera swing, radians per second at full stick
 #define TILT_RATE (*(const float *)0x5f7360) // look-around tilt
 #define FPS (*(const float *)0x642cdc)
+#define READ_DEVICES ((void (*)(void))0x57bb20)
+#define KEY_STATE ((BYTE *)0x751438)      // DirectInput keyboard state, by DIK
+#define MOUSE_BUTTONS ((BYTE *)0x751554)  // this frame's mouse buttons
+#define MOUSE_HELD ((BYTE *)0x751544)     // the copy the game's channels read
 
 enum { MOUSE_LEFT = 2, MOUSE_RIGHT = 3, MOUSE_MIDDLE = 4, DIGITAL = 0x100 };
 enum { X1 = 0x38, Y1 = 0x3c, X1DB = 0x48, Y1DB = 0x4c, JUMP = 0x60, BITE = 0x64, SPIN = 0x68, RANT = 0x6c,
@@ -33,12 +37,14 @@ static const int GAME_KEYS[] = { X1, Y1, X1DB, Y1DB, 0x60, 0x64, 0x68, 0x6c, 0x7
                                  0xa0, 0xa4, 0xa8, 0xac, 0xb0, 0xb4, 0xbc, 0xc0, 0xc8, 0xcc };
 
 // Actions players can rebind. Movement takes one key per direction; the rest up to two inputs.
-static const struct action { const char *key, *def; int off; } ACTIONS[] = {
-    { "key_forward", "W", -1 }, { "key_back", "S", -1 }, { "key_left", "A", -1 }, { "key_right", "D", -1 },
-    { "key_jump", "Space", JUMP }, { "key_spin", "LShift MouseLeft", SPIN }, { "key_bite", "MouseRight", BITE },
-    { "key_rant", "Q", RANT }, { "key_tiptoe", "LCtrl", TIPTOE }, { "key_look", "MouseMiddle", LOOK },
-    { "key_map", "Tab", MAP },
+static const struct action { const char *label, *key, *def; int off; } ACTIONS[] = {
+    { "Forward", "key_forward", "W", -1 }, { "Back", "key_back", "S", -1 }, { "Left", "key_left", "A", -1 },
+    { "Right", "key_right", "D", -1 }, { "Jump", "key_jump", "Space", JUMP },
+    { "Spin", "key_spin", "LShift MouseLeft", SPIN }, { "Bite", "key_bite", "MouseRight", BITE },
+    { "Rant", "key_rant", "Q", RANT }, { "Tiptoe", "key_tiptoe", "LCtrl", TIPTOE },
+    { "Look Around", "key_look", "MouseMiddle", LOOK }, { "Map", "key_map", "Tab", MAP },
 };
+#define ACTION_COUNT (int)(sizeof ACTIONS / sizeof *ACTIONS)
 
 static const struct { const char *name; BYTE dik; } KEYS[] = {
     { "Esc", 0x01 }, { "1", 0x02 }, { "2", 0x03 }, { "3", 0x04 }, { "4", 0x05 }, { "5", 0x06 }, { "6", 0x07 },
@@ -150,6 +156,113 @@ void controls_apply(void)
     else log_line("controls: classic keys");
 }
 
+// Key capture for the Controls page. Its rows: Move (the four directions, asked for in turn), then
+// one per other action. After the player picks a row, the next key or mouse button pressed becomes
+// the key. Input is swallowed meanwhile so menus don't react, and until everything is released,
+// both before (the Select press) and after (the new key).
+static int capturing = -1, capture_last, capture_phase; // action, last action of the row; 0 wait for release, 1 press, 2 release
+static void (*capture_done)(void);
+#define MOVES 4 // Forward, Back, Left, Right: one row
+
+static const char *name_of_dik(int dik)
+{
+    for (UINT i = 0; i < sizeof KEYS / sizeof *KEYS; i++)
+        if (KEYS[i].dik == dik) return KEYS[i].name;
+    return NULL;
+}
+
+static void __cdecl read_devices(void)
+{
+    READ_DEVICES();
+    if (capturing < 0) return;
+    int any = 0, pressed = -1;
+    for (int k = 1; k < 256; k++)
+        if (KEY_STATE[k] & 0x80) any = 1, pressed = pressed < 0 ? k : pressed;
+    for (int b = 0; b < 3; b++)
+        if (MOUSE_BUTTONS[b] & 0x80) any = 1, pressed = pressed < 0 ? 0x100 + b : pressed;
+    memset(KEY_STATE, 0, 256);
+    memset(MOUSE_BUTTONS, 0, 4);
+    memset(MOUSE_HELD, 0, 4);
+    if (capture_phase == 0 && !any) capture_phase = 1;
+    else if (capture_phase == 1 && pressed >= 0) {
+        static const char *MOUSE[] = { "MouseLeft", "MouseRight", "MouseMiddle" };
+        const char *name = pressed >= 0x100 ? MOUSE[pressed - 0x100] : name_of_dik(pressed);
+        if (pressed == 0x01) capture_last = capturing; // Esc keeps the rest as they are
+        else if (!name || !code_of(name)) log_line("controls: key %#x can't be used", pressed);
+        else {
+            settings_save(ACTIONS[capturing].key, name);
+            log_line("controls: %s = %s", ACTIONS[capturing].key, name);
+        }
+        capture_phase = 2;
+        if (capture_done) capture_done();
+    } else if (capture_phase == 2 && !any) {
+        if (capturing < capture_last) {
+            capturing++, capture_phase = 1;
+        } else {
+            capturing = -1;
+            controls_apply();
+        }
+        if (capture_done) capture_done();
+    }
+}
+
+int controls_row_count(void) { return ACTION_COUNT - MOVES + 1; }
+
+int controls_capturing(void) { return capturing >= 0; }
+
+void controls_capture(int row, void (*done)(void))
+{
+    capturing = row ? row + MOVES - 1 : 0;
+    capture_last = row ? capturing : MOVES - 1;
+    capture_phase = 0;
+    capture_done = done;
+}
+
+static void key_names(int i, char *out, int size, const char *sep)
+{
+    static const struct { const char *name, *shown; } NICE[] = {
+        { "LShift", "Left Shift" }, { "RShift", "Right Shift" }, { "LCtrl", "Left Ctrl" }, { "RCtrl", "Right Ctrl" },
+        { "LAlt", "Left Alt" }, { "RAlt", "Right Alt" }, { "MouseLeft", "Left Click" },
+        { "MouseRight", "Right Click" }, { "MouseMiddle", "Middle Click" },
+    };
+    char v[64], *save = NULL;
+    int n = 0;
+    out[0] = 0;
+    settings_get(ACTIONS[i].key, ACTIONS[i].def, v, sizeof v);
+    for (char *t = strtok_r(v, " ,", &save); t && n < size; t = strtok_r(NULL, " ,", &save)) {
+        const char *shown = t;
+        for (UINT k = 0; k < sizeof NICE / sizeof *NICE; k++)
+            if (!_stricmp(t, NICE[k].name)) shown = NICE[k].shown;
+        n += snprintf(out + n, size - n, "%s%s", n ? sep : "", shown);
+    }
+}
+
+// "Move: W S A D", "Spin: Left Shift or Left Click"; "Jump: press a key" while capturing it.
+void controls_row_text(int row, char *out, int size)
+{
+    char k[48];
+    if (!row) {
+        static const char *DIR[] = { "forward", "back", "left", "right" };
+        if (capturing >= 0 && capturing < MOVES) {
+            snprintf(out, size, "Move: press %s", DIR[capturing]);
+            return;
+        }
+        static const int SHOWN[] = { 0, 2, 1, 3 }; // forward, left, back, right: "W A S D"
+        int n = snprintf(out, size, "Move:");
+        for (int i = 0; i < MOVES && n < size; i++) key_names(SHOWN[i], k, sizeof k, " "), n += snprintf(out + n, size - n, " %s", k);
+        return;
+    }
+    int i = row + MOVES - 1;
+    if (i == capturing) snprintf(out, size, "%s: press a key", ACTIONS[i].label);
+    else key_names(i, k, sizeof k, " or "), snprintf(out, size, "%s: %s", ACTIONS[i].label, k);
+}
+
+void controls_reset_keys(void)
+{
+    for (int i = 0; i < ACTION_COUNT; i++) settings_save(ACTIONS[i].key, NULL);
+    controls_apply();
+}
+
 static void __cdecl camera_control(void **cc)
 {
     BYTE *cam = cc[1];
@@ -221,4 +334,5 @@ void controls_patch(void)
     redirect_call((BYTE *)0x48ad3c, KEYBOARD_DEFAULTS, keyboard_defaults);
     redirect_call((BYTE *)0x48ad74, KEYBOARD_DEFAULTS, keyboard_defaults);
     redirect_call((BYTE *)0x480e5d, CAMERA_CONTROL, camera_control);
+    if (calls((BYTE *)0x568b25, READ_DEVICES)) redirect_call((BYTE *)0x568b25, READ_DEVICES, read_devices);
 }
