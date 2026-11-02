@@ -49,7 +49,8 @@ void menu_patch(void);
 void smooth_install(IDirect3DDevice8 *dev);
 void controls_patch(void);
 void controls_frame(void);
-void controls_set(int wasd);
+void controls_apply(void);
+void settings_get(const char *key, const char *def, char *out, DWORD size);
 int redirect_call(BYTE *at, void *expect, void *to);
 HRESULT smooth_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
                     HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT));

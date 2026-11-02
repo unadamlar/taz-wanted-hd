@@ -1,11 +1,13 @@
-// WASD and mouse look (the Controls setting; Classic leaves the game's keys alone). Keys: after the
-// game binds player 1's keyboard defaults (FUN_0048c100) we add W/A/S/D to the movement channels,
-// Space to Jump, Shift to Tiptoe, the mouse buttons to Spin, Bite and Look Around, and move Rant
-// from D to Q and the map from Space to Tab; switching back takes exactly those off again. The old
-// keys still work. Mouse look: around the camera control (FUN_004e0f00) the mouse is added to the pad's
-// camera stick for that call only, so the game's own camera rules still apply. The mouse is held
-// (DirectInput exclusive, which hides it) only while that camera control runs, so menus get it back.
+// WASD and mouse look (the Controls setting; Classic is the game's own keys). Keys: after the game
+// binds player 1's keyboard defaults (FUN_0048c100) we bind each action to the keys in taz-hd.ini
+// (key_jump=Space, key_spin=LShift MouseLeft, ...), first taking those keys off whatever the game
+// had them do, so D moves instead of ranting and Space jumps instead of opening the map. Keys the
+// layout doesn't use keep their old jobs (C, F, R, X, V, E, T, arrows). Mouse look: around the
+// camera control (FUN_004e0f00) the mouse is added to the pad's camera stick for that call only, so
+// the game's own camera rules still apply. The mouse is held (DirectInput exclusive, which hides it)
+// only while that camera control runs, so menus get it back.
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 #include "proxy.h"
 
@@ -26,18 +28,42 @@ enum { MOUSE_LEFT = 2, MOUSE_RIGHT = 3, MOUSE_MIDDLE = 4, DIGITAL = 0x100 };
 enum { X1 = 0x38, Y1 = 0x3c, X1DB = 0x48, Y1DB = 0x4c, JUMP = 0x60, BITE = 0x64, SPIN = 0x68, RANT = 0x6c,
        TIPTOE = 0x74, LOOK = 0x80, MAP = 0x8c, DB = 0x40 }; // pad offsets of channel pointers; DB: debounced copy
 
+// The channels FUN_0048c100 binds for player 1.
+static const int GAME_KEYS[] = { X1, Y1, X1DB, Y1DB, 0x60, 0x64, 0x68, 0x6c, 0x70, 0x74, 0x7c, 0x80, 0x88, 0x8c,
+                                 0xa0, 0xa4, 0xa8, 0xac, 0xb0, 0xb4, 0xbc, 0xc0, 0xc8, 0xcc };
+
+// Actions players can rebind. Movement takes one key per direction; the rest up to two inputs.
+static const struct action { const char *key, *def; int off; } ACTIONS[] = {
+    { "key_forward", "W", -1 }, { "key_back", "S", -1 }, { "key_left", "A", -1 }, { "key_right", "D", -1 },
+    { "key_jump", "Space", JUMP }, { "key_spin", "LShift MouseLeft", SPIN }, { "key_bite", "MouseRight", BITE },
+    { "key_rant", "Q", RANT }, { "key_tiptoe", "LCtrl", TIPTOE }, { "key_look", "MouseMiddle", LOOK },
+    { "key_map", "Tab", MAP },
+};
+
+static const struct { const char *name; BYTE dik; } KEYS[] = {
+    { "Esc", 0x01 }, { "1", 0x02 }, { "2", 0x03 }, { "3", 0x04 }, { "4", 0x05 }, { "5", 0x06 }, { "6", 0x07 },
+    { "7", 0x08 }, { "8", 0x09 }, { "9", 0x0a }, { "0", 0x0b }, { "Minus", 0x0c }, { "Equals", 0x0d },
+    { "Backspace", 0x0e }, { "Tab", 0x0f }, { "Q", 0x10 }, { "W", 0x11 }, { "E", 0x12 }, { "R", 0x13 },
+    { "T", 0x14 }, { "Y", 0x15 }, { "U", 0x16 }, { "I", 0x17 }, { "O", 0x18 }, { "P", 0x19 }, { "LBracket", 0x1a },
+    { "RBracket", 0x1b }, { "Enter", 0x1c }, { "LCtrl", 0x1d }, { "A", 0x1e }, { "S", 0x1f }, { "D", 0x20 },
+    { "F", 0x21 }, { "G", 0x22 }, { "H", 0x23 }, { "J", 0x24 }, { "K", 0x25 }, { "L", 0x26 }, { "Semicolon", 0x27 },
+    { "Apostrophe", 0x28 }, { "Grave", 0x29 }, { "LShift", 0x2a }, { "Backslash", 0x2b }, { "Z", 0x2c },
+    { "X", 0x2d }, { "C", 0x2e }, { "V", 0x2f }, { "B", 0x30 }, { "N", 0x31 }, { "M", 0x32 }, { "Comma", 0x33 },
+    { "Period", 0x34 }, { "Slash", 0x35 }, { "RShift", 0x36 }, { "LAlt", 0x38 }, { "Space", 0x39 },
+    { "CapsLock", 0x3a }, { "F1", 0x3b }, { "F2", 0x3c }, { "F3", 0x3d }, { "F4", 0x3e }, { "F6", 0x40 },
+    { "F7", 0x41 }, { "F8", 0x42 }, { "F10", 0x44 }, { "F11", 0x57 }, { "Num7", 0x47 }, { "Num8", 0x48 },
+    { "Num9", 0x49 }, { "NumMinus", 0x4a }, { "Num4", 0x4b }, { "Num5", 0x4c }, { "Num6", 0x4d },
+    { "NumPlus", 0x4e }, { "Num1", 0x4f }, { "Num2", 0x50 }, { "Num3", 0x51 }, { "Num0", 0x52 },
+    { "NumEnter", 0x9c }, { "RCtrl", 0x9d }, { "RAlt", 0xb8 }, { "Home", 0xc7 }, { "Up", 0xc8 }, { "PgUp", 0xc9 },
+    { "Left", 0xcb }, { "Right", 0xcd }, { "End", 0xcf }, { "Down", 0xd0 }, { "PgDn", 0xd1 }, { "Insert", 0xd2 },
+    { "Delete", 0xd3 },
+};
+
 static float pitch;             // held camera tilt from the mouse, -1..1 like the stick
 static DWORD camera_frame, now; // frames: last camera control call, current
-static int held, applied;     // mouse held; WASD layout on p1_pad
-static BYTE *p1_pad;           // player 1's pad as set up for the keyboard...
-static void *p1_x1;            // ...and its movement channel then, to tell a pad set up again since
-
-static UINT key(DWORD dik)
-{
-    for (UINT c = 0x36; c <= 0xa0; c++)
-        if (KEY_TABLE[c] == dik) return c;
-    return 0;
-}
+static int held;                // mouse held exclusively
+static BYTE *p1_pad;            // player 1's pad as set up for the keyboard...
+static void *p1_x1;             // ...and its movement channel then, to tell a pad set up again since
 
 static void *channel(BYTE *pad, int off) { return *(void **)(pad + off); }
 
@@ -45,44 +71,63 @@ static void *channel(BYTE *pad, int off) { return *(void **)(pad + off); }
 static UINT *slot(void *ch, int k) { return (UINT *)((BYTE *)ch + 0x24 + k * 0x1c); }
 static int *slots(void *ch) { return (int *)((BYTE *)ch + 0xcc); }
 
-static void rebind(void *ch, UINT from, UINT to)
+// Game input code for a key or mouse button name, 0 if unknown.
+static UINT code_of(const char *name)
 {
-    for (int k = 0; k < *slots(ch); k++)
-        if (slot(ch, k)[0] == from) slot(ch, k)[0] = to;
+    if (!_stricmp(name, "MouseLeft")) return MOUSE_LEFT;
+    if (!_stricmp(name, "MouseRight")) return MOUSE_RIGHT;
+    if (!_stricmp(name, "MouseMiddle")) return MOUSE_MIDDLE;
+    for (UINT i = 0; i < sizeof KEYS / sizeof *KEYS; i++)
+        if (!_stricmp(name, KEYS[i].name))
+            for (UINT c = 0x36; c <= 0xa0; c++)
+                if (KEY_TABLE[c] == KEYS[i].dik) return c;
+    return 0;
 }
 
-static void unbind(void *ch, UINT code, UINT code2)
+// Up to two codes from an action's setting ("LShift MouseLeft").
+static int codes_of(const struct action *a, UINT *out)
 {
-    for (int k = 0; k < *slots(ch); k++)
-        if (slot(ch, k)[0] == code && slot(ch, k)[1] == code2) {
-            memmove(slot(ch, k), slot(ch, k + 1), (*slots(ch) - k - 1) * 0x1c);
-            --*slots(ch);
-            return;
-        }
-}
-
-// Adds (on) or takes off (off) the WASD layout on player 1's pad.
-static void layout(BYTE *pad, int on)
-{
-    UINT w = key(0x11), a = key(0x1e), s = key(0x1f), d = key(0x20), q = key(0x10), space = key(0x39),
-         tab = key(0x0f), shift = key(0x2a);
-    if (!w || !a || !s || !d || !q || !space || !tab || !shift) {
-        log_line("controls: keys not found, WASD not bound");
-        return;
+    char v[64], *save = NULL;
+    int n = 0;
+    settings_get(a->key, a->def, v, sizeof v);
+    for (char *t = strtok_r(v, " ,", &save); t && n < 2; t = strtok_r(NULL, " ,", &save)) {
+        UINT c = code_of(t);
+        if (c && c != code_of("Esc")) out[n++] = c;
+        else log_line("controls: %s: unknown or reserved key %s", a->key, t);
     }
-    struct { int off; UINT code, code2; } add[] = {
-        { X1, d, a }, { Y1, s, w }, { X1DB, d | DIGITAL, a | DIGITAL }, { Y1DB, s | DIGITAL, w | DIGITAL },
-        { JUMP, space, 0 }, { JUMP + DB, space, 0 }, { TIPTOE, shift, 0 }, { TIPTOE + DB, shift, 0 },
-        { SPIN, MOUSE_LEFT, 0 }, { SPIN + DB, MOUSE_LEFT, 0 }, { BITE, MOUSE_RIGHT, 0 }, { BITE + DB, MOUSE_RIGHT, 0 },
-        { LOOK, MOUSE_MIDDLE, 0 }, { LOOK + DB, MOUSE_MIDDLE, 0 },
-    };
-    for (int off = RANT; off <= RANT + DB; off += DB) rebind(channel(pad, off), on ? d : q, on ? q : d);
-    for (int off = MAP; off <= MAP + DB; off += DB) rebind(channel(pad, off), on ? space : tab, on ? tab : space);
-    for (UINT i = 0; i < sizeof add / sizeof *add; i++)
-        if (on) BIND_INPUT(channel(pad, add[i].off), add[i].code, add[i].code2);
-        else unbind(channel(pad, add[i].off), add[i].code, add[i].code2);
-    applied = on;
-    log_line("controls: %s", on ? "WASD and mouse" : "classic keys");
+    return n;
+}
+
+// Takes a code off every channel the game bound keys to, so it only does what the layout says.
+static void free_code(BYTE *pad, UINT code)
+{
+    for (UINT i = 0; i < sizeof GAME_KEYS / sizeof *GAME_KEYS; i++) {
+        void *ch = channel(pad, GAME_KEYS[i]);
+        for (int k = 0; k < *slots(ch); k++)
+            if ((slot(ch, k)[0] & 0xff) == code || (slot(ch, k)[1] & 0xff) == code) {
+                memmove(slot(ch, k), slot(ch, k + 1), (*slots(ch) - k - 1) * 0x1c);
+                --*slots(ch), k--;
+            }
+    }
+}
+
+static void bind_layout(BYTE *pad)
+{
+    UINT codes[sizeof ACTIONS / sizeof *ACTIONS][2] = { { 0 } };
+    int count[sizeof ACTIONS / sizeof *ACTIONS];
+    for (UINT i = 0; i < sizeof ACTIONS / sizeof *ACTIONS; i++) {
+        count[i] = codes_of(&ACTIONS[i], codes[i]);
+        for (int k = 0; k < count[i]; k++) free_code(pad, codes[i][k]);
+    }
+    UINT fwd = codes[0][0], back = codes[1][0], left = codes[2][0], right = codes[3][0];
+    if (right && left) BIND_INPUT(channel(pad, X1), right, left), BIND_INPUT(channel(pad, X1DB), right | DIGITAL, left | DIGITAL);
+    if (back && fwd) BIND_INPUT(channel(pad, Y1), back, fwd), BIND_INPUT(channel(pad, Y1DB), back | DIGITAL, fwd | DIGITAL);
+    for (UINT i = 4; i < sizeof ACTIONS / sizeof *ACTIONS; i++)
+        for (int k = 0; k < count[i]; k++) {
+            BIND_INPUT(channel(pad, ACTIONS[i].off), codes[i][k], 0);
+            BIND_INPUT(channel(pad, ACTIONS[i].off + DB), codes[i][k], 0);
+        }
+    log_line("controls: WASD and mouse");
 }
 
 static void __cdecl keyboard_defaults(BYTE *pad, int player)
@@ -91,15 +136,18 @@ static void __cdecl keyboard_defaults(BYTE *pad, int player)
     if (player != 0) return;
     p1_pad = pad;
     p1_x1 = channel(pad, X1);
-    applied = 0;
-    if (settings.wasd) layout(pad, 1);
+    if (settings.wasd) bind_layout(pad);
 }
 
-// Switches layouts on the pad's current bindings; a pad set up since then already follows the setting.
-void controls_set(int wasd)
+// Rebinds player 1's current pad for the Controls setting or changed keys: back to the game's own
+// keys, then the layout. A pad set up again since then already follows the settings.
+void controls_apply(void)
 {
-    settings.wasd = wasd;
-    if (p1_pad && channel(p1_pad, X1) == p1_x1 && applied != wasd) layout(p1_pad, wasd);
+    if (!p1_pad || channel(p1_pad, X1) != p1_x1) return;
+    for (UINT i = 0; i < sizeof GAME_KEYS / sizeof *GAME_KEYS; i++) *slots(channel(p1_pad, GAME_KEYS[i])) = 0;
+    KEYBOARD_DEFAULTS(p1_pad, 0);
+    if (settings.wasd) bind_layout(p1_pad);
+    else log_line("controls: classic keys");
 }
 
 static void __cdecl camera_control(void **cc)

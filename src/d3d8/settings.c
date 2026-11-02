@@ -46,6 +46,11 @@ int settings_resolution(const char *value, UINT *w, UINT *h)
     return *w && *h;
 }
 
+void settings_get(const char *key, const char *def, char *out, DWORD size)
+{
+    GetPrivateProfileStringA("taz-hd", key, def, out, size, INI);
+}
+
 void settings_save(const char *key, const char *value)
 {
     WritePrivateProfileStringA("taz-hd", key, value, INI);
@@ -173,7 +178,7 @@ void setting_step(int i, int dir)
     else if (!strcmp(it->key, "fps_limit")) settings.fps_limit = atoi(v);
     else if (!strcmp(it->key, "smooth_characters")) settings.smooth = atoi(v);
     else if (!strcmp(it->key, "mouse_sensitivity")) settings.mouse = atoi(v);
-    else if (!strcmp(it->key, "controls")) controls_set(strcmp(v, "classic") != 0);
+    else if (!strcmp(it->key, "controls")) settings.wasd = strcmp(v, "classic") != 0, controls_apply();
     else if (!strcmp(it->key, "hd_textures")) settings.hd_textures = atoi(v), textures_apply();
     else if (!strcmp(it->key, "vsync")) settings.vsync = atoi(v), display_change(0, 0, settings.vsync);
     else if (!strcmp(it->key, "resolution")) {
