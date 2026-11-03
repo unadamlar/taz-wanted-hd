@@ -1,6 +1,7 @@
 // Mesh capture for modelling work: a taz-hd\capture file records the next frame's character draws
 // (or the next N frames, for a number N in it) into taz-hd\capture-NNN.bin, one file per frame.
-// A taz-hd\scene file holding a scene number (names at 0x646d9c) sends the game there, for tests. Records: 'V' buffer (id, size, bytes) once per buffer, then
+// A taz-hd\scene file holding a scene number (names at 0x646d9c) sends the game there, and an empty
+// taz-hd\costume file puts the level's costume on Taz, for tests. Records: 'V' buffer (id, size, bytes) once per buffer, then
 // 'D' draw (buffer id, type, start, count, stage-0 texture fingerprint, constants c0-c95).
 #include <stdio.h>
 #include "proxy.h"
@@ -14,6 +15,11 @@ static int nseen;
 // Between game frames (quicksave.c): FUN_004a9730 is the game's scene change, as the attract demo uses it.
 void capture_scene(void)
 {
+    if (GetFileAttributesA("taz-hd\\costume") != INVALID_FILE_ATTRIBUTES) {
+        DeleteFileA("taz-hd\\costume");
+        void *taz = *(void **)0x6c8c80; // player one's actor
+        if (taz && *(BYTE *)0x704cf0 >= 2) ((void(__cdecl *)(void *))0x430160)(taz), log_line("capture: costume on");
+    }
     FILE *f = fopen("taz-hd\\scene", "r");
     if (!f) return;
     int scene, ok = fscanf(f, "%d", &scene) == 1 && scene >= 0 && scene < 0x25 && *(BYTE *)0x704cf0 >= 2; // in play, not menus
