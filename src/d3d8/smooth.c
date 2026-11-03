@@ -288,13 +288,18 @@ HRESULT smooth_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UI
 {
     DWORD vs = 0;
     int ours = 0;
-    if (settings.smooth && (type == D3DPT_TRIANGLESTRIP || type == D3DPT_TRIANGLELIST) && nshaders
+    if ((type == D3DPT_TRIANGLESTRIP || type == D3DPT_TRIANGLELIST) && nshaders
         && SUCCEEDED(IDirect3DDevice8_GetVertexShader(dev, &vs)))
         for (int i = 0; i < nshaders; i++) ours |= shaders[i] == vs;
     IDirect3DVertexBuffer8 *src = NULL;
     UINT stride = 0;
     if (!ours || FAILED(IDirect3DDevice8_GetStreamSource(dev, 0, &src, &stride)) || !src || stride != sizeof(struct cvert)) {
         if (src) IDirect3DVertexBuffer8_Release(src);
+        return draw(dev, type, start, count);
+    }
+    capture_draw(dev, src, type, start, count);
+    if (!settings.smooth) {
+        IDirect3DVertexBuffer8_Release(src);
         return draw(dev, type, start, count);
     }
 

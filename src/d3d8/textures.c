@@ -534,6 +534,16 @@ static int bind_replacement(IDirect3DDevice8 *dev, DWORD stage, IDirect3DBaseTex
     return rep != NULL;
 }
 
+// Fingerprint of the game's texture bound at stage (0 if none or unknown).
+UINT64 textures_bound_hash(DWORD stage)
+{
+    EnterCriticalSection(&lock);
+    struct tex_entry *e = stage < STAGES && bound[stage] ? tex_lookup((IDirect3DTexture8 *)bound[stage], 0) : NULL;
+    UINT64 h = e ? e->hash : 0;
+    LeaveCriticalSection(&lock);
+    return h;
+}
+
 // The last texture binds, for crash reports.
 static struct { DWORD stage; void *tex, *caller; } recent[16];
 static LONG nrecent;

@@ -63,3 +63,6 @@ void settings_get(const char *key, const char *def, char *out, DWORD size);
 int redirect_call(BYTE *at, void *expect, void *to);
 HRESULT smooth_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
                     HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT));
+void capture_frame(void);
+void capture_draw(IDirect3DDevice8 *dev, IDirect3DVertexBuffer8 *vb, D3DPRIMITIVETYPE type, UINT start, UINT count);
+UINT64 textures_bound_hash(DWORD stage);

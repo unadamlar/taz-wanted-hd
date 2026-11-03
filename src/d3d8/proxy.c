@@ -86,6 +86,7 @@ static HRESULT WINAPI hook_Present(IDirect3DDevice8 *dev, CONST RECT *src, CONST
     video_frame(dev);
     overlay_frame(dev);
     screenshot_frame(dev);
+    capture_frame();
     if (settings.fps_limit > 0) limit_frame_rate(settings.fps_limit);
     return real_Present(dev, src, dst, wnd, dirty);
 }
