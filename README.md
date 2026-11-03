@@ -2,7 +2,7 @@
 
 An unofficial fan remaster mod for the 2002 PC release of Taz: Wanted. It runs the game at your
 desktop resolution and screen shape, replaces its textures and intro videos with 4x upscaled
-versions, rounds off the characters' low-poly models, gives Taz rounder hands and cleaner shading, adds WASD and mouse-look controls, speeds up the
+versions, rounds off the characters' low-poly models, gives Taz rounder hands, cleaner shading and bouncier ears, fur and tail, adds WASD and mouse-look controls, speeds up the
 menu text and adds quicksave/quickload (F5/F9).
 
 It is a mod, not a copy of the game: you need your own retail install and its disc (or disc image).
@@ -29,7 +29,8 @@ tools/videos.py "$GAME" extracted/videos
 blender -b -P tools/meshview.py -- extracted/meshes/taz.blend 0 capture-001.bin capture-020.bin capture-040.bin capture-060.bin
 blender -b extracted/meshes/taz.blend -P tools/hands.py -- extracted/meshes/taz-hands.blend
 blender -b extracted/meshes/taz-hands.blend -P tools/normals.py -- extracted/meshes/taz-final.blend
-blender -b extracted/meshes/taz-final.blend -P tools/meshpack.py -- extracted/meshes/out
+blender -b extracted/meshes/taz-final.blend -P tools/springs.py -- extracted/meshes/taz-springs.blend
+blender -b extracted/meshes/taz-springs.blend -P tools/meshpack.py -- extracted/meshes/out
 tools/package.sh 0.2                                         # dist/taz-wanted-hd-0.2.zip
 ```
 

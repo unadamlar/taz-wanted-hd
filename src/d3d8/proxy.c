@@ -67,10 +67,13 @@ static void limit_frame_rate(int fps)
 }
 
 // Logs the average frame rate every 10 seconds.
+DWORD presents;
+
 static HRESULT WINAPI hook_Present(IDirect3DDevice8 *dev, CONST RECT *src, CONST RECT *dst, HWND wnd, CONST RGNDATA *dirty)
 {
     static DWORD start, frames;
     DWORD now = GetTickCount();
+    presents++;
     if (!start) start = now;
     if (++frames, now - start >= 10000) {
         log_line("fps: %.1f", frames * 1000.0 / (now - start));

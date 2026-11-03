@@ -1,5 +1,5 @@
 // Saves frames to taz-hd\shots: F12 or an empty taz-hd\shot file saves the next frame; a number N in
-// taz-hd\shot saves the next N frames at 1/8 size (for measuring animations in scripted tests).
+// taz-hd\shot saves the next N frames at 1/8 size, or 1/S for "N S" (for checking motion in scripted tests).
 #define COBJMACROS
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,6 +7,8 @@
 
 #define TRIGGER "taz-hd\\shot"
 #define SHOT_DIR "taz-hd\\shots"
+
+static int burst_scale = 8;
 
 static int requested(void)
 {
@@ -17,7 +19,9 @@ static int requested(void)
     if (pressed) return 1;
     FILE *f = fopen(TRIGGER, "r");
     if (!f) return 0;
-    if (fscanf(f, "%d", &n) != 1 || n < 1) n = 1;
+    burst_scale = 8;
+    if (fscanf(f, "%d %d", &n, &burst_scale) < 1 || n < 1) n = 1;
+    if (burst_scale < 1) burst_scale = 1;
     fclose(f);
     DeleteFileA(TRIGGER);
     return n;
@@ -33,7 +37,7 @@ void screenshot_frame(IDirect3DDevice8 *dev)
     } else if (!n && !burst) {
         return;
     }
-    int scale = burst ? 8 : 1;
+    int scale = burst ? burst_scale : 1;
 
     IDirect3DSurface8 *bb = NULL, *copy = NULL;
     D3DSURFACE_DESC d;

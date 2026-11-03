@@ -6,6 +6,7 @@ import bpy, bmesh, struct, sys, os, json
 outdir = sys.argv[sys.argv.index('--') + 1]
 ob = bpy.data.objects['model']
 batches, sources = json.loads(ob['batches']), json.loads(ob['sources'])
+springs = json.loads(ob.get('springs', '[]'))
 bm = bmesh.new()
 bm.from_mesh(ob.data)
 bmesh.ops.triangulate(bm, faces=bm.faces[:])
@@ -53,9 +54,10 @@ for tb, have, take in groups:
             verts += struct.pack('<3f3f4B3fI2f', *p, *w, *idx, *n, 0x7f7f7f7f, *t)
     gdata += struct.pack('<4I16H', first, len(take), tb, len(have), *(have + [0] * (16 - len(have))))
     first += len(take) * 3
-head = struct.pack('<5IQ', 0x314d5a54, len(batches), len(sources), len(groups), first, int(ob['hash'], 16))
+head = struct.pack('<6IQ', 0x324d5a54, len(batches), len(sources), len(springs), len(groups), first, int(ob['hash'], 16))
 body = b''.join(struct.pack('<3I', *b) for b in batches) + b''.join(struct.pack('<2H', *s) for s in sources)
+body += b''.join(struct.pack('<I10f', s['parent'], *s['pivot'], *s['tip'], s['stiffness'], s['damping'], s['amount'], s['limit']) for s in springs)
 os.makedirs(outdir, exist_ok=True)
 path = os.path.join(outdir, ob['hash'] + '.bin')
 open(path, 'wb').write(head + body + gdata + verts)
-print('packed %s: %d triangles in %d groups' % (path, len(tris), len(groups)))
+print('packed %s: %d triangles in %d groups, %d springs' % (path, len(tris), len(groups), len(springs)))

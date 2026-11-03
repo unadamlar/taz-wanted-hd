@@ -3,6 +3,9 @@
 // character as a pass of small batches, each uploading its own few bone matrices, and draws every pass
 // in the same order. We skip those draws, keeping each batch's matrices and texture, and at the pass's
 // last batch draw the replacement in groups of up to 16 bones, smoothed like any character.
+// Springs are extra bones the game doesn't have: each hangs off a game bone and lags behind it when
+// it moves, then swings back, so ears, fur and tails bounce.
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,21 +16,29 @@
 #define SEEN 1024
 
 #pragma pack(push, 1)
-struct head { DWORD magic, nbatches, nbones, ngroups, nverts; UINT64 hash; };
+struct head { DWORD magic, nbatches, nbones, nsprings, ngroups, nverts; UINT64 hash; };
 struct batch { DWORD start, count, type; };
 struct source { WORD batch, reg; }; // bone i's matrix is register reg of batch's palette
+// Bone nbones + i: swings about pivot (bind pose) after its parent bone; tip is where it points.
+// It turns by amount times the angle its simulated tip lags by, easing off towards limit radians.
+struct spring { DWORD parent; float pivot[3], tip[3], stiffness, damping, amount, limit; };
 struct group { DWORD first, tris, texbatch, nbones; WORD bones[16]; };
 #pragma pack(pop)
-// File: head, batch[nbatches] (draw order), source[nbones], group[ngroups], 52-byte vertices[nverts].
+// File: head, batch[nbatches] (draw order), source[nbones], spring[nsprings], group[ngroups],
+// 52-byte vertices[nverts].
 
 struct rep {
     BYTE *file;
     struct head *h;
     struct batch *batches;
     struct source *sources;
+    struct spring *springs;
     struct group *groups;
     BYTE *verts;
-    float (*bones)[12];
+    float (*bones)[12];     // game bones, then springs
+    float (*swing)[10];     // per spring: tip position and velocity (world), started, where the tip should have been last frame
+    DWORD frame;
+    LARGE_INTEGER when;
     IDirect3DBaseTexture8 **tex;
     IDirect3DVertexBuffer8 *vb;
     UINT next;
@@ -54,16 +65,18 @@ static void load(void)
         struct rep *r = &reps[nreps];
         r->file = b;
         r->h = (struct head *)b;
-        if (n < sizeof *r->h || r->h->magic != 0x314d5a54) { free(b); continue; } // "TZM1"
+        if (n < sizeof *r->h || r->h->magic != 0x324d5a54) { free(b); continue; } // "TZM2"
         r->batches = (struct batch *)(r->h + 1);
         r->sources = (struct source *)(r->batches + r->h->nbatches);
-        r->groups = (struct group *)(r->sources + r->h->nbones);
+        r->springs = (struct spring *)(r->sources + r->h->nbones);
+        r->groups = (struct group *)(r->springs + r->h->nsprings);
         r->verts = (BYTE *)(r->groups + r->h->ngroups);
         if (r->verts + r->h->nverts * 52 != b + n) { free(b); continue; }
-        r->bones = calloc(r->h->nbones, sizeof *r->bones);
+        r->bones = calloc(r->h->nbones + r->h->nsprings, sizeof *r->bones);
+        r->swing = calloc(r->h->nsprings, sizeof *r->swing);
         r->tex = calloc(r->h->nbatches, sizeof *r->tex);
         nreps++;
-        log_line("mesh: %s, %lu vertices in %lu groups for %lu batches", path, r->h->nverts, r->h->ngroups, r->h->nbatches);
+        log_line("mesh: %s, %lu vertices in %lu groups for %lu batches, %lu springs", path, r->h->nverts, r->h->ngroups, r->h->nbatches, r->h->nsprings);
     } while (FindNextFileA(f, &fd));
     FindClose(f);
 }
@@ -96,6 +109,82 @@ void mesh_forget(IDirect3DVertexBuffer8 *vb)
         if (seen[i].vb == vb) seen[i] = seen[--nseen];
 }
 
+static void apply(const float *m, const float *p, float *out) // 3x4 bone matrix (rows) times point
+{
+    for (int i = 0; i < 3; i++) out[i] = m[i * 4] * p[0] + m[i * 4 + 1] * p[1] + m[i * 4 + 2] * p[2] + m[i * 4 + 3];
+}
+
+static float dot(const float *a, const float *b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+
+// Steps each spring's tip toward where its parent puts it (once per frame), then poses the spring
+// bones: the parent's matrix turned about the pivot by the angle between where the tip should be and
+// where it is.
+static void pose_springs(struct rep *r)
+{
+    LARGE_INTEGER now, freq;
+    QueryPerformanceCounter(&now);
+    QueryPerformanceFrequency(&freq);
+    float dt = 0;
+    if (r->frame != presents) {
+        dt = r->frame ? (float)(now.QuadPart - r->when.QuadPart) / freq.QuadPart : 0;
+        if (dt > 0.1f) dt = 0; // a hitch or a long pause: settle instead of flinging
+        r->frame = presents;
+        r->when = now;
+    }
+    for (UINT i = 0; i < r->h->nsprings; i++) {
+        const struct spring *sp = &r->springs[i];
+        const float *m = r->bones[sp->parent];
+        float *st = r->swing[i], x[3], t[3], a[3], b[3];
+        apply(m, sp->pivot, x);
+        apply(m, sp->tip, t);
+        for (int k = 0; k < 3; k++) a[k] = t[k] - x[k];
+        float len = sqrtf(dot(a, a)), d2 = 0;
+        for (int k = 0; k < 3; k++) d2 += (st[k] - t[k]) * (st[k] - t[k]);
+        if (!st[6] || d2 > 4 * len * len) { // new or teleported: start at rest
+            for (int k = 0; k < 3; k++) st[k] = st[7 + k] = t[k], st[3 + k] = 0;
+            st[6] = 1;
+        }
+        if (dt) { // damped against the parent's own motion: only speeding up, slowing and turning swing it
+            float vt[3], p0[3];
+            for (int k = 0; k < 3; k++) vt[k] = (t[k] - st[7 + k]) / dt, p0[k] = st[7 + k];
+            for (float done = 0; done < dt; done += 1.0f / 240) {
+                float h = dt - done < 1.0f / 240 ? dt - done : 1.0f / 240;
+                for (int k = 0; k < 3; k++) {
+                    float want = p0[k] + vt[k] * (done + h);
+                    st[3 + k] += (sp->stiffness * (want - st[k]) - sp->damping * (st[3 + k] - vt[k])) * h;
+                    st[k] += st[3 + k] * h;
+                }
+            }
+            for (int k = 0; k < 3; k++) st[7 + k] = t[k];
+        }
+        for (int k = 0; k < 3; k++) b[k] = st[k] - x[k];
+        float lb = sqrtf(dot(b, b));
+        if (lb > 1e-6f)
+            for (int k = 0; k < 3; k++) st[k] = x[k] + b[k] * len / lb, b[k] *= len / lb; // keeps its length
+        // Rotation taking a to b, at most limit radians (Rodrigues).
+        float ax[3] = { a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0] };
+        float s = sqrtf(dot(ax, ax)), c = dot(a, b), ang = sp->limit * tanhf(atan2f(s, c) * sp->amount / sp->limit);
+        float R[9] = { 1, 0, 0, 0, 1, 0, 0, 0, 1 };
+        if (s > 1e-9f) {
+            for (int k = 0; k < 3; k++) ax[k] /= s;
+            float co = cosf(ang), si = sinf(ang), oc = 1 - co;
+            float X = ax[0], Y = ax[1], Z = ax[2];
+            float m3[9] = { co + X * X * oc, X * Y * oc - Z * si, X * Z * oc + Y * si,
+                            Y * X * oc + Z * si, co + Y * Y * oc, Y * Z * oc - X * si,
+                            Z * X * oc - Y * si, Z * Y * oc + X * si, co + Z * Z * oc };
+            memcpy(R, m3, sizeof R);
+        }
+        float *o = r->bones[r->h->nbones + i];
+        for (int row = 0; row < 3; row++) {
+            for (int col = 0; col < 3; col++)
+                o[row * 4 + col] = R[row * 3] * m[col] + R[row * 3 + 1] * m[4 + col] + R[row * 3 + 2] * m[8 + col];
+            float tr = 0;
+            for (int k = 0; k < 3; k++) tr += R[row * 3 + k] * (m[k * 4 + 3] - x[k]);
+            o[row * 4 + 3] = tr + x[row];
+        }
+    }
+}
+
 static void draw_replacement(IDirect3DDevice8 *dev, struct rep *r, IDirect3DVertexBuffer8 *game,
                              HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT))
 {
@@ -108,6 +197,7 @@ static void draw_replacement(IDirect3DDevice8 *dev, struct rep *r, IDirect3DVert
             IDirect3DVertexBuffer8_Unlock(r->vb);
         }
     }
+    pose_springs(r);
     float saved[48][4], c[48][4];
     IDirect3DDevice8_GetVertexShaderConstant(dev, 0, saved, 48);
     IDirect3DBaseTexture8 *cur = textures_bound(0);
