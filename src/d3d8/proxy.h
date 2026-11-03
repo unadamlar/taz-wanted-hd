@@ -10,7 +10,7 @@ void textures_frame(void);
 void textures_dump_recent(void);
 void widescreen_patch(void);
 
-struct settings { int hd_textures, hd_models, vsync, antialiasing, fps_limit, smooth, wasd, mouse; float menu_speed; int exe_known, passthrough, taz_style; };
+struct settings { int hd_textures, hd_models, vsync, antialiasing, fps_limit, smooth, wasd, mouse, draw; float menu_speed; int exe_known, passthrough, taz_style; };
 extern struct settings settings;
 void settings_load(void);
 void settings_frame(void);
@@ -52,6 +52,8 @@ void menu_frame(void);
 void setting_step(int i, int dir);
 void settings_refresh(void);
 void menu_patch(void);
+void drawdist_patch(void);
+void drawdist_frame(void);
 void smooth_install(IDirect3DDevice8 *dev);
 void controls_patch(void);
 void controls_frame(void);

@@ -15,6 +15,8 @@ What it does
   keyboard or controller.
 - Rounder, smoother characters with cleaner cartoon shading; Taz gets new hands and his ears, fur
   and tail bounce as he moves.
+- Sees further: scenery and objects in the distance stay visible instead of popping in (Draw
+  Distance: Original, Far or Very Far).
 - F11 switches between the original graphics and the new ones, for comparing.
 - Quicksave (F5) and quickload (F9) anywhere in a level. The quicksave lasts until you leave the
   level or quit the game; the game's own save slots work as before.
@@ -34,7 +36,7 @@ The disc or disc image must be visible to Wine as a CD drive.
 Settings
 Game Options (main menu) and Options (pause menu) have rows for Resolution, HD Textures, Vsync,
 Anti-Aliasing (Off, 2x, 4x or 8x; 4x by default), Smooth Characters, Taz Style,
-Controls, Mouse Look, Frame
+Draw Distance, Controls, Mouse Look, Frame
 Cap and Menu Text Speed (Resolution, Vsync, Anti-Aliasing and Frame Cap only on the main menu's
 Game Options; there Controls opens a page with Controls, Mouse Look and the keys): press Select to
 change one. Changes apply at once (a resolution, vsync or anti-aliasing change takes about a
