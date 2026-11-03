@@ -98,24 +98,28 @@ struct item {
     const char *label, *about, *key, *def;
     const char *choices[12];
     int count, cur;
-    int where; // 0 both menus, MAIN Game Options only, PAUSE pause menu (and the Controls page) only
+    int pages; // PAGE_* where it has a row
 };
 
-enum { MAIN = 1, PAUSE = 2 };
+#define FRONT PAGE_FRONT
+#define PAUSE PAGE_PAUSE
+#define GFX PAGE_GFX
+#define KEYS PAGE_KEYS
 
 static struct item items[] = {
-    { "Resolution", "Desktop matches your screen", "resolution", "auto", { "auto" }, 1, 0, MAIN },
-    { "HD Textures", "Sharper, upscaled textures", "hd_textures", "1", { "0", "1" }, 2, 0, 0 },
-    { "Vsync", "Stops the picture tearing", "vsync", "1", { "0", "1" }, 2, 0, MAIN },
-    { "Anti-Aliasing", "Smooths jagged edges", "antialiasing", "4", { "0", "2", "4", "8" }, 4, 0, MAIN },
-    { "Smooth Characters", "Rounder characters with smoother shading", "smooth_characters", "1", { "0", "1" }, 2, 0, 0 },
-    { "Taz Style", "Other looks for Taz: crisper, softer or furrier", "taz_style", "current", { "current", "cartoon", "soft", "fur" }, 4, 0, 0 },
-    { "Draw Distance", "How far away scenery and objects stay visible", "draw_distance", "2", { "1", "2", "4" }, 3, 0, 0 },
-    { "Controls", "WASD and mouse, or the original keys", "controls", "wasd", { "wasd", "classic" }, 2, 0, PAUSE },
-    { "Controls", "Keys, mouse look and layout", "keys", "", { "" }, 0, 0, MAIN },
-    { "Mouse Look", "Camera speed when turning with the mouse", "mouse_sensitivity", "5", { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }, 11, 0, PAUSE },
-    { "Frame Cap", "Limits the frame rate", "fps_limit", "0", { "0", "30", "60", "120", "144" }, 5, 0, MAIN },
-    { "Menu Text Speed", "How fast menu text slides in. 1x is the original speed", "menu_text_speed", "3", { "1", "2", "3", "4" }, 4, 0, 0 },
+    { "Resolution", "Desktop matches your screen", "resolution", "auto", { "auto" }, 1, 0, GFX }, // first: fill_resolutions
+    { "Graphics", "Resolution, anti-aliasing, draw distance and more", "graphics", "", { "" }, 0, 0, FRONT },
+    { "HD Textures", "Sharper, upscaled textures", "hd_textures", "1", { "0", "1" }, 2, 0, GFX | PAUSE },
+    { "Vsync", "Stops the picture tearing", "vsync", "1", { "0", "1" }, 2, 0, GFX },
+    { "Anti-Aliasing", "Smooths jagged edges", "antialiasing", "4", { "0", "2", "4", "8" }, 4, 0, GFX },
+    { "Smooth Characters", "Rounder characters with smoother shading", "smooth_characters", "1", { "0", "1" }, 2, 0, GFX },
+    { "Taz Style", "Other looks for Taz: crisper, softer or furrier", "taz_style", "current", { "current", "cartoon", "soft", "fur" }, 4, 0, GFX | PAUSE },
+    { "Draw Distance", "How far away scenery and objects stay visible", "draw_distance", "2", { "1", "2", "4" }, 3, 0, GFX | PAUSE },
+    { "Frame Cap", "Limits the frame rate", "fps_limit", "0", { "0", "30", "60", "120", "144" }, 5, 0, GFX },
+    { "Controls", "WASD and mouse, or the original keys", "controls", "wasd", { "wasd", "classic" }, 2, 0, PAUSE | KEYS },
+    { "Controls", "Keys, mouse look and layout", "keys", "", { "" }, 0, 0, FRONT },
+    { "Mouse Look", "Camera speed when turning with the mouse", "mouse_sensitivity", "5", { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }, 11, 0, PAUSE | KEYS },
+    { "Menu Text Speed", "How fast menu text slides in. 1x is the original speed", "menu_text_speed", "3", { "1", "2", "3", "4" }, 4, 0, FRONT },
 };
 
 static char resolutions[11][16];
@@ -156,9 +160,9 @@ int setting_is_link(int i)
     return items[i].count == 0;
 }
 
-int setting_on_page(int i, int pause)
+int setting_on_page(int i, int page)
 {
-    return items[i].where != (pause ? MAIN : PAUSE);
+    return (items[i].pages & page) != 0;
 }
 
 int setting_find(const char *key)

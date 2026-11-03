@@ -31,7 +31,6 @@ typedef void (__attribute__((thiscall)) *show_page_fn)(void *book, const char *n
 #define FRONT_BOOK (*(BYTE **)(FRONTEND + 0x68))   // its pages; +0x148 the current one's node, page at +0x20
 #define OPTIONS_PAGE (*(const char **)0x650258)    // "options"
 #define OPTIONS_STATE (*(int **)0x739b50)          // 7 or 8: the Game Options update leaves Back alone
-#define KEYS_PAGE "TAZHD_KEYS"
 #define SELECT_ITEM ((void *(__attribute__((thiscall)) *)(void *page, void *item))0x5449c0)
 // A page title as Game Options builds its own (FUN_00524db0 at 0x524e70..0x524f36).
 #define GAME_ALLOC ((BYTE *(*)(int size, const char *file, int line, int flags))0x559610)
@@ -79,6 +78,11 @@ static int row_of(struct menu *m, void *item)
     return -1;
 }
 
+struct sub;
+static struct sub gfx, keys;
+static void sub_open(struct sub *s);
+static void show_about(struct menu *m, int setting);
+
 // Page callbacks get {item, event}: 0 highlighted, 1 left, 2 Select pressed, 3 back.
 static void handle(struct menu *m, int *event, int popup_open)
 {
@@ -88,15 +92,19 @@ static void handle(struct menu *m, int *event, int popup_open)
         return;
     }
     if (event[1] == 2 && setting_is_link(i)) {
-        if (m == &front) menu_open_keys();
+        if (m == &front) sub_open(i == setting_find("graphics") ? &gfx : &keys);
     } else if (event[1] == 2) {
         setting_step(i, 1);
         show_value(m->items[i], i);
-    } else if (event[1] == 0 && m->about) {
-        BYTE *info = m == &front ? FRONT_INFO : PAUSE_INFO;
-        set_text(m->about, setting_about(i));
-        if (info) ((void (__attribute__((thiscall)) *)(void *, const char *, int))0x549370)(info, m->about_page, 0);
-    }
+    } else if (event[1] == 0) show_about(m, i);
+}
+
+static void show_about(struct menu *m, int setting)
+{
+    BYTE *info = m == &front ? FRONT_INFO : PAUSE_INFO;
+    if (!m->about) return;
+    set_text(m->about, setting_about(setting));
+    if (info) SHOW_PAGE(info, m->about_page, 0);
 }
 
 static void front_callback(int *event) { handle(&front, event, FRONT_POPUP != NULL); }
@@ -107,7 +115,7 @@ static void add_rows(struct menu *m, BYTE *page, void (*callback)(int *))
     settings_refresh();
     for (int i = 0; i < setting_count(); i++) {
         m->items[i] = NULL;
-        if (!setting_on_page(i, m == &pause_menu)) continue;
+        if (!setting_on_page(i, m == &pause_menu ? PAGE_PAUSE : PAGE_FRONT)) continue;
         BYTE *item = ADD_TEXT(page, LENT_STRING, 1);
         *(DWORD *)(item + 0x108) &= ~2u; // as the game does for its rows
         snprintf((char *)item + 4, 32, "TAZHD_%d", i);
@@ -150,50 +158,69 @@ static void *__attribute__((thiscall)) pause_vibration(void *page, int string_id
     return pause_menu.about = ADD_TEXT(page, string_id, new_row);
 }
 
-// The Controls page: Controls and Mouse Look rows, then one row per action ("Jump: Space"; Select,
-// then press the new key) and Reset to Defaults. It is a page of the frontend book, shown from Game
-// Options' Controls row while the Game Options update keeps running; Back returns to Game Options.
-static const char *KEYS_SETTINGS[] = { "controls", "mouse_sensitivity" };
-#define KEYS_FIRST (int)(sizeof KEYS_SETTINGS / sizeof *KEYS_SETTINGS) // rows before the actions
-static struct { void *page, *rows[20], *reset; int count, open, closing, saved_state; } keys;
+// Pages of the frontend book opened from rows on Game Options: Graphics (setting rows) and Controls
+// (Controls and Mouse Look, then one row per action, "Jump: Space": Select, then press the new key, and
+// Reset to Defaults). Game Options' update keeps running while one is open; Back returns to it.
+struct sub {
+    const char *name, *title;
+    int page, actions; // PAGE_* of its setting rows; action rows follow them
+    void *page_item, *rows[24], *reset;
+    int settings[16], nset, count;
+};
+static struct sub gfx = { .name = "TAZHD_GFX", .title = "Graphics", .page = PAGE_GFX },
+                  keys = { .name = "TAZHD_KEYS", .title = "Controls", .page = PAGE_KEYS, .actions = 1 };
+static struct sub *open_sub;
+static int closing, saved_state;
 
-static void keys_show(void)
+static void sub_show(struct sub *s)
 {
-    char s[64];
-    for (int r = 0; r < KEYS_FIRST; r++) show_value(keys.rows[r], setting_find(KEYS_SETTINGS[r]));
-    for (int r = KEYS_FIRST; r < keys.count; r++) {
-        controls_row_text(r - KEYS_FIRST, s, sizeof s);
-        set_text(keys.rows[r], s);
+    char t[64];
+    for (int r = 0; r < s->nset; r++) show_value(s->rows[r], s->settings[r]);
+    for (int r = s->nset; r < s->count; r++) {
+        controls_row_text(r - s->nset, t, sizeof t);
+        set_text(s->rows[r], t);
     }
 }
 
-static int keys_current(void);
+static void keys_show(void) { sub_show(&keys); }
 
-static void keys_close(void)
+static int sub_current(struct sub *s)
 {
-    if (keys_current()) SHOW_PAGE(FRONT_BOOK, OPTIONS_PAGE, 0);
-    if (OPTIONS_STATE) *OPTIONS_STATE = keys.saved_state;
-    keys.open = keys.closing = 0;
+    BYTE *node = FRONT_BOOK ? *(BYTE **)(FRONT_BOOK + 0x148) : NULL, *page = node ? *(BYTE **)(node + 0x20) : NULL;
+    return page && !strcmp((char *)page + 4, s->name);
 }
 
-static void keys_callback(int *event)
+static void sub_close(void)
 {
-    if (controls_capturing()) return;
-    if (event[1] == 3) keys.closing = 1; // after this frame's Game Options update, which would see Back too
+    if (sub_current(open_sub)) SHOW_PAGE(FRONT_BOOK, OPTIONS_PAGE, 0);
+    if (OPTIONS_STATE) *OPTIONS_STATE = saved_state;
+    show_about(&front, setting_find(open_sub == &gfx ? "graphics" : "keys")); // its row is highlighted again
+    open_sub = NULL;
+    closing = 0;
+}
+
+static void sub_event(struct sub *s, int *event)
+{
+    if (s->actions && controls_capturing()) return;
+    if (event[1] == 3) closing = 1; // after this frame's Game Options update, which would see Back too
+    for (int r = 0; r < s->nset; r++)
+        if ((void *)event[0] == s->rows[r] && event[1] == 0) show_about(&front, s->settings[r]);
     if (event[1] != 2) return;
-    if ((void *)event[0] == keys.reset) controls_reset_keys();
-    for (int r = 0; r < keys.count; r++)
-        if ((void *)event[0] == keys.rows[r]) {
-            if (r < KEYS_FIRST) setting_step(setting_find(KEYS_SETTINGS[r]), 1);
-            else controls_capture(r - KEYS_FIRST, keys_show);
+    if ((void *)event[0] == s->reset) controls_reset_keys();
+    for (int r = 0; r < s->count; r++)
+        if ((void *)event[0] == s->rows[r]) {
+            if (r < s->nset) setting_step(s->settings[r], 1);
+            else controls_capture(r - s->nset, keys_show);
         }
-    keys_show();
+    sub_show(s);
 }
 
-static void __cdecl build_options(BYTE *frontend)
+static void gfx_callback(int *event) { sub_event(&gfx, event); }
+static void keys_callback(int *event) { sub_event(&keys, event); }
+
+static void build_sub(BYTE *frontend, struct sub *s, void (*callback)(int *))
 {
-    BUILD_OPTIONS(frontend);
-    BYTE *page = ADD_PAGE(*(BYTE **)(frontend + 0x68), KEYS_PAGE, 0, 0, 0);
+    BYTE *page = ADD_PAGE(*(BYTE **)(frontend + 0x68), s->name, 0, 0, 0);
     if (!page) return;
     *(DWORD *)(page + 0x124) |= 1;           // as Game Options sets its page up (FUN_00547220, FUN_005472b0)
     *(DWORD *)(page + 0x124) = (*(DWORD *)(page + 0x124) & ~0x3f00u) | 0x800;
@@ -203,47 +230,53 @@ static void __cdecl build_options(BYTE *frontend)
         for (int i = 0; i < 2; i++) COLOUR(title + 0x380 + i * 4, 0xff, 0, 0xff, 0xff);
         *(void **)title = TITLE_VTABLE;
         TEXT_INIT(title, LENT_STRING);
-        set_text(title, "Controls");
+        set_text(title, s->title);
         ADD_ITEM(page, title, 0);
         TEXT_STYLE(title, TITLE_STYLE);
         ((void *(__attribute__((thiscall)) *)(void *, int))(*(void ***)title)[0x6c / 4])(title, 0x80);
         TEXT_FLAGS(title, 0, 0);
     }
-    keys.count = KEYS_FIRST + controls_row_count();
-    for (int r = 0; r <= keys.count && r < 20; r++) {
+    settings_refresh();
+    s->nset = 0;
+    for (int i = 0; i < setting_count() && s->nset < 16; i++)
+        if (setting_on_page(i, s->page)) s->settings[s->nset++] = i;
+    s->count = s->nset + (s->actions ? controls_row_count() : 0);
+    if (s->count > 23) s->count = 23;
+    for (int r = 0; r < s->count + s->actions; r++) {
         BYTE *item = ADD_TEXT(page, LENT_STRING, 1);
         *(DWORD *)(item + 0x108) &= ~2u;
-        snprintf((char *)item + 4, 32, "TAZHD_K%d", r);
-        if (r < keys.count) keys.rows[r] = item;
-        else set_text(keys.reset = item, "Reset to Defaults");
+        snprintf((char *)item + 4, 32, "%s%d", s->name, r);
+        if (r < s->count) s->rows[r] = item;
+        else set_text(s->reset = item, "Reset to Defaults");
     }
-    keys_show();
-    *(void **)(page + 0x110) = keys_callback;
-    keys.page = page;
-    log_line("menu: keys page %p", page);
+    sub_show(s);
+    *(void **)(page + 0x110) = callback;
+    s->page_item = page;
+    log_line("menu: %s page %p", s->title, page);
 }
 
-void menu_open_keys(void)
+static void __cdecl build_options(BYTE *frontend)
 {
-    if (keys.open || !OPTIONS_STATE) return;
-    keys.saved_state = *OPTIONS_STATE;
+    BUILD_OPTIONS(frontend);
+    build_sub(frontend, &gfx, gfx_callback);
+    build_sub(frontend, &keys, keys_callback);
+}
+
+static void sub_open(struct sub *s)
+{
+    if (open_sub || !OPTIONS_STATE || !s->page_item) return;
+    saved_state = *OPTIONS_STATE;
     *OPTIONS_STATE = 7;
-    SHOW_PAGE(FRONT_BOOK, KEYS_PAGE, 0);
-    SELECT_ITEM(keys.page, keys.rows[0]);
-    keys.open = 1;
-    keys_show();
-}
-
-static int keys_current(void)
-{
-    BYTE *node = FRONT_BOOK ? *(BYTE **)(FRONT_BOOK + 0x148) : NULL, *page = node ? *(BYTE **)(node + 0x20) : NULL;
-    return page && !strcmp((char *)page + 4, KEYS_PAGE);
+    SHOW_PAGE(FRONT_BOOK, s->name, 0);
+    SELECT_ITEM(s->page_item, s->rows[0]);
+    open_sub = s;
+    sub_show(s);
 }
 
 // Per frame, after the game's update: Back was pressed, or something else changed the page (the idle demo).
 void menu_frame(void)
 {
-    if (keys.open && (keys.closing || !keys_current())) keys_close();
+    if (open_sub && (closing || !sub_current(open_sub))) sub_close();
 }
 
 int redirect_call(BYTE *at, void *expect, void *to)
@@ -264,5 +297,5 @@ void menu_patch(void)
     else if (!redirect_call(FRONT_BLANK, (void *)ADD_ITEM, front_blank) || !redirect_call(PAUSE_VIBRATION, (void *)ADD_TEXT, pause_vibration))
         log_line("menu: unexpected code, no descriptions under our rows");
     if (!redirect_call(BUILD_OPTIONS_CALL, (void *)BUILD_OPTIONS, build_options))
-        log_line("menu: unexpected code, no Keys page");
+        log_line("menu: unexpected code, no Graphics or Controls page");
 }

@@ -44,10 +44,10 @@ int setting_count(void);
 const char *setting_label(int i);
 const char *setting_shown(int i);
 const char *setting_about(int i);
-int setting_on_page(int i, int pause);
+enum { PAGE_FRONT = 1, PAGE_PAUSE = 2, PAGE_GFX = 4, PAGE_KEYS = 8 }; // menus with our rows
+int setting_on_page(int i, int page);
 int setting_find(const char *key);
 int setting_is_link(int i);
-void menu_open_keys(void);
 void menu_frame(void);
 void setting_step(int i, int dir);
 void settings_refresh(void);
