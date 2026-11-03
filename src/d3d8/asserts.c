@@ -1,6 +1,6 @@
 // Diagnostics for silent quits. The game's assert handler (0x48eb10) prints to a debug log the
-// release never opens, then exits; we log the failure first. Scene loads (FUN_004b8de0) start with
-// the CD check (FUN_004a1de0), which quits when the disc is missing; we log both.
+// release never opens, then exits; we log the failure first. The save written on each scene change
+// (FUN_004b8de0) starts with the CD check (FUN_004a1de0), which quits when the disc is missing; we log both.
 #include <string.h>
 #include "proxy.h"
 
@@ -16,7 +16,7 @@ static void __cdecl on_assert(const char *file, int line, const char *msg)
 
 __attribute__((used)) static void __cdecl log_scene_request(int scene)
 {
-    log_line("loading scene %d", scene);
+    log_line("saving on the way to scene %d", scene);
 }
 
 __attribute__((used)) static void __cdecl log_cd_result(int missing)

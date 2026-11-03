@@ -127,6 +127,7 @@ static void frame(void)
     int save = pressed(VK_F5), load = pressed(VK_F9);
     if (save) quicksave();
     else if (load) quickload();
+    capture_scene();
     game_frame();
 }
 
