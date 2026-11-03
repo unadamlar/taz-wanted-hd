@@ -33,8 +33,25 @@ that needs a model file: new hands, springs (bouncing ears, fur, tail) and anyth
 | Werewolf | 14 ghost | yes | yes | yes | built with NOHANDS=1 to keep its claws |
 | Cowboy | 16 grandc | yes | yes | yes | |
 | Tarzan | 18 tazhub | yes | yes | partly | only partly in shot |
-| Costume | 10 museum | | | | the costume call (FUN_00430160) left Taz unchanged; needs another way to put it on |
-| Costume | 15 goldmine | | | | same as museum |
+| Ninja | 10 museum | yes | yes | partly | jumping straight to the museum drops Taz into an endless fall; the costume shows for ~24 frames before each respawn takes it off, which was enough to record and to see it drawn |
+| Explorer hat and whip | 15 goldmine | n/a | n/a | yes | the goldmine costume only adds a hat and whip; Taz's own model (and file) is used |
+
+### Bonus levels
+
+Each bonus level carries its own copy of its costume, so each is a separate model (and file). Taz already
+wears it when the level starts; press Jump to close the level's intro page.
+
+| Model | Scene | Captured | Built | Checked in game | Notes |
+|---|---|---|---|---|---|
+| Ninja on the floor polisher | 21 vrmuseum | yes | yes | yes | |
+| Cowboy | 22 vrgrandc | yes | yes | yes | |
+| Jersey 23 and cap | 23 vrdeptstr | yes | yes | yes | |
+| Surfer | 24 deaqua | yes | yes | yes | |
+| SWAT | 25 deconstruct | | | | jumping there drops Taz into an endless fall, like the museum |
+| Werewolf | 26 detasmania | yes | yes | yes | NOHANDS=1 |
+| Snowboarder | 27 rcicedome | yes | yes | yes | |
+| Explorer | 28 rcgoldmine | n/a | n/a | | hat and whip on Taz's own model; jumping there also falls |
+| Skater | 29 rcsafari | yes | yes | yes | |
 
 ## Other characters
 
