@@ -34,10 +34,10 @@ Same files, plus tell Wine to use the mod's d3d8.dll:
 The disc or disc image must be visible to Wine as a CD drive.
 
 Settings
-Game Options (main menu) has rows for Resolution, HD Textures, Vsync, Anti-Aliasing (Off, 2x, 4x
-or 8x; 4x by default), Smooth Characters, Taz Style, Draw Distance, Controls (a page with Controls,
-Mouse Look and the keys), Frame Cap and Menu Text Speed. Options in the pause menu has HD Textures,
-Taz Style, Draw Distance, Controls and Mouse Look. Press Select to change one. Changes apply at once
+Game Options (main menu) has Graphics (a page with Resolution, HD Textures, Vsync, Anti-Aliasing
+(Off, 2x, 4x or 8x; 4x by default), Smooth Characters, Taz Style, Draw Distance and Frame Cap),
+Controls (a page with Controls, Mouse Look and the keys) and Menu Text Speed. Options in the pause
+menu has HD Textures, Taz Style, Draw Distance, Controls and Mouse Look. Press Select to change one. Changes apply at once
 (a resolution, vsync or anti-aliasing change takes about a second) and are saved in taz-hd.ini in
 the game folder. Changing the resolution, vsync or anti-aliasing discards the quicksave.
 The game's Widescreen option is gone: the picture always matches your screen's shape.
