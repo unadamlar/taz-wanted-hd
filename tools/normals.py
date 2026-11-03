@@ -1,13 +1,15 @@
 # Blender: evens out a character's shading normals so its cel-shading bands have clean, rounded edges
 # instead of ragged ones (the game's bands follow the normals, which in the original models vary
 # unevenly from point to point). Each point's normal is averaged with its neighbours' a few times;
-# hard edges (corners whose normals differ by more than ~30 degrees, like the teeth) keep their own.
+# hard edges (corners whose normals differ by more than ~30 degrees, like the teeth) keep their own,
+# except around the ears' insides, whose rims then smooth into a rounded lip in game.
 # usage: blender -b <file.blend> -P tools/normals.py -- <out.blend>
 import bpy, sys, os
 from mathutils import Vector
 
 out = sys.argv[sys.argv.index('--') + 1]
 ROUNDS = 3
+SOFT = ('ears',)  # materials whose edges smooth over even where they fold
 me = bpy.data.objects['model'].data
 corner = [Vector(n.vector) for n in me.corner_normals]
 point = [Vector() for _ in me.vertices]
@@ -27,6 +29,7 @@ for _ in range(ROUNDS):
             if smooth[j].dot(n) > 0.5: s += smooth[j] * 0.5  # across a fold (lips, teeth) neighbours don't count
         nxt.append(s.normalized() if s.length > 1e-6 else n)
     smooth = nxt
-me.normals_split_custom_set([tuple(smooth[l.vertex_index] if corner[li].dot(point[l.vertex_index]) > 0.87 else corner[li])
+soft = {me.loops[li].vertex_index for p in me.polygons if any(k in me.materials[p.material_index].name for k in SOFT) for li in p.loop_indices}
+me.normals_split_custom_set([tuple(smooth[l.vertex_index] if corner[li].dot(point[l.vertex_index]) > 0.87 or l.vertex_index in soft else corner[li])
                              for li, l in enumerate(me.loops)])
 bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(out))
