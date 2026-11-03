@@ -64,6 +64,8 @@ void settings_load(void)
     settings.vsync = GetPrivateProfileIntA("taz-hd", "vsync", 1, INI);
     settings.fps_limit = GetPrivateProfileIntA("taz-hd", "fps_limit", 0, INI);
     settings.smooth = GetPrivateProfileIntA("taz-hd", "smooth_characters", 1, INI);
+    settings.draw = GetPrivateProfileIntA("taz-hd", "draw_distance", 2, INI);
+    if (settings.draw != 1 && settings.draw != 4) settings.draw = 2;
     settings.mouse = GetPrivateProfileIntA("taz-hd", "mouse_sensitivity", 5, INI);
     GetPrivateProfileStringA("taz-hd", "controls", "wasd", res, sizeof res, INI);
     settings.wasd = _stricmp(res, "classic") != 0;
@@ -74,8 +76,8 @@ void settings_load(void)
     GetPrivateProfileStringA("taz-hd", "resolution", "auto", res, sizeof res, INI);
     UINT w, h;
     if (settings_resolution(res, &w, &h)) write_resolution(w, h); // taz.dat, where the game reads it
-    log_line("settings: resolution=%s hd_textures=%d vsync=%d fps_limit=%d smooth_characters=%d controls=%s mouse_sensitivity=%d menu_text_speed=%.2f%s", res,
-             settings.hd_textures, settings.vsync, settings.fps_limit, settings.smooth, settings.wasd ? "wasd" : "classic", settings.mouse, settings.menu_speed,
+    log_line("settings: resolution=%s hd_textures=%d vsync=%d fps_limit=%d smooth_characters=%d draw_distance=%d controls=%s mouse_sensitivity=%d menu_text_speed=%.2f%s", res,
+             settings.hd_textures, settings.vsync, settings.fps_limit, settings.smooth, settings.draw, settings.wasd ? "wasd" : "classic", settings.mouse, settings.menu_speed,
              settings.passthrough ? " passthrough" : "");
 }
 
@@ -94,6 +96,7 @@ static struct item items[] = {
     { "HD Textures", "Sharper, upscaled textures", "hd_textures", "1", { "0", "1" }, 2, 0, 0 },
     { "Vsync", "Stops the picture tearing", "vsync", "1", { "0", "1" }, 2, 0, MAIN },
     { "Smooth Characters", "Rounder characters with smoother shading", "smooth_characters", "1", { "0", "1" }, 2, 0, 0 },
+    { "Draw Distance", "How far away scenery and objects stay visible", "draw_distance", "2", { "1", "2", "4" }, 3, 0, 0 },
     { "Controls", "WASD and mouse, or the original keys", "controls", "wasd", { "wasd", "classic" }, 2, 0, PAUSE },
     { "Controls", "Keys, mouse look and layout", "keys", "", { "" }, 0, 0, MAIN },
     { "Mouse Look", "Camera speed when turning with the mouse", "mouse_sensitivity", "5", { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }, 11, 0, PAUSE },
@@ -164,6 +167,7 @@ const char *setting_shown(int i)
     if ((!strcmp(it->key, "fps_limit") || !strcmp(it->key, "mouse_sensitivity")) && !strcmp(v, "0")) return "Off";
     if (!strcmp(it->key, "menu_text_speed")) return snprintf(s, sizeof s, "%sx", v), s;
     if (!strcmp(it->key, "resolution") && !strcmp(v, "auto")) return "Desktop";
+    if (!strcmp(it->key, "draw_distance")) return it->cur == 0 ? "Original" : it->cur == 1 ? "Far" : "Very Far";
     if (!strcmp(it->key, "controls")) return strcmp(v, "classic") ? "WASD + Mouse" : "Classic";
     if (it->count == 2 && !strcmp(it->choices[0], "0")) return it->cur ? "On" : "Off";
     return v;
@@ -194,6 +198,7 @@ void setting_step(int i, int dir)
     if (!strcmp(it->key, "menu_text_speed")) menuspeed_set(settings.menu_speed = (float)atof(v));
     else if (!strcmp(it->key, "fps_limit")) settings.fps_limit = atoi(v);
     else if (!strcmp(it->key, "smooth_characters")) settings.smooth = atoi(v);
+    else if (!strcmp(it->key, "draw_distance")) settings.draw = atoi(v);
     else if (!strcmp(it->key, "mouse_sensitivity")) settings.mouse = atoi(v);
     else if (!strcmp(it->key, "controls")) settings.wasd = strcmp(v, "classic") != 0, controls_apply();
     else if (!strcmp(it->key, "hd_textures")) settings.hd_textures = atoi(v), textures_apply();
@@ -204,18 +209,19 @@ void setting_step(int i, int dir)
     }
 }
 
-// F11 flips between the game's own graphics (original textures and models, no smoothing) and
+// F11 flips between the game's own graphics (original textures, models and draw distance, no smoothing) and
 // the mod's, for comparing. Saved settings are left alone; the menus show the saved values.
 void settings_frame(void)
 {
-    static int was, original, hd_textures, smooth, hd_models;
+    static int was, original, hd_textures, smooth, hd_models, draw;
     int down = (GetAsyncKeyState(VK_F11) & 0x8000) && GetForegroundWindow() == *(HWND *)0x753724; // the game's window
     if (down && !was) {
         if ((original = !original)) {
-            hd_textures = settings.hd_textures, smooth = settings.smooth, hd_models = settings.hd_models;
+            hd_textures = settings.hd_textures, smooth = settings.smooth, hd_models = settings.hd_models, draw = settings.draw;
             settings.hd_textures = settings.smooth = settings.hd_models = 0;
+            settings.draw = 1;
         } else {
-            settings.hd_textures = hd_textures, settings.smooth = smooth, settings.hd_models = hd_models;
+            settings.hd_textures = hd_textures, settings.smooth = smooth, settings.hd_models = hd_models, settings.draw = draw;
         }
         textures_apply();
         overlay_toast(original ? "Original graphics (F11)" : "HD graphics (F11)");

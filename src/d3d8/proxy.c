@@ -86,6 +86,7 @@ static HRESULT WINAPI hook_Present(IDirect3DDevice8 *dev, CONST RECT *src, CONST
     textures_frame();
     controls_frame();
     settings_frame();
+    drawdist_frame();
     menu_frame();
     video_frame(dev);
     overlay_frame(dev);
@@ -195,6 +196,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         video_patch();
         quicksave_patch();
         menu_patch();
+        drawdist_patch();
         controls_patch();
         asserts_patch();
         real_OutputDebugStringA = patch_import("KERNEL32.dll", "OutputDebugStringA", hook_OutputDebugStringA);
