@@ -26,11 +26,14 @@ _Static_assert(sizeof(struct cvert) == 52, "character vertex layout");
 static const DWORD DECL[] = { 0x20000000, 0x40020000, 0x40020001, 0x40050002, 0x40020003, 0x40040004, 0x40010005, 0xffffffff };
 
 struct entry { IDirect3DVertexBuffer8 *src, *vb; UINT start, count, tris; D3DPRIMITIVETYPE type; };
-struct mesh { IDirect3DVertexBuffer8 *src; UINT n; float (*gn)[3]; BYTE *sharp; }; // per-position normals
+// Per buffer: per-position normals and hard-edge flags for the curved shape, and a copy of its
+// vertices with evened-out normals for the shading.
+struct mesh { IDirect3DVertexBuffer8 *src; UINT n; float (*gn)[3]; BYTE *sharp; struct cvert *v; };
 
 static struct entry table[TABLE];
 static struct mesh meshes[MESHES];
 static int nentries, nmeshes, creating;
+int smooth_keep_normals; // set while drawing models whose normals were evened out when they were made
 static DWORD shaders[16];
 static int nshaders;
 
@@ -41,7 +44,7 @@ static void flush(void)
 {
     for (int i = 0; i < TABLE; i++)
         if (table[i].vb) IDirect3DVertexBuffer8_Release(table[i].vb);
-    for (int i = 0; i < nmeshes; i++) free(meshes[i].gn), free(meshes[i].sharp);
+    for (int i = 0; i < nmeshes; i++) free(meshes[i].gn), free(meshes[i].sharp), free(meshes[i].v);
     memset(table, 0, sizeof table);
     memset(meshes, 0, sizeof meshes);
     nentries = nmeshes = 0;
@@ -71,6 +74,55 @@ static UINT32 pos_hash(const float *p)
     return (u[0] * 73856093u) ^ (u[1] * 19349663u) ^ (u[2] * 83492791u);
 }
 
+// Cel-shading bands follow the vertex normals, which in the game's models vary unevenly from point to
+// point, so the bands come out ragged. Each position's normal is averaged with its nearest neighbours'
+// a few times (neighbours facing well away, across lips or folds, don't count); hard-edge corners keep
+// their own. Like tools/normals.py, by distance instead of mesh edges, which the buffer doesn't have.
+#define NEIGHBOURS 6
+static void even_normals(struct mesh *m, const int *first)
+{
+    UINT n = m->n, *uniq = malloc(n * sizeof *uniq), nu = 0;
+    for (UINT i = 0; i < n; i++)
+        if (first[i] == (int)i) uniq[nu++] = i;
+    float (*s)[3] = malloc(nu * sizeof *s), (*t)[3] = malloc(nu * sizeof *t);
+    int (*nb)[NEIGHBOURS] = malloc(nu * sizeof *nb), *slot = malloc(n * sizeof *slot);
+    for (UINT a = 0; a < nu; a++) memcpy(s[a], m->gn[uniq[a]], 12), slot[uniq[a]] = a;
+    for (UINT a = 0; a < nu && nu <= 6000; a++) { // nearest neighbours, brute force (once per model)
+        float best[NEIGHBOURS];
+        for (int k = 0; k < NEIGHBOURS; k++) best[k] = 1e30f, nb[a][k] = -1;
+        const float *p = m->v[uniq[a]].p;
+        for (UINT b = 0; b < nu; b++) {
+            if (b == a) continue;
+            const float *q = m->v[uniq[b]].p;
+            float d = (p[0] - q[0]) * (p[0] - q[0]) + (p[1] - q[1]) * (p[1] - q[1]) + (p[2] - q[2]) * (p[2] - q[2]);
+            if (d >= best[NEIGHBOURS - 1]) continue;
+            int k = NEIGHBOURS - 1;
+            while (k > 0 && best[k - 1] > d) best[k] = best[k - 1], nb[a][k] = nb[a][k - 1], k--;
+            best[k] = d, nb[a][k] = b;
+        }
+    }
+    for (int round = 0; round < 3 && nu <= 6000; round++) {
+        for (UINT a = 0; a < nu; a++) {
+            float r[3] = { s[a][0], s[a][1], s[a][2] };
+            for (int k = 0; k < NEIGHBOURS; k++) {
+                int b = nb[a][k];
+                if (b < 0 || s[b][0] * s[a][0] + s[b][1] * s[a][1] + s[b][2] * s[a][2] < 0.5f) continue;
+                for (int c = 0; c < 3; c++) r[c] += s[b][c] * 0.5f;
+            }
+            float l = sqrtf(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]);
+            for (int c = 0; c < 3; c++) t[a][c] = l > 1e-6f ? r[c] / l : s[a][c];
+        }
+        memcpy(s, t, nu * sizeof *s);
+    }
+    for (UINT i = 0; i < n; i++) {
+        float *o = m->v[i].n;
+        const float *g = m->gn[first[i]];
+        float l = sqrtf(o[0] * o[0] + o[1] * o[1] + o[2] * o[2]);
+        if (l > 1e-6f && (o[0] * g[0] + o[1] * g[1] + o[2] * g[2]) / l > 0.87f) memcpy(o, s[slot[first[i]]], 12);
+    }
+    free(uniq), free(s), free(t), free(nb), free(slot);
+}
+
 // Averages the normals of vertices sharing a position, so neighbouring batches curve their shared
 // edges the same way, and marks positions where those normals disagree (hard edges).
 static struct mesh *mesh_of(IDirect3DVertexBuffer8 *src, const struct cvert *v, UINT n)
@@ -83,6 +135,8 @@ static struct mesh *mesh_of(IDirect3DVertexBuffer8 *src, const struct cvert *v, 
     m->n = n;
     m->gn = calloc(n, sizeof *m->gn);
     m->sharp = calloc(n, 1);
+    m->v = malloc(n * sizeof *m->v);
+    memcpy(m->v, v, n * sizeof *m->v);
     UINT size = 1;
     while (size < n * 2) size <<= 1;
     int *slot = malloc(size * sizeof *slot), *first = malloc(n * sizeof *first);
@@ -113,8 +167,14 @@ static struct mesh *mesh_of(IDirect3DVertexBuffer8 *src, const struct cvert *v, 
         sharp += m->sharp[i];
     }
     free(slot);
+    LARGE_INTEGER t0, t1, f;
+    QueryPerformanceCounter(&t0);
+    if (!smooth_keep_normals) even_normals(m, first);
+    QueryPerformanceCounter(&t1);
+    QueryPerformanceFrequency(&f);
     free(first);
-    log_line("smooth: mesh %p, %u vertices, %d on hard edges", (void *)src, n, sharp);
+    log_line("smooth: mesh %p, %u vertices, %d on hard edges, normals evened in %.1f ms", (void *)src, n, sharp,
+             (t1.QuadPart - t0.QuadPart) * 1000.0 / f.QuadPart);
     return m;
 }
 
@@ -246,8 +306,8 @@ static struct entry *build(IDirect3DDevice8 *dev, struct entry *e)
     UINT n = d.Size / sizeof(struct cvert);
     UINT verts = e->type == D3DPT_TRIANGLESTRIP ? e->count + 2 : e->count * 3;
     if (e->start + verts > n || FAILED(IDirect3DVertexBuffer8_Lock(e->src, 0, 0, &src, D3DLOCK_READONLY))) return NULL;
-    const struct cvert *v = (const struct cvert *)src;
-    struct mesh *m = mesh_of(e->src, v, n);
+    struct mesh *m = mesh_of(e->src, (const struct cvert *)src, n);
+    const struct cvert *v = m->v;
 
     static struct cvert *out; // scratch, grown as needed
     static UINT room;

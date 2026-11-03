@@ -208,7 +208,9 @@ static void draw_replacement(IDirect3DDevice8 *dev, struct rep *r, IDirect3DVert
             memcpy(c[k * 3], r->bones[g->bones[k]], sizeof r->bones[0]);
         IDirect3DDevice8_SetVertexShaderConstant(dev, 0, c, g->nbones * 3);
         IDirect3DDevice8_SetTexture(dev, 0, r->tex[g->texbatch]);
+        smooth_keep_normals = 1; // tools/normals.py already evened them out
         smooth_draw(dev, D3DPT_TRIANGLELIST, g->first, g->tris, draw);
+        smooth_keep_normals = 0;
     }
     IDirect3DDevice8_SetTexture(dev, 0, cur);
     IDirect3DDevice8_SetStreamSource(dev, 0, game, 52);
