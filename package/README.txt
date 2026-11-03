@@ -12,6 +12,9 @@ What it does
 - Faster menu text (lands in about a quarter of the time; the camera and characters keep their pace).
 - Its settings live in the game's own menus (Game Options, and Options in the pause menu), with
   keyboard or controller.
+- Rounder, smoother characters with cleaner cartoon shading; Taz gets new hands and his ears, fur
+  and tail bounce as he moves.
+- Shift+H switches between the original graphics and the new ones, for comparing.
 - Quicksave (F5) and quickload (F9) anywhere in a level. The quicksave lasts until you leave the
   level or quit the game; the game's own save slots work as before.
 

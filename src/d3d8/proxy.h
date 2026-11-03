@@ -13,6 +13,7 @@ void widescreen_patch(void);
 struct settings { int hd_textures, hd_models, vsync, fps_limit, smooth, wasd, mouse; float menu_speed; int exe_known, passthrough; };
 extern struct settings settings;
 void settings_load(void);
+void settings_frame(void);
 void menuspeed_patch(float speed);
 void menuspeed_set(float speed);
 void asserts_patch(void);
