@@ -1,8 +1,8 @@
 # Taz: Wanted HD
 
 An unofficial fan remaster mod for the 2002 PC release of Taz: Wanted. It runs the game at your
-desktop resolution and screen shape, replaces its textures and intro videos with 4x upscaled
-versions, rounds off the characters' low-poly models, gives Taz rounder hands, cleaner shading and bouncier ears, fur and tail, adds WASD and mouse-look controls, speeds up the
+desktop resolution and screen shape with anti-aliasing, replaces its textures and intro videos
+with 4x upscaled versions, rounds off the characters' low-poly models, gives Taz rounder hands, cleaner shading and bouncier ears, fur and tail, adds WASD and mouse-look controls, speeds up the
 menu text and adds quicksave/quickload (F5/F9). F11 flips between the original graphics and the new ones.
 
 It is a mod, not a copy of the game: you need your own retail install and its disc (or disc image).

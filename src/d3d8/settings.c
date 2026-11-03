@@ -67,6 +67,7 @@ void settings_load(void)
     settings.mouse = GetPrivateProfileIntA("taz-hd", "mouse_sensitivity", 5, INI);
     GetPrivateProfileStringA("taz-hd", "controls", "wasd", res, sizeof res, INI);
     settings.wasd = _stricmp(res, "classic") != 0;
+    settings.antialiasing = GetPrivateProfileIntA("taz-hd", "antialiasing", 4, INI);
     settings.passthrough = GetPrivateProfileIntA("taz-hd", "passthrough", 0, INI); // testing: no patches at all
     GetPrivateProfileStringA("taz-hd", "menu_text_speed", "3", res, sizeof res, INI);
     settings.menu_speed = (float)atof(res);
@@ -74,8 +75,8 @@ void settings_load(void)
     GetPrivateProfileStringA("taz-hd", "resolution", "auto", res, sizeof res, INI);
     UINT w, h;
     if (settings_resolution(res, &w, &h)) write_resolution(w, h); // taz.dat, where the game reads it
-    log_line("settings: resolution=%s hd_textures=%d vsync=%d fps_limit=%d smooth_characters=%d controls=%s mouse_sensitivity=%d menu_text_speed=%.2f%s", res,
-             settings.hd_textures, settings.vsync, settings.fps_limit, settings.smooth, settings.wasd ? "wasd" : "classic", settings.mouse, settings.menu_speed,
+    log_line("settings: resolution=%s hd_textures=%d vsync=%d antialiasing=%d fps_limit=%d smooth_characters=%d controls=%s mouse_sensitivity=%d menu_text_speed=%.2f%s", res,
+             settings.hd_textures, settings.vsync, settings.antialiasing, settings.fps_limit, settings.smooth, settings.wasd ? "wasd" : "classic", settings.mouse, settings.menu_speed,
              settings.passthrough ? " passthrough" : "");
 }
 
@@ -93,6 +94,7 @@ static struct item items[] = {
     { "Resolution", "Desktop matches your screen", "resolution", "auto", { "auto" }, 1, 0, MAIN },
     { "HD Textures", "Sharper, upscaled textures", "hd_textures", "1", { "0", "1" }, 2, 0, 0 },
     { "Vsync", "Stops the picture tearing", "vsync", "1", { "0", "1" }, 2, 0, MAIN },
+    { "Anti-Aliasing", "Smooths jagged edges", "antialiasing", "4", { "0", "2", "4", "8" }, 4, 0, MAIN },
     { "Smooth Characters", "Rounder characters with smoother shading", "smooth_characters", "1", { "0", "1" }, 2, 0, 0 },
     { "Controls", "WASD and mouse, or the original keys", "controls", "wasd", { "wasd", "classic" }, 2, 0, PAUSE },
     { "Controls", "Keys, mouse look and layout", "keys", "", { "" }, 0, 0, MAIN },
@@ -161,7 +163,8 @@ const char *setting_shown(int i)
     const struct item *it = &items[i];
     const char *v = it->choices[it->cur];
     static char s[24];
-    if ((!strcmp(it->key, "fps_limit") || !strcmp(it->key, "mouse_sensitivity")) && !strcmp(v, "0")) return "Off";
+    if ((!strcmp(it->key, "fps_limit") || !strcmp(it->key, "mouse_sensitivity") || !strcmp(it->key, "antialiasing")) && !strcmp(v, "0")) return "Off";
+    if (!strcmp(it->key, "antialiasing")) return snprintf(s, sizeof s, "%sx", v), s;
     if (!strcmp(it->key, "menu_text_speed")) return snprintf(s, sizeof s, "%sx", v), s;
     if (!strcmp(it->key, "resolution") && !strcmp(v, "auto")) return "Desktop";
     if (!strcmp(it->key, "controls")) return strcmp(v, "classic") ? "WASD + Mouse" : "Classic";
@@ -197,6 +200,7 @@ void setting_step(int i, int dir)
     else if (!strcmp(it->key, "mouse_sensitivity")) settings.mouse = atoi(v);
     else if (!strcmp(it->key, "controls")) settings.wasd = strcmp(v, "classic") != 0, controls_apply();
     else if (!strcmp(it->key, "hd_textures")) settings.hd_textures = atoi(v), textures_apply();
+    else if (!strcmp(it->key, "antialiasing")) settings.antialiasing = atoi(v), display_change(0, 0, settings.vsync);
     else if (!strcmp(it->key, "vsync")) settings.vsync = atoi(v), display_change(0, 0, settings.vsync);
     else if (!strcmp(it->key, "resolution")) {
         UINT w, h;

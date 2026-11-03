@@ -10,7 +10,7 @@ void textures_frame(void);
 void textures_dump_recent(void);
 void widescreen_patch(void);
 
-struct settings { int hd_textures, hd_models, vsync, fps_limit, smooth, wasd, mouse; float menu_speed; int exe_known, passthrough; };
+struct settings { int hd_textures, hd_models, vsync, antialiasing, fps_limit, smooth, wasd, mouse; float menu_speed; int exe_known, passthrough; };
 extern struct settings settings;
 void settings_load(void);
 void settings_frame(void);
@@ -38,6 +38,7 @@ void textures_reset(IDirect3DDevice8 *dev);
 void overlay_reset(IDirect3DDevice8 *dev);
 void display_install(IDirect3DDevice8 *dev);
 void display_change(UINT w, UINT h, int vsync); // w, h 0: keep the size
+void display_samples(IDirect3D8 *d3d, UINT adapter, D3DDEVTYPE type, D3DPRESENT_PARAMETERS *pp);
 int settings_resolution(const char *value, UINT *w, UINT *h);
 int setting_count(void);
 const char *setting_label(int i);

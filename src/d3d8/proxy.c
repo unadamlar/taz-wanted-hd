@@ -129,12 +129,16 @@ static void WINAPI hook_OutputDebugStringA(LPCSTR s)
 static HRESULT WINAPI hook_CreateDevice(IDirect3D8 *d3d, UINT adapter, D3DDEVTYPE type, HWND wnd, DWORD flags,
                                         D3DPRESENT_PARAMETERS *pp, IDirect3DDevice8 **dev)
 {
-    log_line("CreateDevice %ux%u backbuffer_format=%d windowed=%d refresh=%u interval=%u flags=0x%lx",
-             pp->BackBufferWidth, pp->BackBufferHeight, pp->BackBufferFormat, pp->Windowed,
-             pp->FullScreen_RefreshRateInHz, pp->FullScreen_PresentationInterval, flags);
+    log_line("CreateDevice %ux%u backbuffer_format=%d windowed=%d refresh=%u interval=%u flags=0x%lx swap=%d pp_flags=0x%lx "
+             "depth_format=%d", pp->BackBufferWidth, pp->BackBufferHeight, pp->BackBufferFormat, pp->Windowed,
+             pp->FullScreen_RefreshRateInHz, pp->FullScreen_PresentationInterval, flags, pp->SwapEffect, pp->Flags,
+             pp->EnableAutoDepthStencil ? pp->AutoDepthStencilFormat : 0);
     if (!settings.vsync && !pp->Windowed) pp->FullScreen_PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
+    D3DPRESENT_PARAMETERS game = *pp;
+    if (!settings.passthrough) display_samples(d3d, adapter, type, pp);
     HRESULT hr = real_CreateDevice(d3d, adapter, type, wnd, flags, pp, dev);
-    log_line("CreateDevice -> 0x%08lx", hr);
+    if (FAILED(hr) && pp->MultiSampleType) *pp = game, hr = real_CreateDevice(d3d, adapter, type, wnd, flags, pp, dev);
+    log_line("CreateDevice -> 0x%08lx, %u samples", hr, pp->MultiSampleType);
     if (SUCCEEDED(hr) && !real_Present) {
         patch((void **)&(*dev)->lpVtbl->Present, hook_Present, (void **)&real_Present);
         if (!settings.passthrough) textures_install(*dev), display_install(*dev), smooth_install(*dev);

@@ -8,6 +8,7 @@ What it does
 - Runs at your desktop resolution and your screen's shape (16:9, 16:10, ultrawide), without the 2002
   launcher.
 - Replaces the game's textures, fonts and loading screens with 4x upscaled versions.
+- Smooths jagged edges with anti-aliasing (multisampling).
 - Plays the intro videos upscaled and full screen.
 - Faster menu text (lands in about a quarter of the time; the camera and characters keep their pace).
 - Its settings live in the game's own menus (Game Options, and Options in the pause menu), with
@@ -32,11 +33,12 @@ The disc or disc image must be visible to Wine as a CD drive.
 
 Settings
 Game Options (main menu) and Options (pause menu) have rows for Resolution, HD Textures, Vsync,
-Smooth Characters, Controls, Mouse Look, Frame Cap and Menu Text Speed (Resolution, Vsync and Frame
-Cap only on the main menu's Game Options; there Controls opens a page with Controls, Mouse Look and
-the keys): press Select to change one. Changes apply at once (a resolution or
-vsync change takes about a second) and are saved in taz-hd.ini in the game folder. Changing the
-resolution or vsync discards the quicksave.
+Anti-Aliasing (Off, 2x, 4x or 8x; 4x by default), Smooth Characters, Controls, Mouse Look, Frame
+Cap and Menu Text Speed (Resolution, Vsync, Anti-Aliasing and Frame Cap only on the main menu's
+Game Options; there Controls opens a page with Controls, Mouse Look and the keys): press Select to
+change one. Changes apply at once (a resolution, vsync or anti-aliasing change takes about a
+second) and are saved in taz-hd.ini in the game folder. Changing the resolution, vsync or
+anti-aliasing discards the quicksave.
 The game's Widescreen option is gone: the picture always matches your screen's shape.
 F12 saves a screenshot to taz-hd\shots.
 

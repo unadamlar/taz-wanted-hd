@@ -1,7 +1,7 @@
 // Intro videos: the game copies each 640x480 Bink frame into the middle of the back buffer. We take
-// the copy into our own buffer instead and draw it at Present, scaled to the screen height. When
-// taz-hd\videos\<name>\NNNN.jpg exist (tools/videos.py), a thread decodes them ahead and we show those;
-// Bink still plays the sound and sets the pace.
+// the copy into our own buffer instead (it never locks the back buffer) and draw it at Present, scaled to
+// the screen height. When taz-hd\videos\<name>\NNNN.jpg exist (tools/videos.py), a thread decodes them
+// ahead and we show those; Bink still plays the sound and sets the pace.
 #define COBJMACROS
 #include <stdio.h>
 #include <stdlib.h>
@@ -101,8 +101,8 @@ static int WINAPI hook_CopyToBuffer(void *bink, void *dest, int pitch, UINT heig
         frame_w = w;
         frame_h = h;
     }
-    if (!frame || (flags & 0xf) != 3) return real_CopyToBuffer(bink, dest, pitch, height, x, y, flags); // 3 = 32-bit
-    int skipped = real_CopyToBuffer(bink, frame, w * 4, h, 0, 0, flags & ~BINKCOPY_SCALE);
+    if (!frame) return 1;
+    int skipped = real_CopyToBuffer(bink, frame, w * 4, h, 0, 0, (flags & ~(BINKCOPY_SCALE | 0xf)) | 3); // 3 = 32-bit
     EnterCriticalSection(&lock);
     want = ((UINT *)bink)[3]; // the frame Bink just decoded, counting from 1
     LeaveCriticalSection(&lock);
@@ -176,8 +176,23 @@ void video_patch(void)
     real_CopyToBuffer = patch_import("binkw32.dll", "_BinkCopyToBuffer@28", hook_CopyToBuffer);
     real_Close = patch_import("binkw32.dll", "_BinkClose@4", hook_Close);
     if (!real_Open || !real_CopyToBuffer || !real_Close) {
-        log_line("video: Bink imports not found, videos stay small");
+        log_line("video: Bink imports not found, videos stay small and anti-aliasing off");
+        settings.antialiasing = 0;
         return;
+    }
+    // The game locks the back buffer for each frame and retries until that works, which with anti-aliasing
+    // it never does. We don't use the back buffer, so skip the lock: drop its 4 arguments and go to the copy.
+    static const BYTE lock_call[] = { 0xff, 0x50, 0x24, 0x85, 0xc0 }, skip[] = { 0x83, 0xc4, 0x10, 0xeb, 0x15 };
+    BYTE *at = (BYTE *)0x4782bd;
+    DWORD old;
+    if (memcmp(at, lock_call, sizeof lock_call)) {
+        log_line("video: unexpected code, anti-aliasing stays off");
+        settings.antialiasing = 0;
+    } else {
+        VirtualProtect(at, sizeof skip, PAGE_EXECUTE_READWRITE, &old);
+        memcpy(at, skip, sizeof skip);
+        VirtualProtect(at, sizeof skip, old, &old);
+        FlushInstructionCache(GetCurrentProcess(), at, sizeof skip);
     }
     InitializeCriticalSection(&lock);
     wake = CreateEventA(NULL, FALSE, FALSE, NULL);

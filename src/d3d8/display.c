@@ -3,6 +3,7 @@
 // releases its textures and buffers, calls Reset with its own present parameters (0x7420a4) and
 // rebuilds everything. For a change we report a lost device once and put the new size and interval
 // into those parameters on the way into Reset; then we update the game's screen-size globals.
+// Anti-aliasing (multisampling) goes the same way.
 #define COBJMACROS
 #include "proxy.h"
 
@@ -23,6 +24,30 @@ static DWORD asked_at;
 #define MAX_RTS 16
 static BYTE *had_depth[MAX_RTS];
 static int nhad;
+
+static DWORD game_swap = D3DSWAPEFFECT_DISCARD, game_flags; // the game's own choices, for anti-aliasing off
+
+// The highest sample count up to the setting that the back and depth buffers both support. Multisampling
+// needs a discarding swap and a back buffer that isn't lockable (video.c covers the game's one lock).
+void display_samples(IDirect3D8 *d3d, UINT adapter, D3DDEVTYPE type, D3DPRESENT_PARAMETERS *pp)
+{
+    if (!pp->MultiSampleType) game_swap = pp->SwapEffect, game_flags = pp->Flags;
+    int n = settings.antialiasing > 16 ? 16 : settings.antialiasing;
+    for (; n >= 2; n--)
+        if (SUCCEEDED(IDirect3D8_CheckDeviceMultiSampleType(d3d, adapter, type, pp->BackBufferFormat, pp->Windowed, n)) &&
+            (!pp->EnableAutoDepthStencil ||
+             SUCCEEDED(IDirect3D8_CheckDeviceMultiSampleType(d3d, adapter, type, pp->AutoDepthStencilFormat, pp->Windowed, n))))
+            break;
+    if (n >= 2) {
+        pp->MultiSampleType = n;
+        pp->SwapEffect = D3DSWAPEFFECT_DISCARD;
+        pp->Flags &= ~D3DPRESENTFLAG_LOCKABLE_BACKBUFFER;
+    } else {
+        pp->MultiSampleType = D3DMULTISAMPLE_NONE;
+        pp->SwapEffect = game_swap;
+        pp->Flags = game_flags;
+    }
+}
 
 void display_change(UINT w, UINT h, int vsync)
 {
@@ -71,6 +96,12 @@ static HRESULT WINAPI hook_Reset(IDirect3DDevice8 *dev, D3DPRESENT_PARAMETERS *p
     D3DPRESENT_PARAMETERS old = *pp;
     if (want_w && want_h) pp->BackBufferWidth = want_w, pp->BackBufferHeight = want_h;
     if (!pp->Windowed) pp->FullScreen_PresentationInterval = want_interval;
+    IDirect3D8 *d3d;
+    D3DDEVICE_CREATION_PARAMETERS cp;
+    if (SUCCEEDED(IDirect3DDevice8_GetDirect3D(dev, &d3d))) {
+        if (SUCCEEDED(IDirect3DDevice8_GetCreationParameters(dev, &cp))) display_samples(d3d, cp.AdapterOrdinal, cp.DeviceType, pp);
+        IDirect3D8_Release(d3d);
+    }
     // The game has released its buffers and render targets, but some are still bound to the device,
     // which keeps them alive and makes Reset fail.
     IDirect3DSurface8 *bb;
@@ -82,13 +113,15 @@ static HRESULT WINAPI hook_Reset(IDirect3DDevice8 *dev, D3DPRESENT_PARAMETERS *p
     overlay_reset(dev);
     HRESULT hr = real_Reset(dev, pp);
     if (FAILED(hr)) {
-        log_line("display: %ux%u interval %u failed (0x%08lx), keeping %ux%u", pp->BackBufferWidth, pp->BackBufferHeight,
-                 pp->FullScreen_PresentationInterval, hr, old.BackBufferWidth, old.BackBufferHeight);
+        log_line("display: %ux%u interval %u samples %u failed (0x%08lx), keeping %ux%u", pp->BackBufferWidth,
+                 pp->BackBufferHeight, pp->FullScreen_PresentationInterval, pp->MultiSampleType, hr, old.BackBufferWidth,
+                 old.BackBufferHeight);
         *pp = old;
         hr = real_Reset(dev, pp);
     } else {
-        log_line("display: %ux%u, %s", pp->BackBufferWidth, pp->BackBufferHeight,
-                 pp->FullScreen_PresentationInterval == D3DPRESENT_INTERVAL_IMMEDIATE ? "vsync off" : "vsync on");
+        log_line("display: %ux%u, %s, %u samples", pp->BackBufferWidth, pp->BackBufferHeight,
+                 pp->FullScreen_PresentationInterval == D3DPRESENT_INTERVAL_IMMEDIATE ? "vsync off" : "vsync on",
+                 pp->MultiSampleType);
     }
     ((void (*)(void))0x573510)();
     for (int i = 0; i < nhad; i++) *(void **)(had_depth[i] + 0x84) = (void *)1;

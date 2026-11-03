@@ -39,13 +39,17 @@ void screenshot_frame(IDirect3DDevice8 *dev)
     }
     int scale = burst ? burst_scale : 1;
 
-    IDirect3DSurface8 *bb = NULL, *copy = NULL;
+    IDirect3DSurface8 *bb = NULL, *resolved = NULL, *copy = NULL;
     D3DSURFACE_DESC d;
     D3DLOCKED_RECT r;
     if (FAILED(IDirect3DDevice8_GetBackBuffer(dev, 0, D3DBACKBUFFER_TYPE_MONO, &bb))) return;
     IDirect3DSurface8_GetDesc(bb, &d);
+    // An anti-aliased back buffer can't be read directly; a copy into a plain render target resolves it.
+    if (d.MultiSampleType &&
+        SUCCEEDED(IDirect3DDevice8_CreateRenderTarget(dev, d.Width, d.Height, d.Format, D3DMULTISAMPLE_NONE, FALSE, &resolved)))
+        IDirect3DDevice8_CopyRects(dev, bb, NULL, 0, resolved, NULL);
     if (SUCCEEDED(IDirect3DDevice8_CreateImageSurface(dev, d.Width, d.Height, d.Format, &copy)) &&
-        SUCCEEDED(IDirect3DDevice8_CopyRects(dev, bb, NULL, 0, copy, NULL)) &&
+        SUCCEEDED(IDirect3DDevice8_CopyRects(dev, resolved ? resolved : bb, NULL, 0, copy, NULL)) &&
         SUCCEEDED(IDirect3DSurface8_LockRect(copy, &r, NULL, D3DLOCK_READONLY))) {
         UINT w = d.Width / scale, h = d.Height / scale;
         BYTE *px = malloc((size_t)d.Width * 4 * h), *row = malloc((size_t)d.Width * 4);
@@ -73,6 +77,7 @@ void screenshot_frame(IDirect3DDevice8 *dev)
         log_line("screenshot failed");
     }
     if (copy) IDirect3DSurface8_Release(copy);
+    if (resolved) IDirect3DSurface8_Release(resolved);
     IDirect3DSurface8_Release(bb);
     if (burst && burst_frame >= burst) burst = 0;
 }
