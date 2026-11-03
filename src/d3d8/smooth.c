@@ -58,6 +58,7 @@ static HRESULT WINAPI hook_CreateVertexShader(IDirect3DDevice8 *dev, CONST DWORD
 static HRESULT WINAPI hook_CreateVertexBuffer(IDirect3DDevice8 *dev, UINT len, DWORD usage, DWORD fvf, D3DPOOL pool, IDirect3DVertexBuffer8 **vb)
 {
     HRESULT hr = real_CreateVertexBuffer(dev, len, usage, fvf, pool, vb);
+    if (SUCCEEDED(hr)) mesh_forget(*vb);
     if (SUCCEEDED(hr) && !creating) // ours can land at a freed buffer's address too; that's no reason to drop the cache
         for (int i = 0; i < nmeshes; i++)
             if (meshes[i].src == *vb) { flush(); break; }
@@ -283,23 +284,23 @@ static struct entry *build(IDirect3DDevice8 *dev, struct entry *e)
     return e;
 }
 
-HRESULT smooth_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
-                    HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT))
+// A character draw: a skinned triangle strip or list through one of the character shaders.
+int smooth_character(IDirect3DDevice8 *dev)
 {
     DWORD vs = 0;
     int ours = 0;
-    if ((type == D3DPT_TRIANGLESTRIP || type == D3DPT_TRIANGLELIST) && nshaders
-        && SUCCEEDED(IDirect3DDevice8_GetVertexShader(dev, &vs)))
+    if (nshaders && SUCCEEDED(IDirect3DDevice8_GetVertexShader(dev, &vs)))
         for (int i = 0; i < nshaders; i++) ours |= shaders[i] == vs;
+    return ours;
+}
+
+HRESULT smooth_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
+                    HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT))
+{
     IDirect3DVertexBuffer8 *src = NULL;
     UINT stride = 0;
-    if (!ours || FAILED(IDirect3DDevice8_GetStreamSource(dev, 0, &src, &stride)) || !src || stride != sizeof(struct cvert)) {
+    if (!settings.smooth || !smooth_character(dev) || FAILED(IDirect3DDevice8_GetStreamSource(dev, 0, &src, &stride)) || !src || stride != sizeof(struct cvert)) {
         if (src) IDirect3DVertexBuffer8_Release(src);
-        return draw(dev, type, start, count);
-    }
-    capture_draw(dev, src, type, start, count);
-    if (!settings.smooth) {
-        IDirect3DVertexBuffer8_Release(src);
         return draw(dev, type, start, count);
     }
 

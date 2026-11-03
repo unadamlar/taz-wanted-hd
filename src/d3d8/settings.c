@@ -60,6 +60,7 @@ void settings_load(void)
 {
     char res[32];
     settings.hd_textures = GetPrivateProfileIntA("taz-hd", "hd_textures", 1, INI);
+    settings.hd_models = GetPrivateProfileIntA("taz-hd", "hd_models", 1, INI);
     settings.vsync = GetPrivateProfileIntA("taz-hd", "vsync", 1, INI);
     settings.fps_limit = GetPrivateProfileIntA("taz-hd", "fps_limit", 0, INI);
     settings.smooth = GetPrivateProfileIntA("taz-hd", "smooth_characters", 1, INI);

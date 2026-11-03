@@ -10,7 +10,7 @@ void textures_frame(void);
 void textures_dump_recent(void);
 void widescreen_patch(void);
 
-struct settings { int hd_textures, vsync, fps_limit, smooth, wasd, mouse; float menu_speed; int exe_known, passthrough; };
+struct settings { int hd_textures, hd_models, vsync, fps_limit, smooth, wasd, mouse; float menu_speed; int exe_known, passthrough; };
 extern struct settings settings;
 void settings_load(void);
 void menuspeed_patch(float speed);
@@ -66,3 +66,8 @@ HRESULT smooth_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UI
 void capture_frame(void);
 void capture_draw(IDirect3DDevice8 *dev, IDirect3DVertexBuffer8 *vb, D3DPRIMITIVETYPE type, UINT start, UINT count);
 UINT64 textures_bound_hash(DWORD stage);
+IDirect3DBaseTexture8 *textures_bound(DWORD stage);
+int smooth_character(IDirect3DDevice8 *dev);
+void mesh_forget(IDirect3DVertexBuffer8 *vb);
+HRESULT mesh_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
+                  HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT));

@@ -1,68 +1,84 @@
-# Blender: builds a character from a DLL mesh capture (taz-hd\capture-NNN.bin) in its bind pose,
-# textured from extracted/textures, with one vertex group per bone, and saves it as a .blend.
-# usage: blender -b -P tools/meshview.py -- <capture.bin> <buffer index, biggest first> <out.blend>
-import bpy, struct, sys, os
+# Blender: builds a character from DLL mesh captures (taz-hd\capture-NNN.bin) in its bind pose,
+# textured from extracted/textures, with one vertex group per bone, and saves it as a .blend that
+# tools/meshpack.py turns back into a replacement for the game.
+# usage: blender -b -P tools/meshview.py -- <out.blend> <buffer index, biggest first> <capture.bin>...
+# Bones are told apart by their matrices in all the given captures (same scene, different frames).
+import bpy, struct, sys, os, json
 from collections import defaultdict
 
-cap, which, out = sys.argv[sys.argv.index('--') + 1:][:3]
+args = sys.argv[sys.argv.index('--') + 1:]
+out, which, caps = args[0], int(args[1]), args[2:]
 root = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'extracted', 'textures')
 names = {}
 for line in open(os.path.join(root, 'fingerprints.tsv')):
     h, n = line.rstrip('\n').split('\t')[:2]
     names.setdefault(int(h, 16), n)
 
-b = open(cap, 'rb').read()
-o, vbs, draws = 0, {}, []
-while o < len(b):
-    if struct.unpack_from('<I', b, o)[0] == ord('V'):
-        _, i, n = struct.unpack_from('<3I', b, o)
-        vbs[i] = [struct.unpack_from('<3f3f4B3fI2f', b, o + 12 + k * 52) for k in range(n // 52)]
-        o += 12 + n
-    else:
-        _, i, ty, st, ct = struct.unpack_from('<5I', b, o)
-        tex, = struct.unpack_from('<Q', b, o + 20)
-        draws.append((i, ty, st, ct, tex, struct.unpack_from('<384f', b, o + 28)))
-        o += 28 + 1536
-vb = sorted(vbs, key=lambda k: -len(vbs[k]))[int(which)]
-V = vbs[vb]
+def load(path):
+    b = open(path, 'rb').read()
+    o, vbs, draws = 0, {}, []
+    while o < len(b):
+        if struct.unpack_from('<I', b, o)[0] == ord('V'):
+            _, i, n = struct.unpack_from('<3I', b, o)
+            vbs[i] = b[o + 12:o + 12 + n]
+            o += 12 + n
+        else:
+            _, i, ty, st, ct = struct.unpack_from('<5I', b, o)
+            tex, = struct.unpack_from('<Q', b, o + 20)
+            draws.append((i, ty, st, ct, tex, struct.unpack_from('<384f', b, o + 28)))
+            o += 28 + 1536
+    return vbs, draws
 
-# Bones: the same skinning matrix in different batches is the same bone.
-bones = {}
-def bone(c, reg):
-    m = tuple(round(x, 4) for x in c[reg * 4:reg * 4 + 12])
-    return bones.setdefault(m, len(bones))
+frames = [load(c) for c in caps]
+vbs, draws = frames[0]
+vb = sorted(vbs, key=lambda k: -len(vbs[k]))[which]
+raw = vbs[vb]
+h = 0xcbf29ce484222325
+for x in raw: h = ((h ^ x) * 0x100000001b3) & 0xffffffffffffffff
+V = [struct.unpack_from('<3f3f4B3fI2f', raw, k * 52) for k in range(len(raw) // 52)]
+passes = [[d for d in dr if d[0] == max(f[0], key=lambda k: len(f[0][k])) and d[4]] for f, dr in ((f, f[1]) for f in frames)]
+batches = [(d[2], d[3], d[1]) for d in passes[0]]
+assert all([(d[2], d[3], d[1]) for d in p] == batches for p in passes), 'captures draw different batches'
 
-verts, vindex, faces, uvs, mats, groups = [], {}, [], [], [], defaultdict(dict)
-texs = []
-for i, ty, st, ct, tex, c in draws:
-    if i != vb or not tex: continue  # untextured draws are the outline pass
-    if tex not in texs: texs.append(tex)
+bones, sources = {}, []
+def bone(bi, reg):
+    key = tuple(round(x, 3) for p in passes for x in p[bi][5][reg * 4:reg * 4 + 12])
+    if key not in bones:
+        bones[key] = len(bones)
+        sources.append((bi, reg))
+    return bones[key]
+
+verts, vindex, faces, uvs, nors, mats, groups, texs = [], {}, [], [], [], [], defaultdict(dict), []
+for bi, (i, ty, st, ct, tex, c) in enumerate(passes[0]):
+    if tex not in [t for t, _ in texs]: texs.append((tex, bi))
     tri = [(st + t, st + t + 1, st + t + 2)[::(-1 if t & 1 else 1)] if ty == 5 else (st + 3 * t, st + 3 * t + 1, st + 3 * t + 2) for t in range(ct)]
-    for a, bb, cc in tri:
-        if len({V[a][:3], V[bb][:3], V[cc][:3]}) < 3: continue
-        f, fuv = [], []
-        for k in (a, bb, cc):
+    for a, b, cc in tri:
+        if len({V[a][:3], V[b][:3], V[cc][:3]}) < 3: continue
+        f = []
+        for k in (cc, b, a):  # swapping y and z flips the winding
             p = V[k][:3]
             if p not in vindex:
                 vindex[p] = len(verts)
                 verts.append((p[0], p[2], p[1]))
             vi = vindex[p]
             for s in range(3):
-                if V[k][3 + s] > 0: groups[bone(c, V[k][6 + s])][vi] = V[k][3 + s]
+                if V[k][3 + s] > 0: groups[bone(bi, V[k][6 + s])][vi] = V[k][3 + s]
             f.append(vi)
-            fuv.append((V[k][14], 1 - V[k][15]))
-        faces.append(f[::-1])  # swapping y and z flips the winding
-        uvs += fuv[::-1]
-        mats.append(texs.index(tex))
+            uvs.append((V[k][14], 1 - V[k][15]))
+            nors.append((V[k][10], V[k][12], V[k][11]))
+        faces.append(f)
+        mats.append([t for t, _ in texs].index(tex))
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
-me = bpy.data.meshes.new('taz')
+me = bpy.data.meshes.new('model')
 me.from_pydata(verts, [], faces)
 uv = me.uv_layers.new()
-for k, l in enumerate(me.loops): uv.data[k].uv = uvs[k]
+for k in range(len(me.loops)): uv.data[k].uv = uvs[k]
 for k, p in enumerate(me.polygons): p.material_index, p.use_smooth = mats[k], True
-for tex in texs:
+me.normals_split_custom_set(nors)
+for tex, bi in texs:
     m = bpy.data.materials.new(names.get(tex, '%016x' % tex))
+    m['batch'] = bi  # the game binds this texture for batch bi; the replacement borrows it from there
     m.use_nodes = True
     img = m.node_tree.nodes.new('ShaderNodeTexImage')
     path = os.path.join(root, names.get(tex, ''))
@@ -71,10 +87,13 @@ for tex in texs:
     m.node_tree.links.new(img.outputs['Color'], bsdf.inputs['Base Color'])
     m.node_tree.links.new(img.outputs['Alpha'], bsdf.inputs['Alpha'])
     me.materials.append(m)
-ob = bpy.data.objects.new('taz', me)
+ob = bpy.data.objects.new('model', me)
 bpy.context.scene.collection.objects.link(ob)
-for g, ws in sorted(groups.items()):
+for g in range(len(sources)):
     vg = ob.vertex_groups.new(name='bone%02d' % g)
-    for vi, w in ws.items(): vg.add([vi], w, 'REPLACE')
-print('mesh: %d vertices, %d triangles, %d bones, textures %s' % (len(verts), len(faces), len(bones), [names.get(t, t) for t in texs]))
+    for vi, w in groups[g].items(): vg.add([vi], w, 'REPLACE')
+ob['hash'] = '%016x' % h
+ob['batches'] = json.dumps(batches)
+ob['sources'] = json.dumps(sources)
+print('mesh: %d vertices, %d triangles, %d bones, %d batches, buffer %016x' % (len(verts), len(faces), len(sources), len(batches), h))
 bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(out))

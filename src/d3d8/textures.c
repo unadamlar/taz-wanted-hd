@@ -534,6 +534,11 @@ static int bind_replacement(IDirect3DDevice8 *dev, DWORD stage, IDirect3DBaseTex
     return rep != NULL;
 }
 
+IDirect3DBaseTexture8 *textures_bound(DWORD stage)
+{
+    return stage < STAGES ? bound[stage] : NULL;
+}
+
 // Fingerprint of the game's texture bound at stage (0 if none or unknown).
 UINT64 textures_bound_hash(DWORD stage)
 {
@@ -667,7 +672,7 @@ static void after_draw(IDirect3DDevice8 *dev, int mask, struct saved *saved)
 
 static HRESULT WINAPI hook_DrawPrimitive(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE t, UINT start, UINT count)
 {
-    DRAW(smooth_draw(dev, t, start, count, real_DrawPrimitive));
+    DRAW((t == D3DPT_TRIANGLESTRIP || t == D3DPT_TRIANGLELIST) ? mesh_draw(dev, t, start, count, real_DrawPrimitive) : real_DrawPrimitive(dev, t, start, count));
 }
 
 static HRESULT WINAPI hook_DrawIndexedPrimitive(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE t, UINT min, UINT n, UINT start, UINT count)
