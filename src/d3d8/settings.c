@@ -56,6 +56,15 @@ void settings_save(const char *key, const char *value)
     WritePrivateProfileStringA("taz-hd", key, value, INI);
 }
 
+static const char *const STYLES[] = { "current", "cartoon", "soft", "fur" };
+
+static int style_index(const char *v)
+{
+    for (int i = 0; i < 4; i++)
+        if (!_stricmp(v, STYLES[i])) return i;
+    return 0;
+}
+
 void settings_load(void)
 {
     char res[32];
@@ -68,6 +77,8 @@ void settings_load(void)
     GetPrivateProfileStringA("taz-hd", "controls", "wasd", res, sizeof res, INI);
     settings.wasd = _stricmp(res, "classic") != 0;
     settings.passthrough = GetPrivateProfileIntA("taz-hd", "passthrough", 0, INI); // testing: no patches at all
+    GetPrivateProfileStringA("taz-hd", "taz_style", "current", res, sizeof res, INI);
+    settings.taz_style = style_index(res);
     GetPrivateProfileStringA("taz-hd", "menu_text_speed", "3", res, sizeof res, INI);
     settings.menu_speed = (float)atof(res);
     if (settings.menu_speed < 0.25f || settings.menu_speed > 8.0f) settings.menu_speed = 3.0f;
@@ -94,6 +105,7 @@ static struct item items[] = {
     { "HD Textures", "Sharper, upscaled textures", "hd_textures", "1", { "0", "1" }, 2, 0, 0 },
     { "Vsync", "Stops the picture tearing", "vsync", "1", { "0", "1" }, 2, 0, MAIN },
     { "Smooth Characters", "Rounder characters with smoother shading", "smooth_characters", "1", { "0", "1" }, 2, 0, 0 },
+    { "Taz Style", "Other looks for Taz: crisper, softer or furrier", "taz_style", "current", { "current", "cartoon", "soft", "fur" }, 4, 0, 0 },
     { "Controls", "WASD and mouse, or the original keys", "controls", "wasd", { "wasd", "classic" }, 2, 0, PAUSE },
     { "Controls", "Keys, mouse look and layout", "keys", "", { "" }, 0, 0, MAIN },
     { "Mouse Look", "Camera speed when turning with the mouse", "mouse_sensitivity", "5", { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }, 11, 0, PAUSE },
@@ -165,6 +177,7 @@ const char *setting_shown(int i)
     if (!strcmp(it->key, "menu_text_speed")) return snprintf(s, sizeof s, "%sx", v), s;
     if (!strcmp(it->key, "resolution") && !strcmp(v, "auto")) return "Desktop";
     if (!strcmp(it->key, "controls")) return strcmp(v, "classic") ? "WASD + Mouse" : "Classic";
+    if (!strcmp(it->key, "taz_style")) return (const char *[]){ "Current", "Detailed Cartoon", "Soft Shading", "Fur Detail" }[style_index(v)];
     if (it->count == 2 && !strcmp(it->choices[0], "0")) return it->cur ? "On" : "Off";
     return v;
 }
@@ -194,6 +207,7 @@ void setting_step(int i, int dir)
     if (!strcmp(it->key, "menu_text_speed")) menuspeed_set(settings.menu_speed = (float)atof(v));
     else if (!strcmp(it->key, "fps_limit")) settings.fps_limit = atoi(v);
     else if (!strcmp(it->key, "smooth_characters")) settings.smooth = atoi(v);
+    else if (!strcmp(it->key, "taz_style")) settings.taz_style = style_index(v);
     else if (!strcmp(it->key, "mouse_sensitivity")) settings.mouse = atoi(v);
     else if (!strcmp(it->key, "controls")) settings.wasd = strcmp(v, "classic") != 0, controls_apply();
     else if (!strcmp(it->key, "hd_textures")) settings.hd_textures = atoi(v), textures_apply();
@@ -208,14 +222,14 @@ void setting_step(int i, int dir)
 // the mod's, for comparing. Saved settings are left alone; the menus show the saved values.
 void settings_frame(void)
 {
-    static int was, original, hd_textures, smooth, hd_models;
+    static int was, original, hd_textures, smooth, hd_models, taz_style;
     int down = (GetAsyncKeyState(VK_F11) & 0x8000) && GetForegroundWindow() == *(HWND *)0x753724; // the game's window
     if (down && !was) {
         if ((original = !original)) {
-            hd_textures = settings.hd_textures, smooth = settings.smooth, hd_models = settings.hd_models;
-            settings.hd_textures = settings.smooth = settings.hd_models = 0;
+            hd_textures = settings.hd_textures, smooth = settings.smooth, hd_models = settings.hd_models, taz_style = settings.taz_style;
+            settings.hd_textures = settings.smooth = settings.hd_models = settings.taz_style = 0;
         } else {
-            settings.hd_textures = hd_textures, settings.smooth = smooth, settings.hd_models = hd_models;
+            settings.hd_textures = hd_textures, settings.smooth = smooth, settings.hd_models = hd_models, settings.taz_style = taz_style;
         }
         textures_apply();
         overlay_toast(original ? "Original graphics (F11)" : "HD graphics (F11)");

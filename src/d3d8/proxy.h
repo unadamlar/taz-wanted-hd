@@ -10,7 +10,7 @@ void textures_frame(void);
 void textures_dump_recent(void);
 void widescreen_patch(void);
 
-struct settings { int hd_textures, hd_models, vsync, fps_limit, smooth, wasd, mouse; float menu_speed; int exe_known, passthrough; };
+struct settings { int hd_textures, hd_models, vsync, fps_limit, smooth, wasd, mouse; float menu_speed; int exe_known, passthrough, taz_style; };
 extern struct settings settings;
 void settings_load(void);
 void settings_frame(void);
@@ -75,3 +75,9 @@ HRESULT mesh_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT
                   HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT));
 extern DWORD presents; // frames shown so far
 extern int smooth_keep_normals;
+extern const DWORD smooth_decl[8];
+extern int style_player;
+void style_shader_created(DWORD h, const DWORD *fn);
+int style_is_player(IDirect3DVertexBuffer8 *vb);
+HRESULT style_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
+                   HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT));

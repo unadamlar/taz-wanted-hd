@@ -32,11 +32,15 @@ The disc or disc image must be visible to Wine as a CD drive.
 
 Settings
 Game Options (main menu) and Options (pause menu) have rows for Resolution, HD Textures, Vsync,
-Smooth Characters, Controls, Mouse Look, Frame Cap and Menu Text Speed (Resolution, Vsync and Frame
+Smooth Characters, Taz Style, Controls, Mouse Look, Frame Cap and Menu Text Speed (Resolution, Vsync and Frame
 Cap only on the main menu's Game Options; there Controls opens a page with Controls, Mouse Look and
 the keys): press Select to change one. Changes apply at once (a resolution or
 vsync change takes about a second) and are saved in taz-hd.ini in the game folder. Changing the
 resolution or vsync discards the quicksave.
+Taz Style picks how Taz looks: Current (the mod's cel shading), Detailed Cartoon (crisper shading, a
+rim light, a lighter outline and shine on his eyes and nose), Soft Shading (smooth lighting and soft
+highlights, like a remake) or Fur Detail (Detailed Cartoon plus a painted fur pattern and a tufted
+outline).
 The game's Widescreen option is gone: the picture always matches your screen's shape.
 F12 saves a screenshot to taz-hd\shots.
 
