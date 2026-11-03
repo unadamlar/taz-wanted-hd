@@ -23,7 +23,7 @@ _Static_assert(sizeof(struct cvert) == 52, "character vertex layout");
 
 // The vertex declaration every character shader uses: position, 3 weights, bone indices, normal,
 // colour, texture coordinates.
-static const DWORD DECL[] = { 0x20000000, 0x40020000, 0x40020001, 0x40050002, 0x40020003, 0x40040004, 0x40010005, 0xffffffff };
+const DWORD smooth_decl[8] = { 0x20000000, 0x40020000, 0x40020001, 0x40050002, 0x40020003, 0x40040004, 0x40010005, 0xffffffff };
 
 struct entry { IDirect3DVertexBuffer8 *src, *vb; UINT start, count, tris; D3DPRIMITIVETYPE type; };
 // Per buffer: per-position normals and hard-edge flags for the curved shape, and a copy of its
@@ -53,7 +53,7 @@ static void flush(void)
 static HRESULT WINAPI hook_CreateVertexShader(IDirect3DDevice8 *dev, CONST DWORD *decl, CONST DWORD *fn, DWORD *h, DWORD usage)
 {
     HRESULT hr = real_CreateVertexShader(dev, decl, fn, h, usage);
-    if (SUCCEEDED(hr) && decl && !memcmp(decl, DECL, sizeof DECL) && nshaders < 16) shaders[nshaders++] = *h;
+    if (SUCCEEDED(hr) && decl && !memcmp(decl, smooth_decl, sizeof smooth_decl) && nshaders < 16) shaders[nshaders++] = *h, style_shader_created(*h, fn);
     return hr;
 }
 
@@ -361,7 +361,7 @@ HRESULT smooth_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UI
     UINT stride = 0;
     if (!settings.smooth || !smooth_character(dev) || FAILED(IDirect3DDevice8_GetStreamSource(dev, 0, &src, &stride)) || !src || stride != sizeof(struct cvert)) {
         if (src) IDirect3DVertexBuffer8_Release(src);
-        return draw(dev, type, start, count);
+        return style_draw(dev, type, start, count, draw);
     }
 
     UINT32 h = ((UINT32)(UINT_PTR)src >> 4) * 2654435761u ^ start * 40503u ^ count * 977u ^ type;
@@ -381,10 +381,10 @@ HRESULT smooth_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UI
     HRESULT hr;
     if (e->vb) {
         IDirect3DDevice8_SetStreamSource(dev, 0, e->vb, stride);
-        hr = draw(dev, D3DPT_TRIANGLELIST, 0, e->tris);
+        hr = style_draw(dev, D3DPT_TRIANGLELIST, 0, e->tris, draw);
         IDirect3DDevice8_SetStreamSource(dev, 0, src, stride);
     } else {
-        hr = draw(dev, type, start, count);
+        hr = style_draw(dev, type, start, count, draw);
     }
     IDirect3DVertexBuffer8_Release(src);
     return hr;

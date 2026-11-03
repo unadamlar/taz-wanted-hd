@@ -33,7 +33,8 @@ The disc or disc image must be visible to Wine as a CD drive.
 
 Settings
 Game Options (main menu) and Options (pause menu) have rows for Resolution, HD Textures, Vsync,
-Anti-Aliasing (Off, 2x, 4x or 8x; 4x by default), Smooth Characters, Controls, Mouse Look, Frame
+Anti-Aliasing (Off, 2x, 4x or 8x; 4x by default), Smooth Characters, Taz Style,
+Controls, Mouse Look, Frame
 Cap and Menu Text Speed (Resolution, Vsync, Anti-Aliasing and Frame Cap only on the main menu's
 Game Options; there Controls opens a page with Controls, Mouse Look and the keys): press Select to
 change one. Changes apply at once (a resolution, vsync or anti-aliasing change takes about a

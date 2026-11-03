@@ -229,6 +229,7 @@ HRESULT mesh_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT
         return draw(dev, type, start, count);
     }
     capture_draw(dev, src, type, start, count);
+    style_player = style_is_player(src); // the model's draws below, ours or the game's, get the Taz style
     struct rep *r = settings.hd_models ? rep_of(src) : NULL;
     UINT i = r ? r->next : 0;
     if (r && (i >= r->h->nbatches || r->batches[i].start != start || r->batches[i].count != count || r->batches[i].type != (DWORD)type))
