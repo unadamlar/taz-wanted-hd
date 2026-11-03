@@ -3,6 +3,9 @@
 // pixels and, if taz-hd\textures has a replacement (by original pak name via taz-hd\fingerprints.tsv,
 // or by <fingerprint>.png), a worker thread decodes it and builds mipmaps. Present uploads finished
 // ones; SetTexture and replayed state blocks then bind the replacement instead of the original.
+// A replacement is freed when the last game texture it stands in for is released (each level loads
+// new ones; keeping them all ran the 32-bit game out of memory after a few levels) and loaded again
+// if that texture comes back.
 #define COBJMACROS
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,8 +21,8 @@
 #define UPLOADS_PER_FRAME 16
 #define MAX_LEVELS 16
 
-struct tex_entry { IDirect3DTexture8 *tex; UINT64 hash; BYTE *bits; INT pitch; int updates; };
-struct rep_entry { UINT64 hash; IDirect3DTexture8 *rep; };
+struct tex_entry { IDirect3DTexture8 *tex; UINT64 hash; BYTE *bits; INT pitch; int updates, counted; };
+struct rep_entry { UINT64 hash; IDirect3DTexture8 *rep; int users, asked; }; // users: live game textures with this fingerprint
 // A name can point at part of a bigger image (splash screens are split into tiles).
 struct name_entry { UINT64 hash; char *path; UINT x, y, w, h, full_w, full_h; };
 
@@ -40,7 +43,7 @@ static struct name_entry names[TABLE];
 static int ntexs, nreps;
 static CRITICAL_SECTION lock;
 static IDirect3DDevice8 *device;
-static int dumping, dumped, replaced, rebind;
+static int dumping, dumped, replaced, freed, rebind;
 static struct job *todo, *done;
 static HANDLE work;
 static double decode_ms;
@@ -56,6 +59,7 @@ static HRESULT (WINAPI *real_DrawIndexedPrimitiveUP)(IDirect3DDevice8 *, D3DPRIM
 static HRESULT (WINAPI *real_SetTextureStageState)(IDirect3DDevice8 *, DWORD, D3DTEXTURESTAGESTATETYPE, DWORD);
 static HRESULT (WINAPI *real_LockRect)(IDirect3DTexture8 *, UINT, D3DLOCKED_RECT *, CONST RECT *, DWORD);
 static HRESULT (WINAPI *real_UnlockRect)(IDirect3DTexture8 *, UINT);
+static ULONG (WINAPI *real_Release)(IDirect3DTexture8 *);
 
 static struct tex_entry *tex_lookup(IDirect3DTexture8 *t, int insert)
 {
@@ -67,6 +71,38 @@ static struct tex_entry *tex_lookup(IDirect3DTexture8 *t, int insert)
     ntexs++;
     texs[i].tex = t;
     return &texs[i];
+}
+
+// Linear probing: later entries move back into the hole so lookups still find them.
+static void tex_remove(struct tex_entry *e)
+{
+    UINT i = e - texs;
+    memset(&texs[i], 0, sizeof texs[i]);
+    ntexs--;
+    for (UINT j = (i + 1) & (TABLE - 1); texs[j].tex; j = (j + 1) & (TABLE - 1)) {
+        UINT home = ((UINT_PTR)texs[j].tex >> 4) & (TABLE - 1);
+        if (i < j ? home <= i || home > j : home <= i && home > j) {
+            texs[i] = texs[j];
+            memset(&texs[j], 0, sizeof texs[j]);
+            i = j;
+        }
+    }
+}
+
+static struct rep_entry *rep_lookup(UINT64 hash, int *fresh);
+
+// A game texture with this fingerprint went away (or changed); free the replacement if it was the last.
+static void unuse(struct tex_entry *e)
+{
+    struct rep_entry *r = e->counted ? rep_lookup(e->hash, NULL) : NULL;
+    e->counted = 0;
+    if (!r || --r->users > 0) return;
+    r->users = 0;
+    if (r->rep) {
+        IDirect3DTexture8_Release(r->rep);
+        r->rep = NULL;
+        if (++freed % 250 == 0) log_line("%d replacements freed with the textures they stood in for", freed);
+    }
 }
 
 static struct rep_entry *rep_lookup(UINT64 hash, int *fresh)
@@ -298,9 +334,11 @@ void textures_frame(void)
             }
             EnterCriticalSection(&lock);
             struct rep_entry *r = rep_lookup(j->hash, NULL);
-            if (r) r->rep = t;
+            if (r) r->asked = 0;
+            if (r && r->users > 0 && !r->rep) r->rep = t, t = NULL;
             rebind = 1; // the original may be bound right now
             LeaveCriticalSection(&lock);
+            if (t) IDirect3DTexture8_Release(t); // its texture went away while it loaded
             if (++replaced % 250 == 0) log_line("%d textures replaced, %.0f ms decoding them (off the render thread)", replaced, decode_ms);
         } else if (j->levels) {
             log_line("could not create %ux%u texture for %s", j->w[0], j->h[0], j->path);
@@ -317,7 +355,7 @@ static DWORD WINAPI load_missing(void *arg)
     int n = 0;
     EnterCriticalSection(&lock);
     for (int i = 0; i < TABLE; i++)
-        if (reps[i].hash && !reps[i].rep) hashes[n++] = reps[i].hash;
+        if (reps[i].hash && !reps[i].rep && reps[i].users && !reps[i].asked) reps[i].asked = 1, hashes[n++] = reps[i].hash;
     LeaveCriticalSection(&lock);
     for (int i = 0; i < n; i++) queue_load(hashes[i], name_of(hashes[i]));
     log_line("hd textures on: %d to load", n);
@@ -375,8 +413,13 @@ static void fingerprint(IDirect3DTexture8 *t, struct tex_entry *e)
 {
     D3DSURFACE_DESC d;
     UINT bpp;
+    struct tex_entry old = *e;
     e->hash = 0;
-    if (FAILED(IDirect3DTexture8_GetLevelDesc(t, 0, &d)) || !(bpp = bytes_per_pixel(d.Format))) return;
+    e->counted = 0;
+    if (FAILED(IDirect3DTexture8_GetLevelDesc(t, 0, &d)) || !(bpp = bytes_per_pixel(d.Format))) {
+        unuse(&old);
+        return;
+    }
 
     UINT64 h = 0xcbf29ce484222325ULL;
     UINT shape[3] = { d.Width, d.Height, d.Format };
@@ -391,12 +434,13 @@ static void fingerprint(IDirect3DTexture8 *t, struct tex_entry *e)
 
     // Animated textures cycle through known frames; generated ones produce endless new content.
     const struct name_entry *n = name_of(e->hash);
-    int busy = ++e->updates > MAX_UPDATES;
-    if (busy && !n) return;
-    int fresh;
-    if (!rep_lookup(e->hash, &fresh) || !fresh) return;
-    if (dumping && !busy) queue_dump(e->hash, &d, e->bits, e->pitch);
-    if (settings.hd_textures) queue_load(e->hash, n);
+    int busy = ++e->updates > MAX_UPDATES, fresh;
+    struct rep_entry *r = busy && !n ? NULL : rep_lookup(e->hash, &fresh);
+    if (r) r->users++, e->counted = 1;
+    unuse(&old); // after counting this one, so an unchanged texture keeps its replacement
+    if (!r) return;
+    if (dumping && fresh && !busy) queue_dump(e->hash, &d, e->bits, e->pitch);
+    if (settings.hd_textures && !r->rep && !r->asked) r->asked = 1, queue_load(e->hash, n);
 }
 
 static IDirect3DBaseTexture8 *replacement_for(IDirect3DBaseTexture8 *bt)
@@ -419,7 +463,7 @@ static HRESULT WINAPI hook_LockRect(IDirect3DTexture8 *t, UINT level, D3DLOCKED_
         if (e) {
             e->bits = rect ? NULL : r->pBits; // partial updates can't be fingerprinted
             e->pitch = r->Pitch;
-            if (rect) e->hash = 0;
+            if (rect) unuse(e), e->hash = 0;
         }
         LeaveCriticalSection(&lock);
     }
@@ -442,6 +486,18 @@ static HRESULT WINAPI hook_UnlockRect(IDirect3DTexture8 *t, UINT level)
 
 DWORD textures_created;
 
+static ULONG WINAPI hook_Release(IDirect3DTexture8 *t)
+{
+    ULONG n = real_Release(t);
+    if (!n) {
+        EnterCriticalSection(&lock);
+        struct tex_entry *e = tex_lookup(t, 0);
+        if (e) unuse(e), tex_remove(e);
+        LeaveCriticalSection(&lock);
+    }
+    return n;
+}
+
 static HRESULT WINAPI hook_CreateTexture(IDirect3DDevice8 *dev, UINT w, UINT h, UINT levels, DWORD usage,
                                          D3DFORMAT fmt, D3DPOOL pool, IDirect3DTexture8 **tex)
 {
@@ -452,11 +508,7 @@ static HRESULT WINAPI hook_CreateTexture(IDirect3DDevice8 *dev, UINT w, UINT h, 
         // A freed texture's address can be reused; forget what was there.
         EnterCriticalSection(&lock);
         struct tex_entry *e = tex_lookup(*tex, 0);
-        if (e) {
-            e->hash = 0;
-            e->bits = NULL;
-            e->updates = 0;
-        }
+        if (e) unuse(e), tex_remove(e);
         LeaveCriticalSection(&lock);
     }
     return hr;
@@ -704,6 +756,7 @@ void textures_reset(IDirect3DDevice8 *dev)
     EnterCriticalSection(&lock);
     memset(texs, 0, sizeof texs);
     ntexs = 0;
+    for (int i = 0; i < TABLE; i++) reps[i].users = 0; // counted again as the game refills them
     LeaveCriticalSection(&lock);
     memset(scrolls, 0, sizeof scrolls);
     memset(bound, 0, sizeof bound);
@@ -755,6 +808,7 @@ void textures_install(IDirect3DDevice8 *dev)
     if (SUCCEEDED(real_CreateTexture(dev, 1, 1, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &probe))) {
         patch((void **)&probe->lpVtbl->LockRect, hook_LockRect, (void **)&real_LockRect);
         patch((void **)&probe->lpVtbl->UnlockRect, hook_UnlockRect, (void **)&real_UnlockRect);
+        patch((void **)&probe->lpVtbl->Release, hook_Release, (void **)&real_Release);
         IDirect3DTexture8_Release(probe);
     }
     for (DWORD s = 0; s < 8; s++)
@@ -763,5 +817,5 @@ void textures_install(IDirect3DDevice8 *dev)
 
 void textures_report(void)
 {
-    log_line("textures: %d tracked, %d unique, %d dumped, %d replaced", ntexs, nreps, dumped, replaced);
+    log_line("textures: %d tracked, %d unique, %d dumped, %d replaced, %d freed", ntexs, nreps, dumped, replaced, freed);
 }
