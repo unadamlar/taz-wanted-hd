@@ -57,7 +57,7 @@ static const struct { const char *name; BYTE dik; } KEYS[] = {
     { "X", 0x2d }, { "C", 0x2e }, { "V", 0x2f }, { "B", 0x30 }, { "N", 0x31 }, { "M", 0x32 }, { "Comma", 0x33 },
     { "Period", 0x34 }, { "Slash", 0x35 }, { "RShift", 0x36 }, { "LAlt", 0x38 }, { "Space", 0x39 },
     { "CapsLock", 0x3a }, { "F1", 0x3b }, { "F2", 0x3c }, { "F3", 0x3d }, { "F4", 0x3e }, { "F6", 0x40 },
-    { "F7", 0x41 }, { "F8", 0x42 }, { "F10", 0x44 }, { "F11", 0x57 }, { "Num7", 0x47 }, { "Num8", 0x48 },
+    { "F7", 0x41 }, { "F8", 0x42 }, { "F10", 0x44 }, { "Num7", 0x47 }, { "Num8", 0x48 },
     { "Num9", 0x49 }, { "NumMinus", 0x4a }, { "Num4", 0x4b }, { "Num5", 0x4c }, { "Num6", 0x4d },
     { "NumPlus", 0x4e }, { "Num1", 0x4f }, { "Num2", 0x50 }, { "Num3", 0x51 }, { "Num0", 0x52 },
     { "NumEnter", 0x9c }, { "RCtrl", 0x9d }, { "RAlt", 0xb8 }, { "Home", 0xc7 }, { "Up", 0xc8 }, { "PgUp", 0xc9 },

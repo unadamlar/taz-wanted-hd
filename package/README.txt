@@ -14,7 +14,7 @@ What it does
   keyboard or controller.
 - Rounder, smoother characters with cleaner cartoon shading; Taz gets new hands and his ears, fur
   and tail bounce as he moves.
-- Shift+H switches between the original graphics and the new ones, for comparing.
+- F11 switches between the original graphics and the new ones, for comparing.
 - Quicksave (F5) and quickload (F9) anywhere in a level. The quicksave lasts until you leave the
   level or quit the game; the game's own save slots work as before.
 
@@ -54,7 +54,7 @@ under [taz-hd], one or two inputs each, for example:
     key_jump=Space
     key_spin=LShift MouseRight
 Actions: key_forward, key_back, key_left, key_right (one key each), key_jump, key_spin, key_bite,
-key_rant, key_tiptoe, key_look, key_map. Names: letters, digits, F1-F4, F6-F8, F10, F11, Space, Tab,
+key_rant, key_tiptoe, key_look, key_map. Names: letters, digits, F1-F4, F6-F8, F10, Space, Tab,
 Enter, Backspace, LShift, RShift, LCtrl, RCtrl, LAlt, RAlt, CapsLock, Up, Down, Left, Right, Home,
 End, PgUp, PgDn, Insert, Delete, Num0-Num9, NumPlus, NumMinus, NumEnter, Minus, Equals, LBracket,
 RBracket, Semicolon, Apostrophe, Grave, Backslash, Comma, Period, Slash, MouseLeft, MouseRight,

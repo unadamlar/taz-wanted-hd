@@ -204,13 +204,12 @@ void setting_step(int i, int dir)
     }
 }
 
-// Shift+H flips between the game's own graphics (original textures and models, no smoothing) and
+// F11 flips between the game's own graphics (original textures and models, no smoothing) and
 // the mod's, for comparing. Saved settings are left alone; the menus show the saved values.
 void settings_frame(void)
 {
     static int was, original, hd_textures, smooth, hd_models;
-    int down = (GetAsyncKeyState('H') & 0x8000) && (GetAsyncKeyState(VK_SHIFT) & 0x8000)
-               && GetForegroundWindow() == *(HWND *)0x753724; // the game's window
+    int down = (GetAsyncKeyState(VK_F11) & 0x8000) && GetForegroundWindow() == *(HWND *)0x753724; // the game's window
     if (down && !was) {
         if ((original = !original)) {
             hd_textures = settings.hd_textures, smooth = settings.smooth, hd_models = settings.hd_models;
@@ -219,7 +218,7 @@ void settings_frame(void)
             settings.hd_textures = hd_textures, settings.smooth = smooth, settings.hd_models = hd_models;
         }
         textures_apply();
-        overlay_toast(original ? "Original graphics (Shift+H)" : "HD graphics (Shift+H)");
+        overlay_toast(original ? "Original graphics (F11)" : "HD graphics (F11)");
         log_line("graphics: %s", original ? "original" : "hd");
     }
     was = down;
