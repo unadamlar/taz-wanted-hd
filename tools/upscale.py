@@ -12,7 +12,8 @@ original's (the upscaler drifts colour and contrast); fine detail is kept. Final
 kept within the colours of the original's nearby pixels, which removes the dark outlines and light
 rims the upscaler draws along colour borders. The transparency mask goes through the
 upscaler as its own image; on/off masks (cut-outs) are cut back to hard edges, soft ones (fonts) stay soft.
-Mostly see-through sprites (glows, smoke) are just enlarged smoothly, since there is no detail to recover,
+Mostly see-through sprites (glows, smoke) and opaque gradients without hard edges (shadows) are just
+enlarged smoothly, since there is no detail to recover,
 and so is any texture whose upscale strays far from the original (fine fences, thin stripes).
 Invisible pixels are first filled with neighbouring colours so dark fringes don't bleed into edges.
 """
@@ -59,6 +60,16 @@ def repeats(px, axis):
         return True
     steps = np.abs(np.diff(a, axis=0)).mean((1, 2))
     return np.abs(a[0] - a[-1]).mean() <= 2 * np.percentile(steps, 90) + 4
+
+
+def no_edges(px):
+    """Smooth gradients and blobs (Taz's shadow, light streaks, soft clouds): no step between neighbouring
+    pixels covers a quarter of the brightness range. The upscaler turns their fades into rings and bands."""
+    g = px[..., :3].astype(np.float32).mean(2)
+    rng = np.ptp(g)
+    if rng < 64 or min(g.shape) < 8:
+        return False
+    return max(np.abs(np.diff(g, axis=0)).max(), np.abs(np.diff(g, axis=1)).max()) < rng / 4
 
 
 def pad(px, n, modes):
@@ -138,6 +149,8 @@ def main():
                 if a.size and ((a < 247).mean() > 0.35):
                     soft.add(i)
                 Image.fromarray(padded[..., 3]).convert("RGB").save(stage / f"{i}a.png")
+            elif no_edges(px):
+                soft.add(i)
         subprocess.run([str(ESRGAN), "-i", str(stage), "-o", str(done), "-n", MODEL, "-s", "4", "-f", "png"],
                        check=True, stdout=subprocess.DEVNULL)
         for i, p in enumerate(files):
