@@ -30,7 +30,9 @@ from PIL import Image
 ESRGAN = os.environ.get("REALESRGAN", "realesrgan-ncnn-vulkan")
 MODEL = "realesrgan-x4plus-anime"
 PAD = 8
-FLAT = {"citybloom01", "citybloom02"}  # opaque, see flat_up
+# Opaque textures enlarged by flat_up, with how far it rounds (in original pixels). Single-pixel dots
+# need under ~0.47 or they vanish.
+FLAT = {"citybloom01": 0.5, "citybloom02": 0.5, "cowboystubble01": 0.3}
 
 
 def bleed(px):
@@ -86,6 +88,43 @@ def line_art(px):
     return part.any() and np.median(step[part]) >= 112 and px[..., :3][al > 8].std(0).max() < 8
 
 
+def blocky(px):
+    """Colour swatches and stripes (Sam's and Tweety's colour sheets, the cowboy hat's band): solid
+    rectangles in strongly different colours, which models pick by UV. The upscaler softened and wobbled
+    their borders, so they are just enlarged pixel for pixel. Counted as rectangles: areas that fill their
+    bounding box and are 2 pixels thick or span the texture; staircase outlines break into thin pieces."""
+    p = px.astype(np.int16)
+    steps = np.concatenate([np.abs(p[1:] - p[:-1]).max(2).ravel(), np.abs(p[:, 1:] - p[:, :-1]).max(2).ravel()])
+    steps = steps[steps > 0]
+    if not steps.size or steps.min() < 64:  # banded gradients look better smoothed
+        return False
+    cols, lab = np.unique(px.reshape(-1, 4), axis=0, return_inverse=True)
+    if len(cols) > 16:
+        return False
+    h, w = px.shape[:2]
+    lab = lab.reshape(h, w)
+    a, b, c, d = lab[:-1, :-1], lab[:-1, 1:], lab[1:, :-1], lab[1:, 1:]
+    corners = (~(((a == b) & (c == d)) | ((a == c) & (b == d)))).sum()
+    seen = np.zeros((h, w), bool)
+    rects = 0
+    for y, x in np.ndindex(h, w):
+        if seen[y, x]:
+            continue
+        seen[y, x] = True
+        todo, ys, xs = [(y, x)], [], []
+        while todo:
+            i, j = todo.pop()
+            ys.append(i)
+            xs.append(j)
+            for k, l in ((i + 1, j), (i - 1, j), (i, j + 1), (i, j - 1)):
+                if 0 <= k < h and 0 <= l < w and not seen[k, l] and lab[k, l] == lab[y, x]:
+                    seen[k, l] = True
+                    todo.append((k, l))
+        bh, bw = max(ys) - min(ys) + 1, max(xs) - min(xs) + 1
+        rects += bh * bw == len(ys) and (min(bh, bw) >= 2 or bh == h or bw == w)
+    return corners <= 4 * rects
+
+
 def pad(px, n, modes):
     for axis, mode in enumerate(modes):
         px = np.pad(px, [(n, n) if a == axis else (0, 0) for a in range(px.ndim)], mode=mode)
@@ -110,14 +149,15 @@ def up4(e, modes):
     return e
 
 
-def flat_up(px, modes):
+def flat_up(px, modes, sg):
     """4x for flat-colour pixel art too small for the upscaler (the city's grass flowers, each petal a few
-    pixels, came out as blurry squares): each colour's area is rounded off on its own and every pixel takes
-    the colour that covers it most, worked out at 8x and averaged down so edges are antialiased."""
+    pixels, came out as blurry squares; the cowboy costume's one-pixel stubble as squiggles): each colour's
+    area is rounded off on its own (blur of sg pixels) and every pixel takes the colour that covers it most,
+    worked out at 8x and averaged down so edges are antialiased."""
     h, w = px.shape[:2]
     cols, lab = np.unique(px.reshape(-1, 3), axis=0, return_inverse=True)
     lab = lab.reshape(h, w)
-    s, sg = 8, 4.0  # sigma of half an original pixel
+    s, sg = 8, sg * 8
     r = int(3 * sg) + 1
     k = np.exp(-np.arange(-r, r + 1) ** 2 / (2 * sg * sg)).astype(np.float32)
     k /= k.sum()
@@ -201,7 +241,9 @@ def main():
                 a = np.asarray(Image.open(done / f"{i}a.png").convert("L"))[n:n + h * 4, n:n + w * 4]
                 a = np.where(a >= 128, 255, 0).astype(np.uint8) if alpha[i] else clamp(a[..., None], px[..., 3:])[..., 0]
             if p.stem in FLAT:
-                img = Image.fromarray(flat_up(px[..., :3], modes[i]), "RGB")
+                img = Image.fromarray(flat_up(px[..., :3], modes[i], FLAT[p.stem]), "RGB")
+            elif blocky(px):
+                img = Image.fromarray(px if i in alpha else px[..., :3]).resize((w * 4, h * 4), Image.NEAREST)
             elif i in soft or lost(rgb, a, px, target):
                 img = Image.fromarray(np.dstack([target, px[..., 3]]), "RGBA").resize((w * 4, h * 4), Image.BICUBIC)
                 if alpha.get(i) and i not in soft:
