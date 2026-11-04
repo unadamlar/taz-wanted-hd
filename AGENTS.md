@@ -46,6 +46,7 @@ Shape: a loader DLL and asset packs applied to the user's own copy; later an opt
 
 ## Testing and release
 - Test rig scripts live in `qa/` (untracked): `stop.sh`, `key.sh` (finds gamescope's X display), `launch.sh` (to the main menu), `tolevel.sh` (into slot One's level), `qsfuzz.sh <rounds>` (random play with F5/F9), `step.sh <out.jpg> [wait] [keys]` (screenshot), `tomenu.sh` (to main menu via `similar.py` + `ref-mainmenu.jpg`), `idletest.sh`, `measure.sh`/`analyze.py` (menu timing), `fresh.sh <prefix>` and `player.sh <prefix> <game dir>` (no-argument start, like a player). Back up `TazWanted.sav` before runs that might reach a save.
+- Parallel agents: qa scripts take `TAZ_GAME` (a reflink copy of the dev install per agent, d3d8.dll linked to its own build); only one headless game can run at a time, so hold `qa/gamelock.sh acquire|touch|release <name>` around each run.
 - Release: `tools/package.sh <version>` builds `dist/taz-wanted-hd-<version>.zip` (DLL, `extracted/upscaled` as `taz-hd/textures`, `fingerprints.tsv`, `extracted/videos`, `package/README.txt`, LICENSE). Player test: reflink-copy the pristine install somewhere with a long path, unzip into it, run `qa/player.sh` with a fresh prefix (mount the ISO into it with `WINEPREFIX=<prefix> tools/mount-cd.sh`). 0.1 passed this on 2026-10-30 up to the in-engine intro. Release plan: mod zip only (player brings the game); never ship game files.
 
 ## Rules
