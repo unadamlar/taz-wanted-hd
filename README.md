@@ -11,7 +11,8 @@ resolution and shape, smoother edges, rounder characters and modern controls. Yo
 
 ### Sharper textures
 
-The game's textures, fonts and loading screens are replaced with versions upscaled 4x.
+The game's textures, fonts and loading screens are replaced with versions upscaled 4x. Menu text,
+subtitles and the boss levels' rule books are sharp at any resolution.
 
 ![City hub signs with the original and the HD textures](docs/images/textures.jpg)
 
@@ -37,8 +38,10 @@ walk towards them. Far and Very Far keep them on screen.
 
 ### Smoother characters
 
-The characters' low-poly models are rounded off and their cartoon shading is cleaner, without
-the ragged shadow patches. Taz's ears, fur and tail bounce as he moves.
+Taz, all his costumes and the Elephant Pong elephant have new dense models that stay round up
+close, with tapered fingers. The other characters' low-poly models are rounded off, and all get
+cleaner cartoon shading without the ragged shadow patches. Taz's ears, fur and tail bounce as he
+moves.
 
 ![Taz close-up, original and HD](docs/images/taz.jpg)
 
@@ -51,6 +54,7 @@ Keep Taz as he is, or try one of three newer looks.
 ### And also
 
 - Intro videos play upscaled and full screen.
+- The live level previews on a level's map are drawn sharp at screen size.
 - WASD to move and the mouse to turn the camera. Original keys and gamepads still work.
 - Quicksave (F5) and quickload (F9) anywhere in a level.
 - Menu text slides in about four times faster.
@@ -59,8 +63,8 @@ Keep Taz as he is, or try one of three newer looks.
 <sub>How these were taken: in the game, with the mod. Original is everything the mod adds turned
 off (HD textures, anti-aliasing, smoothing, models, Draw Distance Original) at 1024x768, scaled to
 the same height. HD is the default settings at 2560x1440. The textures, anti-aliasing, draw
-distance and Taz images are 2560x1440 on both sides with only the named setting changed; the Taz
-close-up uses F11 on a paused frame.</sub>
+distance and Taz Style images are 2560x1440 on both sides with only the named setting changed; the
+Taz close-up is 2880x1800 and uses F11 on a paused frame.</sub>
 
 ## Install
 
