@@ -75,7 +75,9 @@ most of these characters already animate their floppy parts with their own bones
 ## Known limits
 
 - Jumping straight into scene 2 (playpen) crashes the game, with or without the mod's models; 19 (tazboss1)
-  crashed once while loading (only tried with the mod).
+  crashed once while loading (only tried with the mod). 12 (cityboss) crashes right after loading
+  (taz.exe +0x1140a6, also with every mod feature off) unless jumped to from 8 (cityhub), the way play
+  reaches it.
 - Jumping straight into 10 museum, 25 deconstruct or 28 rcgoldmine drops Taz into an endless fall.
 - A model file only matches the exact model it was made from; a character whose model the game
   swaps (costumes, cutscene versions) needs one file per version.
