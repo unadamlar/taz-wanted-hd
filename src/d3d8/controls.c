@@ -68,7 +68,8 @@ static const struct { const char *name; BYTE dik; } KEYS[] = {
 };
 
 static float pitch;             // held camera tilt from the mouse, -1..1 like the stick
-static BYTE *mouse_cam;         // camera the mouse last turned
+static BYTE *mouse_cam;         // camera the mouse last turned...
+static DWORD mouse_time;        // ...and when (ms)
 static DWORD camera_frame, now; // frames: last camera control call, current
 static int held;                // mouse held exclusively
 static BYTE *p1_pad;            // player 1's pad as set up for the keyboard...
@@ -284,7 +285,7 @@ static void __cdecl camera_control(void **cc)
         CAMERA_CONTROL(cc);
         return;
     }
-    if (MOUSE_DX || MOUSE_DY) mouse_cam = cam;
+    if (MOUSE_DX || MOUSE_DY) mouse_cam = cam, mouse_time = GetTickCount();
     float sens = settings.mouse * 0.0003f, per_frame = TURN_RATE / FPS;
     float yaw = -MOUSE_DX * sens / per_frame; // in stick units: the game turns per_frame * stick
     float saved[8];
@@ -316,14 +317,15 @@ static void __cdecl camera_control(void **cc)
 }
 
 // The camera trails Taz on a leash (and in some states swings behind him), so running anywhere but
-// straight ahead turns it, fighting the mouse. Once the mouse has turned this camera it keeps the
-// direction it has around Taz; only the mouse and the camera keys turn it.
+// straight ahead turns it, fighting the mouse. For a while after mouse input it keeps the direction
+// it had around Taz, then gently hands back to the game.
 static void __cdecl camera_update(BYTE *cam)
 {
-    float *c = (float *)cam, before = heading(c + 8, c + 12);
-    int keep = cam == mouse_cam && (*(DWORD *)(cam + 0x74) & 0x1b00) == 0x1000 && !*(void **)(cam + 0xac); // player camera, not scripted, look-around or catching up
+    float *c = (float *)cam, before = heading(c + 8, c + 12), t = (GetTickCount() - mouse_time) / 1000.f;
+    float keep = cam != mouse_cam || (*(DWORD *)(cam + 0x74) & 0x1b00) != 0x1000 || *(void **)(cam + 0xac) ? 0
+               : t < 1.5f ? 1 : t < 3 ? (3 - t) / 1.5f : 0; // player camera, not scripted, look-around or catching up
     CAMERA_UPDATE(cam);
-    if (keep) spin(c + 8, c + 12, before - heading(c + 8, c + 12));
+    if (keep) spin(c + 8, c + 12, (before - heading(c + 8, c + 12)) * keep);
 }
 
 // IDirectInputDevice8 vtable slots.

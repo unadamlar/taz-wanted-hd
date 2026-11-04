@@ -47,8 +47,8 @@ F12 saves a screenshot to taz-hd\shots.
 
 Controls
 WASD moves (arrows still work) and the mouse turns and tilts the camera while you play, running or
-standing; once you have turned it with the mouse, it stays where you point it. Mouse Look sets its
-speed (Off turns it off). Space jumps, Shift or right click spins, left click bites, middle click
+standing; it swings back behind Taz a couple of seconds after you stop moving the mouse. Mouse
+Look sets its speed (Off turns it off). Space jumps, Shift or right click spins, left click bites, middle click
 looks around, Q rants, Ctrl tiptoes and Tab opens the map (in levels;
 the zoo hub has none). Original keys the layout
 doesn't use (C, F, R, X, V, E, T, arrows) still work. Set Controls to Classic for the original keys
