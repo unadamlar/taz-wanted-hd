@@ -8,7 +8,9 @@ padding is cropped, so tiled surfaces don't get seams. Along an axis whose oppos
 continue each other (sky panels, grass-to-path joiners) it is mirrored instead: wrapping put the
 other edge's colour and a drawn outline into the edge rows, which polygons that stretch an edge
 show as a wrong colour or a line. Afterwards each upscale's broad colours are pulled back to the
-original's (the upscaler drifts colour and contrast); fine detail is kept. The transparency mask goes through the
+original's (the upscaler drifts colour and contrast); fine detail is kept. Finally each pixel is
+kept within the colours of the original's nearby pixels, which removes the dark outlines and light
+rims the upscaler draws along colour borders. The transparency mask goes through the
 upscaler as its own image; on/off masks (cut-outs) are cut back to hard edges, soft ones (fonts) stay soft.
 Mostly see-through sprites (glows, smoke) are just enlarged smoothly, since there is no detail to recover.
 Invisible pixels are first filled with neighbouring colours so dark fringes don't bleed into edges.
@@ -91,6 +93,15 @@ def fit(rgb, target, modes):
     return np.clip(hd + 0.5, 0, 255).astype(np.uint8)
 
 
+def clamp(rgb, target, modes):
+    """Limits each pixel to the range of the original's 3x3 pixels around it."""
+    p = pad(target, 1, modes)
+    h, w = target.shape[:2]
+    win = np.stack([p[y:y + h, x:x + w] for y in range(3) for x in range(3)])
+    lo, hi = (np.repeat(np.repeat(v, 4, 0), 4, 1) for v in (win.min(0), win.max(0)))
+    return np.clip(rgb, lo, hi)
+
+
 def main():
     src, out = Path(sys.argv[1]), Path(sys.argv[2])
     wanted = sys.argv[3] if len(sys.argv) > 3 else ""
@@ -121,7 +132,8 @@ def main():
             px = np.asarray(Image.open(p).convert("RGBA"))
             h, w = px.shape[:2]
             n = min(PAD, h, w) * 4
-            rgb = fit(rgb[n:n + h * 4, n:n + w * 4], bleed(px), modes[i])
+            target = bleed(px)
+            rgb = clamp(fit(rgb[n:n + h * 4, n:n + w * 4], target, modes[i]), target, modes[i])
             if i in soft:
                 img = Image.fromarray(np.dstack([bleed(px), px[..., 3]]), "RGBA").resize((w * 4, h * 4), Image.BICUBIC)
             elif i in alpha:
