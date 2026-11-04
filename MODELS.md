@@ -68,7 +68,7 @@ most of these characters already animate their floppy parts with their own bones
 
 | Character | Where seen in play | Fingerprint | Model file | Notes |
 |---|---|---|---|---|
-| Elephant | 7 zooboss (Elephant Pong) | 1d44544a0d4eebd7 | yes | ears swing (2 springs); checked drawn whole close up, the swing itself not caught on screen |
+| Elephant | 7 zooboss (Elephant Pong) | 1d44544a0d4eebd7 | yes | ears swing (2 springs); checked drawn whole close up, the swing itself not caught on screen. The ears are thin plates whose rim points serve front and back; `tools/normals.py` (PLATES) gives each side its own normals, so they no longer shade dark or show black outline wedges |
 | Yosemite Sam | 7 zooboss (in the stands), 17 westboss | dba92834ff14d74c | no | his moustache already has its own bones; tip springs only moved 4 points each and westboss shows him from high above |
 | Gossamer | 7 zooboss (goalkeeper, close to camera) | 01036cdeaa4e7c03 | no | 28 bones; no loose part without its own bone found |
 | Tweety | zoo hub | 9ccd72fd73041cc4 | no | head feathers would suit a spring, but in the hub Tweety barely moves: 3 of 7 bones never moved apart in 30 s of frames |
