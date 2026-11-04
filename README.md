@@ -89,10 +89,6 @@ tell Wine to use the mod's `d3d8.dll` instead of its own: a DLL override for `d3
 To check it worked: the game starts at your screen's resolution and Game Options has a Graphics
 page. If the old 2002 launcher window opens instead, the override isn't set.
 
-If the game asks for its disc, insert it or mount the disc image (open or right-click the `.iso` in
-the file manager and choose Mount, or `udisksctl loop-setup -r -f taz-wanted.iso`); Wine and
-Proton pick it up as a CD drive by themselves. On a Steam Deck, do this in Desktop Mode.
-
 ## Settings
 
 Everything is in the game's own menus and applies at once:

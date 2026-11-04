@@ -25,8 +25,7 @@ What it does
 
 Install (Windows 10 or 11)
 1. Copy everything in this folder into the game folder, next to taz.exe.
-2. The game checks for its CD. Insert the disc, or double-click the disc image (.iso) to mount it.
-3. Run taz.exe.
+2. Run taz.exe.
 
 Install (Linux / Steam Deck)
 Windows games run on Linux through Wine or Proton (also inside Steam, Lutris, Heroic, Bottles).
@@ -49,12 +48,6 @@ Any of them works.
 
    To check: the game should start straight at your screen's resolution, and Game Options should
    have a Graphics page. If the old 2002 launcher window opens instead, the override isn't set.
-
-3. The game checks for its disc. Insert it, or mount the disc image (.iso) before starting: in
-   the file manager, open or right-click the .iso and choose Mount, or in a terminal:
-       udisksctl loop-setup -r -f /path/to/taz-wanted.iso
-   Wine/Proton picks the disc up as a CD drive by itself. Mount it again after a restart. On a
-   Steam Deck, do this in Desktop Mode, then start the game in either mode.
 
 Settings
 Game Options (main menu) has Graphics (a page with Resolution, HD Textures, Vsync, Anti-Aliasing

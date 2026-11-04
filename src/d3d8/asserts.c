@@ -1,6 +1,7 @@
 // Diagnostics for silent quits. The game's assert handler (0x48eb10) prints to a debug log the
 // release never opens, then exits; we log the failure first. The save written on each scene change
-// (FUN_004b8de0) starts with the CD check (FUN_004a1de0), which quits when the disc is missing; we log both.
+// (FUN_004b8de0) calls FUN_004a1de0 first, which is a no-op unless the label check below says the
+// game is missing something; wrapping it logs the scene request.
 #include <string.h>
 #include "proxy.h"
 
@@ -19,21 +20,12 @@ __attribute__((used)) static void __cdecl log_scene_request(int scene)
     log_line("saving on the way to scene %d", scene);
 }
 
-__attribute__((used)) static void __cdecl log_cd_result(int missing)
-{
-    if (missing) log_line("CD check failed: the game will quit");
-}
-
 // Replaces "call 0x4a1de0" at 0x4b8de4; the scene argument sits 0x60 above our return address.
+// FUN_004a1de0 does nothing when the label check reports the game's media present, so log and return.
 __attribute__((naked)) static void cd_check(void)
 {
     __asm__("pushl 0x60(%esp)\n\t"
             "call _log_scene_request\n\t"
-            "addl $4, %esp\n\t"
-            "movl $0x4a1de0, %eax\n\t"
-            "call *%eax\n\t"
-            "pushl 0x6f4af4\n\t"
-            "call _log_cd_result\n\t"
             "addl $4, %esp\n\t"
             "ret");
 }
@@ -95,6 +87,18 @@ void asserts_patch(void)
         VirtualProtect((BYTE *)0x4b8de4, 5, PAGE_EXECUTE_READWRITE, &old);
         memcpy((BYTE *)0x4b8de4, call, 5);
         VirtualProtect((BYTE *)0x4b8de4, 5, old, &old);
+    }
+
+    // FUN_004a1f10 (asked by FUN_004a1de0 on the way into a scene) looks for the game's volume label
+    // and reports it missing otherwise; we answer yes, so the game never stops there.
+    static const BYTE label_check[] = { 0x81, 0xec, 0x38, 0x01, 0x00, 0x00 }; // sub esp, 0x138
+    static const BYTE label_ok[] = { 0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3 };    // mov eax, 1; ret
+    if (!memcmp((BYTE *)0x4a1f10, label_check, sizeof label_check)) {
+        DWORD old;
+        VirtualProtect((BYTE *)0x4a1f10, sizeof label_ok, PAGE_EXECUTE_READWRITE, &old);
+        memcpy((BYTE *)0x4a1f10, label_ok, sizeof label_ok);
+        VirtualProtect((BYTE *)0x4a1f10, sizeof label_ok, old, &old);
+        FlushInstructionCache(GetCurrentProcess(), (BYTE *)0x4a1f10, sizeof label_ok);
     }
 
     static const BYTE orig[] = { 0xa1, 0xf0, 0x4a, 0x6f, 0x00 }; // mov eax, [0x6f4af0]
