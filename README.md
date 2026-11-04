@@ -4,8 +4,8 @@ An unofficial fan remaster mod for the 2002 PC game Taz: Wanted. You bring the g
 
 - Quicksave (F5) and quickload (F9) anywhere in a level.
 - WASD to move and the mouse to turn the camera, with every key remappable.
-- HD graphics: 4x upscaled textures, your screen's resolution and shape, anti-aliasing, a longer
-  draw distance and smoother characters.
+- HD graphics: 4x upscaled textures, widescreen at your monitor's native resolution,
+  anti-aliasing, a longer draw distance and smoother characters.
 
 ![Main menu, original and HD](docs/images/menu.jpg)
 
