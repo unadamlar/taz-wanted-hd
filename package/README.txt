@@ -15,6 +15,8 @@ What it does
   keyboard or controller.
 - Rounder, smoother characters with cleaner cartoon shading; Taz gets new hands and his ears, fur
   and tail bounce as he moves.
+- Taz Style: try newer looks for Taz (Detailed Cartoon, Soft Shading, Fur Detail) or keep the
+  current one.
 - Sees further: scenery and objects in the distance stay visible instead of popping in (Draw
   Distance: Original, Far or Very Far).
 - F11 switches between the original graphics and the new ones, for comparing.
