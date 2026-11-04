@@ -30,6 +30,7 @@ from PIL import Image
 ESRGAN = os.environ.get("REALESRGAN", "realesrgan-ncnn-vulkan")
 MODEL = "realesrgan-x4plus-anime"
 PAD = 8
+FLAT = {"citybloom01", "citybloom02"}  # opaque, see flat_up
 
 
 def bleed(px):
@@ -109,6 +110,28 @@ def up4(e, modes):
     return e
 
 
+def flat_up(px, modes):
+    """4x for flat-colour pixel art too small for the upscaler (the city's grass flowers, each petal a few
+    pixels, came out as blurry squares): each colour's area is rounded off on its own and every pixel takes
+    the colour that covers it most, worked out at 8x and averaged down so edges are antialiased."""
+    h, w = px.shape[:2]
+    cols, lab = np.unique(px.reshape(-1, 3), axis=0, return_inverse=True)
+    lab = lab.reshape(h, w)
+    s, sg = 8, 4.0  # sigma of half an original pixel
+    r = int(3 * sg) + 1
+    k = np.exp(-np.arange(-r, r + 1) ** 2 / (2 * sg * sg)).astype(np.float32)
+    k /= k.sum()
+    best = np.full((h * s, w * s), -1, np.float32)
+    out = np.zeros((h * s, w * s), np.intp)
+    for i in range(len(cols)):
+        m = pad(np.repeat(np.repeat((lab == i).astype(np.float32), s, 0), s, 1)[..., None], r, modes)[..., 0]
+        m = sum(k[j] * m[j:j + h * s] for j in range(2 * r + 1))
+        m = sum(k[j] * m[:, j:j + w * s] for j in range(2 * r + 1))
+        more = m > best
+        best[more], out[more] = m[more], i
+    return cols[out].reshape(h * 4, 2, w * 4, 2, 3).mean((1, 3)).round().astype(np.uint8)
+
+
 def fit(rgb, target, modes):
     """Nudges rgb until its 4x4 averages match target's colours, blurred so only broad colour changes."""
     hd, target = rgb.astype(np.float32), target.astype(np.float32)
@@ -177,7 +200,9 @@ def main():
             if i in alpha:
                 a = np.asarray(Image.open(done / f"{i}a.png").convert("L"))[n:n + h * 4, n:n + w * 4]
                 a = np.where(a >= 128, 255, 0).astype(np.uint8) if alpha[i] else clamp(a[..., None], px[..., 3:])[..., 0]
-            if i in soft or lost(rgb, a, px, target):
+            if p.stem in FLAT:
+                img = Image.fromarray(flat_up(px[..., :3], modes[i]), "RGB")
+            elif i in soft or lost(rgb, a, px, target):
                 img = Image.fromarray(np.dstack([target, px[..., 3]]), "RGBA").resize((w * 4, h * 4), Image.BICUBIC)
                 if alpha.get(i) and i not in soft:
                     img.putalpha(img.getchannel("A").point(lambda v: 255 if v >= 128 else 0))
