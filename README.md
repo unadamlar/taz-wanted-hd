@@ -72,6 +72,27 @@ Linux and Steam Deck: see below.
 
 ### Linux and Steam Deck
 
+Any Wine or Proton setup works (Steam, Lutris, Heroic, Bottles, plain Wine). Unzip as above, then
+tell Wine to use the mod's `d3d8.dll` instead of its own: a DLL override for `d3d8` set to `n,b`
+(native, then builtin). Set it wherever you start the game:
+
+- **Steam / Steam Deck** (`taz.exe` added with "Add a Non-Steam Game", Proton chosen under
+  Properties > Compatibility): Properties > General > Launch Options:
+  `WINEDLLOVERRIDES="d3d8=n,b" %command%`
+- **Lutris:** right-click the game > Configure > Runner options > DLL overrides > Add, key `d3d8`,
+  value `n,b`.
+- **Heroic, Bottles** or anything that lets you set environment variables: `WINEDLLOVERRIDES` =
+  `d3d8=n,b`.
+- **Plain Wine:** `winecfg` in the game's prefix > Libraries, type `d3d8`, Add, Edit, "Native then
+  Builtin". Or start it with `WINEDLLOVERRIDES="d3d8=n,b" wine taz.exe`.
+
+To check it worked: the game starts at your screen's resolution and Game Options has a Graphics
+page. If the old 2002 launcher window opens instead, the override isn't set.
+
+If the game asks for its disc, insert it or mount the disc image (open or right-click the `.iso` in
+the file manager and choose Mount, or `udisksctl loop-setup -r -f taz-wanted.iso`); Wine and
+Proton pick it up as a CD drive by themselves. On a Steam Deck, do this in Desktop Mode.
+
 ## Settings
 
 Everything is in the game's own menus and applies at once:
