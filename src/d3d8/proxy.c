@@ -201,6 +201,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         quicksave_patch();
         menu_patch();
         drawdist_patch();
+        preview_patch();
         controls_patch();
         asserts_patch();
         real_OutputDebugStringA = patch_import("KERNEL32.dll", "OutputDebugStringA", hook_OutputDebugStringA);
