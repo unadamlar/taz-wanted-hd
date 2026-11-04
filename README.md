@@ -16,6 +16,11 @@ Download the zip from [Releases](../../releases), unzip it into the game folder 
 and follow the `README.txt` inside (Windows, Steam/Proton and Lutris steps, settings, uninstall).
 The same text is in [package/README.txt](package/README.txt).
 
+The release holds only this project's own work. The upscaled textures, intro videos and Taz's new
+model are made from the game's files, so they aren't in it: build them from your own copy as below
+and copy `taz-hd/` from the assets zip into the game folder. Without them the game keeps its
+original textures, videos and Taz model; everything else works.
+
 ## Build from source
 
 Needs Linux, `i686-w64-mingw32-gcc`, Python 3 with numpy and Pillow, ffmpeg, zip, and
@@ -34,7 +39,7 @@ blender -b extracted/meshes/taz.blend -P tools/hands.py -- extracted/meshes/taz-
 blender -b extracted/meshes/taz-hands.blend -P tools/normals.py -- extracted/meshes/taz-final.blend
 blender -b extracted/meshes/taz-final.blend -P tools/springs.py -- extracted/meshes/taz-springs.blend
 blender -b extracted/meshes/taz-springs.blend -P tools/meshpack.py -- extracted/meshes/out
-tools/package.sh 0.2                                         # dist/taz-wanted-hd-0.2.zip
+tools/package.sh 0.2                                         # dist/taz-wanted-hd-0.2.zip and -assets.zip
 ```
 
 `extracted/`, `build/` and `dist/` are git-ignored. Never commit game files or anything made

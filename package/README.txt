@@ -2,7 +2,12 @@ Taz: Wanted HD  (version VERSION)
 =================================
 
 A free fan remaster for the PC version of Taz: Wanted (2002). It is a mod: you need the game
-itself, installed. Nothing from the original game is included except upscaled textures and videos.
+itself, installed. Nothing from the original game is included.
+
+The upscaled textures, intro videos and Taz's new model are made from the game's own files, so the
+mod download doesn't include them. Without them the game keeps its original textures, videos and
+Taz model, and everything else below works. The project page explains how to make them from your
+own copy of the game.
 
 What it does
 - Runs at your desktop resolution and your screen's shape (16:9, 16:10, ultrawide), without the 2002
