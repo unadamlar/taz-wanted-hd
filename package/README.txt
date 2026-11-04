@@ -29,11 +29,32 @@ Install (Windows 10 or 11)
 3. Run taz.exe.
 
 Install (Linux / Steam Deck)
-Same files, plus tell Wine to use the mod's d3d8.dll:
-- Steam (taz.exe added as a non-Steam game with Proton): set the launch options to
-    WINEDLLOVERRIDES="d3d8=n,b" %command%
-- Lutris: Configure > Runner options > DLL overrides, add d3d8 with the value n,b
-The disc or disc image must be visible to Wine as a CD drive.
+Windows games run on Linux through Wine or Proton (also inside Steam, Lutris, Heroic, Bottles).
+Any of them works.
+
+1. Copy everything in this folder into the game folder, next to taz.exe.
+
+2. Tell Wine/Proton to use the mod's d3d8.dll. Wine has its own d3d8.dll and uses it unless told
+   otherwise. The setting is a "DLL override": name d3d8, value n,b (native, then builtin).
+   Set it wherever you start the game:
+   - Steam, Steam Deck (taz.exe added with "Add a Non-Steam Game", Proton chosen under
+     Properties > Compatibility): Properties > General > Launch Options:
+         WINEDLLOVERRIDES="d3d8=n,b" %command%
+   - Lutris: right-click the game > Configure > Runner options > DLL overrides > Add,
+     key d3d8, value n,b
+   - Heroic, Bottles or anything else that lets you set environment variables: add
+     WINEDLLOVERRIDES with the value d3d8=n,b
+   - Plain Wine: run winecfg in the game's prefix > Libraries, type d3d8, Add, Edit, choose
+     "Native then Builtin". Or start the game with: WINEDLLOVERRIDES="d3d8=n,b" wine taz.exe
+
+   To check: the game should start straight at your screen's resolution, and Game Options should
+   have a Graphics page. If the old 2002 launcher window opens instead, the override isn't set.
+
+3. The game checks for its disc. Insert it, or mount the disc image (.iso) before starting: in
+   the file manager, open or right-click the .iso and choose Mount, or in a terminal:
+       udisksctl loop-setup -r -f /path/to/taz-wanted.iso
+   Wine/Proton picks the disc up as a CD drive by itself. Mount it again after a restart. On a
+   Steam Deck, do this in Desktop Mode, then start the game in either mode.
 
 Settings
 Game Options (main menu) has Graphics (a page with Resolution, HD Textures, Vsync, Anti-Aliasing
