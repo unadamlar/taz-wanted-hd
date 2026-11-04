@@ -111,6 +111,10 @@ def stitch_splash(desc, tiles):
     return full_w, rows * th, [bytes(r) for r in canvas], rects
 
 
+def texture_key(w, h, fmt, data):
+    return hashlib.sha1(struct.pack("<III", w, h, fmt) + data).digest()
+
+
 def extract_textures(out, paks):
     """Each unique image is written once, under the first pak that has it; index.tsv lists every occurrence.
     fingerprints.tsv maps the proxy's fingerprint to that file (plus a tile rectangle for splash screens),
@@ -121,6 +125,12 @@ def extract_textures(out, paks):
         for pak in paks:
             stem = Path(pak).stem
             content = dict(entries(Path(pak).read_bytes()))
+            # A .bmp and a .tga of the same name with different pixels (zoocloud) keep their extensions,
+            # or the second would overwrite the first's PNG while both fingerprints point at it.
+            stems = {}
+            for name, blob in content.items():
+                for suffix, w, h, fmt, data in [] if SPLASH_TILE.search(name) else images(name, blob):
+                    stems.setdefault(str(Path(name).with_suffix("")) + suffix, set()).add(texture_key(w, h, fmt, data))
             splash = {}
             for name, blob in content.items():
                 tile = SPLASH_TILE.search(name)
@@ -128,9 +138,10 @@ def extract_textures(out, paks):
                     if tile:
                         splash.setdefault(name[:tile.start()] + ".bmp", {})[int(tile.group(1))] = (w, h, data)
                         continue
-                    key = hashlib.sha1(struct.pack("<III", w, h, fmt) + data).digest()
+                    key = texture_key(w, h, fmt, data)
                     if key not in written:
-                        dest = Path(stem) / (str(Path(name).with_suffix("")) + suffix + ".png")
+                        base = str(Path(name).with_suffix("")) + suffix
+                        dest = Path(stem) / ((name + suffix if len(stems[base]) > 1 else base) + ".png")
                         write_png(out / dest, w, h, rgba_rows(w, h, data, fmt))
                         written[key] = (w, h, dest)
                         fps.write(f"{fingerprint(w, h, data, fmt):016x}\t{dest}\n")
