@@ -2,7 +2,8 @@
 
 Which characters have an upgraded model, and what is left. Every character already gets
 smoothing and clean cartoon shadows automatically (`smooth.c`); this list is for the extra work
-that needs a model file: new hands, springs (bouncing ears, fur, tail) and anything hand-made.
+that needs a model file: new hands, springs (bouncing ears, fur, tail), a dense smooth surface
+(`tools/subdivide.py`, so outlines stay round up close) and anything hand-made.
 
 ## How to do one
 
@@ -14,7 +15,10 @@ that needs a model file: new hands, springs (bouncing ears, fur, tail) and anyth
      level, closes a boss or bonus level's intro page and records a few frames every few seconds. Boss
      levels put their boss and helpers on screen (zooboss: Gossamer, the elephant, Yosemite Sam watching).
 2. Build (about a minute each): `tools/models.sh <name> <dir>/capture-001.bin <dir>/capture-020.bin <dir>/capture-040.bin <dir>/capture-060.bin`
-   writes `extracted/meshes/out/<fingerprint>.bin`. All captures must come from one run. The hands and
+   writes `extracted/meshes/out/<fingerprint>.bin`. Without captures (`tools/models.sh <name>`) it rebuilds
+   from the `springs.blend` already in `extracted/meshes/<name>`, which is how all model files were made
+   dense on 2026-11-04. `extracted/textures` must be there (subdivide reads which faces are painted black).
+   All captures must come from one run. The hands and
    springs steps find Taz's bones by shape. `NOHANDS=1` keeps a costume's own hands (claws, gloves).
    Other characters: `BUFFER=<fingerprint> NOHANDS=1 SPRINGS=tools/springs/<name>.json` (springs placed by
    hand in the .blend's coordinates, see `tools/springs.py`). If meshview warns that bones stand for

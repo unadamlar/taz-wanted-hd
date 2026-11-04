@@ -33,7 +33,6 @@ struct mesh { IDirect3DVertexBuffer8 *src; UINT n; float (*gn)[3]; BYTE *sharp; 
 static struct entry table[TABLE];
 static struct mesh meshes[MESHES];
 static int nentries, nmeshes, creating;
-int smooth_keep_normals; // set while drawing models whose normals were evened out when they were made
 static DWORD shaders[16];
 static int nshaders;
 
@@ -169,7 +168,7 @@ static struct mesh *mesh_of(IDirect3DVertexBuffer8 *src, const struct cvert *v, 
     free(slot);
     LARGE_INTEGER t0, t1, f;
     QueryPerformanceCounter(&t0);
-    if (!smooth_keep_normals) even_normals(m, first);
+    even_normals(m, first);
     QueryPerformanceCounter(&t1);
     QueryPerformanceFrequency(&f);
     free(first);
