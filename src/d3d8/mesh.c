@@ -12,7 +12,7 @@
 #include "proxy.h"
 
 #define DIR "taz-hd\\meshes"
-#define REPS 16
+#define REPS 128 // files are read whole at startup: Taz-sized ones are ~0.9 MB
 #define SEEN 1024
 
 #pragma pack(push, 1)
@@ -58,7 +58,7 @@ static void load(void)
         char path[MAX_PATH + 16];
         snprintf(path, sizeof path, DIR "\\%s", fd.cFileName);
         FILE *in = fopen(path, "rb");
-        if (!in || nreps == REPS) { if (in) fclose(in); continue; }
+        if (!in || nreps == REPS) { if (in) fclose(in); log_line("mesh: skipped %s", path); continue; }
         BYTE *b = malloc(fd.nFileSizeLow);
         size_t n = fread(b, 1, fd.nFileSizeLow, in);
         fclose(in);

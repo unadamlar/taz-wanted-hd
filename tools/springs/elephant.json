@@ -1,0 +1,4 @@
+[
+  {"pivot": [260, -520, 700], "tip": [470, -556, 700], "radius": 420, "start": 10, "end": 160, "stiffness": 150, "damping": 6, "amount": 1.0, "limit": 30},
+  {"pivot": [-260, -520, 700], "tip": [-470, -556, 700], "radius": 420, "start": 10, "end": 160, "stiffness": 150, "damping": 6, "amount": 1.0, "limit": 30}
+]

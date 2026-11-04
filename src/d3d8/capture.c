@@ -18,7 +18,10 @@ void capture_scene(void)
     if (GetFileAttributesA("taz-hd\\costume") != INVALID_FILE_ATTRIBUTES) {
         DeleteFileA("taz-hd\\costume");
         void *taz = *(void **)0x6c8c80; // player one's actor
-        if (taz && *(BYTE *)0x704cf0 >= 2) ((void(__cdecl *)(void *))0x430160)(taz), log_line("capture: costume on");
+        if (taz && *(BYTE *)0x704cf0 >= 2) {
+            ((void(__cdecl *)(void *))0x430160)(taz);
+            log_line("capture: costume on (%d)", *(signed char *)(*(BYTE **)((BYTE *)taz + 0x1cc) + 0x10c));
+        }
     }
     FILE *f = fopen("taz-hd\\scene", "r");
     if (!f) return;
