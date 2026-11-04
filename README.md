@@ -1,20 +1,111 @@
 # Taz: Wanted HD
 
-An unofficial fan remaster mod for the 2002 PC release of Taz: Wanted. It runs the game at your
-desktop resolution and screen shape with anti-aliasing, replaces its textures and intro videos
-with 4x upscaled versions, lets you see further, rounds off the characters' low-poly models, gives
-Taz rounder hands, cleaner shading and bouncier ears, fur and tail (plus a choice of newer looks
-for him: Detailed Cartoon, Soft Shading, Fur Detail), adds WASD and mouse-look controls, speeds up
-the menu text and adds quicksave/quickload (F5/F9). F11 flips between the original graphics and
-the new ones.
+An unofficial fan remaster mod for the 2002 PC game Taz: Wanted. Sharper textures, your screen's
+resolution and shape, smoother edges, rounder characters and modern controls. You bring the game.
 
-It is a mod, not a copy of the game: you need your own retail install and its disc (or disc image).
+![Main menu, original and HD](docs/images/menu.jpg)
+
+[Download from Releases](../../releases) · [Install](#install) · [Settings](#settings)
+
+## What's new
+
+### Sharper textures
+
+The game's textures, fonts and loading screens are replaced with versions upscaled 4x.
+
+![City hub signs with the original and the HD textures](docs/images/textures.jpg)
+
+### Your resolution, your screen shape
+
+The game runs at your desktop resolution and fills 16:9, 16:10 and ultrawide screens with more
+of the world instead of stretching the picture. The 2002 launcher is skipped.
+
+![Zoo hub, original 4:3 and HD 16:9](docs/images/zoo-hub.jpg)
+
+### Anti-aliasing
+
+Jagged edges on fences, rails and outlines are smoothed (2x, 4x or 8x; 4x by default).
+
+![Zoo hub railing zoomed 3x, anti-aliasing off and 4x](docs/images/anti-aliasing.jpg)
+
+### Draw distance
+
+In the original, trees, bushes and objects only a short way off fade out and pop in as you
+walk towards them. Far and Very Far keep them on screen.
+
+![Zoo hub with Draw Distance set to Original and to Very Far](docs/images/draw-distance.jpg)
+
+### Smoother characters
+
+The characters' low-poly models are rounded off and their cartoon shading is cleaner, without
+the ragged shadow patches. Taz's ears, fur and tail bounce as he moves.
+
+![Taz close-up, original and HD](docs/images/taz.jpg)
+
+### Taz Style
+
+Keep Taz as he is, or try one of three newer looks.
+
+![Taz in the four Taz Style options](docs/images/taz-style.jpg)
+
+### And also
+
+- Intro videos play upscaled and full screen.
+- WASD to move and the mouse to turn the camera. Original keys and gamepads still work.
+- Quicksave (F5) and quickload (F9) anywhere in a level.
+- Menu text slides in about four times faster.
+- F11 flips between the original graphics and the new ones while you play.
+
+<sub>How these were taken: in the game, with the mod. Original is everything the mod adds turned
+off (HD textures, anti-aliasing, smoothing, models, Draw Distance Original) at 1024x768, scaled to
+the same height. HD is the default settings at 2560x1440. The textures, anti-aliasing, draw
+distance and Taz images are 2560x1440 on both sides with only the named setting changed; the Taz
+close-up uses F11 on a paused frame.</sub>
 
 ## Install
 
-Download the zip from [Releases](../../releases), unzip it into the game folder next to `taz.exe`,
-and follow the `README.txt` inside (Windows, Steam/Proton and Lutris steps, settings, uninstall).
-The same text is in [package/README.txt](package/README.txt).
+1. Download `taz-wanted-hd-<version>.zip` from [Releases](../../releases).
+2. Unzip it into the game folder, next to `taz.exe`.
+3. Run `taz.exe`.
+
+Linux and Steam Deck: see below.
+
+### Linux and Steam Deck
+
+## Settings
+
+Everything is in the game's own menus and applies at once:
+
+- Main menu > Game Options > Graphics: Resolution, HD Textures, Vsync, Anti-Aliasing, Smooth
+  Characters, Taz Style, Draw Distance, Frame Cap.
+- Main menu > Game Options > Controls: WASD + Mouse or Classic, Mouse Look speed, and every key.
+- Pause menu > Options: HD Textures, Taz Style, Draw Distance, Controls, Mouse Look.
+
+Settings are saved in `taz-hd.ini` in the game folder. F12 saves a screenshot to `taz-hd\shots`.
+
+| Action | Keys |
+|---|---|
+| Move | W A S D (arrows still work) |
+| Camera | Mouse |
+| Jump | Space |
+| Spin | Shift or right click |
+| Bite | Left click |
+| Rant | Q |
+| Tiptoe | Ctrl |
+| Look around | Middle click |
+| Map (in levels) | Tab |
+| Quicksave / quickload | F5 / F9 |
+| Original / HD graphics | F11 |
+
+## Requirements
+
+- Your own installed copy of the retail PC release of Taz: Wanted (2002). The mod contains no
+  game files except upscaled textures and videos.
+- Windows 10 or 11, or Linux / Steam Deck.
+
+The full player notes, uninstall steps and the supported `taz.exe` version are in
+[package/README.txt](package/README.txt), which is also inside the zip. To uninstall, delete
+`d3d8.dll`, `taz-hd.ini` and the `taz-hd` folder from the game folder.
 
 ## Build from source
 
@@ -42,14 +133,12 @@ from them.
 
 ## Development
 
-`tools/run-dev.sh` starts a dev install with `umu-run` after mounting the disc image with
-`tools/mount-cd.sh` (needs udisks2). Both read local paths from `dev.env` in the repo root, which
-is git-ignored:
+`tools/run-dev.sh` starts a dev install with `umu-run`. It reads local paths from `dev.env` in the
+repo root, which is git-ignored:
 
 ```sh
 TAZ_GAME=${TAZ_GAME:-$HOME/Games/taz-wanted}                 # game folder, d3d8.dll linked to build/
 WINEPREFIX=${WINEPREFIX:-$HOME/.local/share/wineprefixes/taz}
-ISO=${ISO:-$HOME/Games/taz-wanted.iso}                        # disc image
 # PROTONPATH=...                                              # optional, umu picks one otherwise
 ```
 
