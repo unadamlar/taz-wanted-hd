@@ -11,7 +11,8 @@ show as a wrong colour or a line. Afterwards each upscale's broad colours are pu
 original's (the upscaler drifts colour and contrast); fine detail is kept. Finally each pixel is
 kept within the colours of the original's nearby pixels, which removes the dark outlines and light
 rims the upscaler draws along colour borders. The transparency mask goes through the
-upscaler as its own image; on/off masks (cut-outs) are cut back to hard edges, soft ones (fonts) stay soft.
+upscaler as its own image; on/off masks (cut-outs) are cut back to hard edges, antialiased ones (letters)
+keep their soft edge, within the original's nearby alpha so a letter never spreads into the next one on a font sheet.
 Mostly see-through sprites (glows, smoke) and opaque gradients without hard edges (shadows) are just
 enlarged smoothly, since there is no detail to recover,
 and so is any texture whose upscale strays far from the original (fine fences, thin stripes).
@@ -70,6 +71,18 @@ def no_edges(px):
     if rng < 64 or min(g.shape) < 8:
         return False
     return max(np.abs(np.diff(g, axis=0)).max(), np.abs(np.diff(g, axis=1)).max()) < rng / 4
+
+
+def line_art(px):
+    """Letters, notes and outlines: one colour shaped by an antialiased alpha whose partly see-through
+    pixels sit on a steep step between clear and solid (median step to a neighbour ~180 in the font
+    sheets; glows and smoke stay under 70, blurry snowflakes and stars ~105). The upscaler sharpens them."""
+    al = px[..., 3]
+    h, w = al.shape
+    f = np.pad(al.astype(np.int16), 1, mode="edge")
+    step = np.max([np.abs(f[1:-1, 1:-1] - f[1 + dy:1 + dy + h, 1 + dx:1 + dx + w]) for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1))], 0)
+    part = (al > 8) & (al < 247)
+    return part.any() and np.median(step[part]) >= 112 and px[..., :3][al > 8].std(0).max() < 8
 
 
 def pad(px, n, modes):
@@ -146,7 +159,7 @@ def main():
             if (px[..., 3] < 255).any():
                 alpha[i] = bool(np.isin(px[..., 3], (0, 255)).all())
                 a = px[..., 3][px[..., 3] > 8]
-                if a.size and ((a < 247).mean() > 0.35):
+                if a.size and ((a < 247).mean() > 0.35) and not line_art(px):
                     soft.add(i)
                 Image.fromarray(padded[..., 3]).convert("RGB").save(stage / f"{i}a.png")
             elif no_edges(px):
@@ -163,7 +176,7 @@ def main():
             a = None
             if i in alpha:
                 a = np.asarray(Image.open(done / f"{i}a.png").convert("L"))[n:n + h * 4, n:n + w * 4]
-                a = np.where(a >= 128, 255, 0).astype(np.uint8) if alpha[i] else a
+                a = np.where(a >= 128, 255, 0).astype(np.uint8) if alpha[i] else clamp(a[..., None], px[..., 3:])[..., 0]
             if i in soft or lost(rgb, a, px, target):
                 img = Image.fromarray(np.dstack([target, px[..., 3]]), "RGBA").resize((w * 4, h * 4), Image.BICUBIC)
                 if alpha.get(i) and i not in soft:
