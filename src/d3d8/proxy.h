@@ -54,6 +54,7 @@ void settings_refresh(void);
 void menu_patch(void);
 void drawdist_patch(void);
 void drawdist_frame(void);
+void preview_patch(void);
 void smooth_install(IDirect3DDevice8 *dev);
 void controls_patch(void);
 void controls_frame(void);
