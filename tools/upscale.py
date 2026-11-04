@@ -12,7 +12,8 @@ original's (the upscaler drifts colour and contrast); fine detail is kept. Final
 kept within the colours of the original's nearby pixels, which removes the dark outlines and light
 rims the upscaler draws along colour borders. The transparency mask goes through the
 upscaler as its own image; on/off masks (cut-outs) are cut back to hard edges, soft ones (fonts) stay soft.
-Mostly see-through sprites (glows, smoke) are just enlarged smoothly, since there is no detail to recover.
+Mostly see-through sprites (glows, smoke) are just enlarged smoothly, since there is no detail to recover,
+and so is any texture whose upscale strays far from the original (fine fences, thin stripes).
 Invisible pixels are first filled with neighbouring colours so dark fringes don't bleed into edges.
 """
 import os
@@ -93,13 +94,25 @@ def fit(rgb, target, modes):
     return np.clip(hd + 0.5, 0, 255).astype(np.uint8)
 
 
-def clamp(rgb, target, modes):
-    """Limits each pixel to the range of the original's 3x3 pixels around it."""
-    p = pad(target, 1, modes)
+def clamp(rgb, target):
+    """Limits each pixel to the range of the original's 3x3 pixels around it. The window never wraps:
+    many polygons stretch an edge row, so it must keep its own colour even on repeating textures."""
+    p = pad(target, 1, ["symmetric", "symmetric"])
     h, w = target.shape[:2]
     win = np.stack([p[y:y + h, x:x + w] for y in range(3) for x in range(3)])
     lo, hi = (np.repeat(np.repeat(v, 4, 0), 4, 1) for v in (win.min(0), win.max(0)))
     return np.clip(rgb, lo, hi)
+
+
+def lost(rgb, a, px, target):
+    """Whether the upscale lost the original's look: fine patterns it smears or redraws (chain-link
+    fences, thin stripes). Those are enlarged smoothly instead."""
+    h, w = target.shape[:2]
+    vis = px[..., 3] >= 128
+    drift = np.abs(rgb.reshape(h, 4, w, 4, 3).mean((1, 3)) - target).mean(2)
+    if vis.any() and drift[vis].mean() > 15:
+        return True
+    return a is not None and np.abs(a.reshape(h, 4, w, 4).mean((1, 3)) - px[..., 3]).mean() > 30
 
 
 def main():
@@ -133,12 +146,18 @@ def main():
             h, w = px.shape[:2]
             n = min(PAD, h, w) * 4
             target = bleed(px)
-            rgb = clamp(fit(rgb[n:n + h * 4, n:n + w * 4], target, modes[i]), target, modes[i])
-            if i in soft:
-                img = Image.fromarray(np.dstack([bleed(px), px[..., 3]]), "RGBA").resize((w * 4, h * 4), Image.BICUBIC)
-            elif i in alpha:
+            rgb = clamp(fit(rgb[n:n + h * 4, n:n + w * 4], target, modes[i]), target)
+            a = None
+            if i in alpha:
                 a = np.asarray(Image.open(done / f"{i}a.png").convert("L"))[n:n + h * 4, n:n + w * 4]
                 a = np.where(a >= 128, 255, 0).astype(np.uint8) if alpha[i] else a
+            if i in soft or lost(rgb, a, px, target):
+                img = Image.fromarray(np.dstack([target, px[..., 3]]), "RGBA").resize((w * 4, h * 4), Image.BICUBIC)
+                if alpha.get(i) and i not in soft:
+                    img.putalpha(img.getchannel("A").point(lambda v: 255 if v >= 128 else 0))
+                if i not in alpha:
+                    img = img.convert("RGB")
+            elif a is not None:
                 img = Image.fromarray(np.dstack([rgb, a]), "RGBA")
             else:
                 img = Image.fromarray(rgb, "RGB")
