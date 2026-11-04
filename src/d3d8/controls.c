@@ -4,8 +4,9 @@
 // had them do, so D moves instead of ranting and Space jumps instead of opening the map. Keys the
 // layout doesn't use keep their old jobs (C, F, R, X, V, E, T, arrows). Mouse look: around the
 // camera control (FUN_004e0f00) the mouse is added to the pad's camera stick for that call only, so
-// the game's own camera rules still apply. The mouse is held (DirectInput exclusive, which hides it)
-// only while that camera control runs, so menus get it back.
+// the game's own camera rules still apply, except that the camera doesn't trail Taz for a moment
+// after. The mouse is held (DirectInput exclusive, which hides it) only while that camera control
+// runs, so menus get it back.
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -14,6 +15,7 @@
 #define BIND_INPUT ((int (*)(void *, UINT, UINT))0x568860)
 #define KEYBOARD_DEFAULTS ((void (*)(BYTE *, int))0x48c100)
 #define CAMERA_CONTROL ((void (*)(void **))0x4e0f00)
+#define CAMERA_UPDATE ((void (*)(BYTE *))0x4dfef0)
 #define KEY_TABLE ((const DWORD *)0x658770) // key code -> DIK
 #define MOUSE_DX (*(const LONG *)0x751548)
 #define MOUSE_DY (*(const LONG *)0x75154c)
@@ -66,10 +68,21 @@ static const struct { const char *name; BYTE dik; } KEYS[] = {
 };
 
 static float pitch;             // held camera tilt from the mouse, -1..1 like the stick
+static BYTE *mouse_cam;         // camera the mouse last turned...
+static DWORD mouse_time;        // ...and when (ms)
 static DWORD camera_frame, now; // frames: last camera control call, current
 static int held;                // mouse held exclusively
 static BYTE *p1_pad;            // player 1's pad as set up for the keyboard...
 static void *p1_x1;             // ...and its movement channel then, to tell a pad set up again since
+
+// Horizontal angle of p around o, and turning p around o by a (y up).
+static float heading(const float *p, const float *o) { return atan2f(p[2] - o[2], p[0] - o[0]); }
+static void spin(float *p, const float *o, float a)
+{
+    float x = p[0] - o[0], z = p[2] - o[2], cs = cosf(a), sn = sinf(a);
+    p[0] = o[0] + x * cs - z * sn;
+    p[2] = o[2] + x * sn + z * cs;
+}
 
 static void *channel(BYTE *pad, int off) { return *(void **)(pad + off); }
 
@@ -272,6 +285,7 @@ static void __cdecl camera_control(void **cc)
         CAMERA_CONTROL(cc);
         return;
     }
+    if (MOUSE_DX || MOUSE_DY) mouse_cam = cam, mouse_time = GetTickCount();
     float sens = settings.mouse * 0.0003f, per_frame = TURN_RATE / FPS;
     float yaw = -MOUSE_DX * sens / per_frame; // in stick units: the game turns per_frame * stick
     float saved[8];
@@ -287,17 +301,31 @@ static void __cdecl camera_control(void **cc)
         pad[7] += pitch;
         if (pad[6] || pad[7]) pad[3] = 1;
     }
-    float *c = (float *)cam, before = atan2f(c[10] - c[6], c[8] - c[4]);
+    // Camera points (y up): +0x00 eye, +0x10 what it looks at (eased after +0x30), +0x20 where the
+    // eye heads, +0x30 Taz. The game turns +0x20 around +0x10 and eases the eye after it, which lags a
+    // mouse, and while Taz runs +0x10 trails him, so the turn came out smaller. Turn all three around
+    // Taz by the angle the game gave instead.
+    float *c = (float *)cam, dest[3] = { c[8], c[9], c[10] }, before = heading(c + 8, c + 4);
+    int look = *(DWORD *)(cam + 0x74) & 0x800;
     CAMERA_CONTROL(cc);
-    // The game turns where the camera is heading (+0x20) and eases the camera after it, which lags
-    // behind a mouse. Turn the camera itself (+0x00) by the same amount around Taz (+0x10, y up).
-    float turn = atan2f(c[10] - c[6], c[8] - c[4]) - before;
+    float turn = heading(c + 8, c + 4) - before;
     if (MOUSE_DX && turn) {
-        float x = c[0] - c[4], z = c[2] - c[6], cs = cosf(turn), sn = sinf(turn);
-        c[0] = c[4] + x * cs - z * sn;
-        c[2] = c[6] + x * sn + z * cs;
+        if (look) spin(c, c + 4, turn);
+        else memcpy(c + 8, dest, sizeof dest), spin(c, c + 12, turn), spin(c + 4, c + 12, turn), spin(c + 8, c + 12, turn);
     }
     memcpy(pad, saved, sizeof saved);
+}
+
+// The camera trails Taz on a leash (and in some states swings behind him), so running anywhere but
+// straight ahead turns it, fighting the mouse. For a while after mouse input it keeps the direction
+// it had around Taz, then gently hands back to the game.
+static void __cdecl camera_update(BYTE *cam)
+{
+    float *c = (float *)cam, before = heading(c + 8, c + 12), t = (GetTickCount() - mouse_time) / 1000.f;
+    float keep = cam != mouse_cam || (*(DWORD *)(cam + 0x74) & 0x1b00) != 0x1000 || *(void **)(cam + 0xac) ? 0
+               : t < 1.5f ? 1 : t < 3 ? (3 - t) / 1.5f : 0; // player camera, not scripted, look-around or catching up
+    CAMERA_UPDATE(cam);
+    if (keep) spin(c + 8, c + 12, (before - heading(c + 8, c + 12)) * keep);
 }
 
 // IDirectInputDevice8 vtable slots.
@@ -327,12 +355,13 @@ static int calls(BYTE *at, void *fn) { return at[0] == 0xe8 && at + 5 + *(INT32 
 void controls_patch(void)
 {
     if (!calls((BYTE *)0x48ad3c, KEYBOARD_DEFAULTS) || !calls((BYTE *)0x48ad74, KEYBOARD_DEFAULTS)
-        || !calls((BYTE *)0x480e5d, CAMERA_CONTROL)) {
+        || !calls((BYTE *)0x480e5d, CAMERA_CONTROL) || !calls((BYTE *)0x4a8687, CAMERA_UPDATE)) {
         log_line("controls: unexpected code, not patching");
         return;
     }
     redirect_call((BYTE *)0x48ad3c, KEYBOARD_DEFAULTS, keyboard_defaults);
     redirect_call((BYTE *)0x48ad74, KEYBOARD_DEFAULTS, keyboard_defaults);
     redirect_call((BYTE *)0x480e5d, CAMERA_CONTROL, camera_control);
+    redirect_call((BYTE *)0x4a8687, CAMERA_UPDATE, camera_update);
     if (calls((BYTE *)0x568b25, READ_DEVICES)) redirect_call((BYTE *)0x568b25, READ_DEVICES, read_devices);
 }
