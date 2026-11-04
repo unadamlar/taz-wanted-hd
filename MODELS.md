@@ -26,13 +26,13 @@ that needs a model file: new hands, springs (bouncing ears, fur, tail) and anyth
 |---|---|---|---|---|---|
 | Taz (normal) | all | yes | yes | yes | hands, shading, ear rims, 4 springs |
 | Surfer | 6 aqua | yes | yes | yes | belly crease line sometimes draws dashed |
-| Snowboarder (goggles) | 4 icedome | yes | yes | partly | camera starts behind a wall; look at it in play |
+| Snowboarder (goggles) | 4 icedome | yes | yes | yes | camera starts behind a wall; checked running about |
 | Skater (cap, board) | 5 safari | yes | yes | yes | |
 | Jersey 23 and cap | 9 deptstr | yes | yes | yes | |
 | SWAT | 11 contruct | yes | yes | yes | |
 | Werewolf | 14 ghost | yes | yes | yes | built with NOHANDS=1 to keep its claws |
 | Cowboy | 16 grandc | yes | yes | yes | |
-| Tarzan | 18 tazhub | yes | yes | partly | only partly in shot |
+| Tarzan | 18 tazhub | yes | yes | yes | checked running about |
 | Ninja | 10 museum | yes | yes | partly | jumping straight to the museum drops Taz into an endless fall; the costume shows for ~24 frames before each respawn takes it off, which was enough to record and to see it drawn |
 | Explorer hat and whip | 15 goldmine | n/a | n/a | yes | the goldmine costume only adds a hat and whip; Taz's own model (and file) is used |
 
