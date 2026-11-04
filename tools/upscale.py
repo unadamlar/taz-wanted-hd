@@ -190,6 +190,15 @@ def main():
             dest = out / p.relative_to(src)
             dest.parent.mkdir(parents=True, exist_ok=True)
             img.save(dest)
+    # Rows 5-6 of Taz's strip are the zoo boss level's shading: its near-black brown shadow made half the
+    # elephant look burnt, so it is lifted 35% toward the lit tone. The strip stays 1x.
+    ramps = src / "taz/textures/ramps.png"
+    if ramps.exists() and wanted in "taz/textures/ramps.png":
+        px = np.asarray(Image.open(ramps).convert("RGBA")).copy()
+        rows = px[5:7]
+        rows[(rows[..., :3] == (140, 57, 0)).all(2), :3] = (180, 121, 69)
+        (out / "taz/textures").mkdir(parents=True, exist_ok=True)
+        Image.fromarray(px, "RGBA").save(out / "taz/textures/ramps.png")
     print(f"{len(files)} textures upscaled into {out}")
 
 
