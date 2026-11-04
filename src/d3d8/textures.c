@@ -766,9 +766,21 @@ void textures_reset(IDirect3DDevice8 *dev)
     }
 }
 
+// Paper books (boss rules, tutorials) draw each page every frame into one shared 512x256 render target
+// (0x69c33c; whichever of six effects needs it first makes it with bdCreateRenderTarget 0x56c500) and
+// stretch it over a page about 1100x1300 pixels on an 1800-pixel-high screen. 1024x1024 keeps HD detail.
+static void *__cdecl page_target(int w, int h, int rgb, int z, int flags)
+{
+    return ((void *(__cdecl *)(int, int, int, int, int))0x56c500)(w * 2, h * 4, rgb, z, flags);
+}
+
 void textures_install(IDirect3DDevice8 *dev)
 {
     if (real_CreateTexture) return;
+    static const DWORD page_targets[] = { 0x4562c5, 0x456607, 0x4566b0, 0x4567e5, 0x456bde, 0x4581bb };
+    int n = 0;
+    for (int i = 0; i < 6; i++) n += redirect_call((BYTE *)page_targets[i], (void *)0x56c500, page_target);
+    if (n < 6) log_line("paper book pages: %d of 6 render target sites patched (unknown exe)", n);
     start_worker();
     device = dev;
     DWORD attr = GetFileAttributesA(DUMP_DIR);
