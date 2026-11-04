@@ -1,4 +1,4 @@
-// Level previews on the hub map ("Video"): the game renders the level entrance's camera into a
+// Level previews on a level's map ("Video"): the game renders the level entrance's camera into a
 // 256x256 render target and shows it over 3/8 of the screen width, so at HD sizes it was a smear.
 // The target is now made about the size it is shown at (powers of two, as the engine requires), with
 // its own depth buffer: the shared one is multisampled with anti-aliasing on, and doesn't fit it.
