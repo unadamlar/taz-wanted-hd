@@ -68,6 +68,10 @@ the zoo hub has none). Original keys the layout
 doesn't use (C, F, R, X, V, E, T, arrows) still work. Set Controls to Classic for the original keys
 only (D rants, Space opens the map, no mouse look). A gamepad works as before.
 
+On a laptop touchpad the camera won't turn while you hold W, A, S or D if the system ignores the
+touchpad while typing. Turn that off: Linux, the touchpad's "Disable while typing" setting (KDE,
+GNOME); Windows, Touchpad sensitivity "Most sensitive". A USB mouse is not affected.
+
 To change keys, open Game Options > Controls, pick an action and press the new key or mouse button
 (Esc keeps the old one); Reset to Defaults puts them all back. They can also be set in taz-hd.ini
 under [taz-hd], one or two inputs each, for example:
