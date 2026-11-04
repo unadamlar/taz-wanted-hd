@@ -16,6 +16,8 @@ subtitles and the boss levels' rule books are sharp at any resolution.
 
 ![City hub signs with the original and the HD textures](docs/images/textures.jpg)
 
+![Bonus level crates with the original and the HD textures](docs/images/textures-crates.jpg)
+
 ### Your resolution, your screen shape
 
 The game runs at your desktop resolution and fills 16:9, 16:10 and ultrawide screens with more
@@ -64,7 +66,8 @@ Keep Taz as he is, or try one of three newer looks.
 off (HD textures, anti-aliasing, smoothing, models, Draw Distance Original) at 1024x768, scaled to
 the same height. HD is the default settings at 2560x1440. The textures, anti-aliasing, draw
 distance and Taz Style images are 2560x1440 on both sides with only the named setting changed; the
-Taz close-up is 2880x1800 and uses F11 on a paused frame.</sub>
+Taz close-up is 2880x1800 and uses F11 on a paused frame. The crates are 2560x1440 with F11,
+cropped to where only the textures differ.</sub>
 
 ## Install
 
@@ -96,6 +99,8 @@ page. If the old 2002 launcher window opens instead, the override isn't set.
 ## Settings
 
 Everything is in the game's own menus and applies at once:
+
+![Game Options, the Graphics and Controls pages, and Options in the pause menu](docs/images/menus.jpg)
 
 - Main menu > Game Options > Graphics: Resolution, HD Textures, Vsync, Anti-Aliasing, Smooth
   Characters, Taz Style, Draw Distance, Frame Cap.
