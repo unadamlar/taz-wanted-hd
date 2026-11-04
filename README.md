@@ -114,6 +114,9 @@ Settings are saved in `taz-hd.ini` in the game folder. F12 saves a screenshot to
 | Quicksave / quickload | F5 / F9 |
 | Original / HD graphics | F11 |
 
+Laptop touchpad: turn off the system's "disable touchpad while typing" option, or the camera
+won't turn while you hold a movement key.
+
 ## Requirements
 
 - Your own installed copy of the retail PC release of Taz: Wanted (2002). The mod contains no
