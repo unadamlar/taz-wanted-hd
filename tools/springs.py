@@ -1,11 +1,16 @@
 # Blender: gives Taz spring bones (src/d3d8/mesh.c) so his ears, the fur on top of his head and his
 # tail lag behind his moves and bounce back. Each spring takes over part of its parent bone's weight,
 # more towards the tip.
-# usage: blender -b <taz.blend> -P tools/springs.py -- <out.blend>
+# usage: blender -b <taz.blend> -P tools/springs.py -- <out.blend> [<springs.json>]
+# With a springs file (other characters), each entry is one spring in the .blend's coordinates:
+# {"pivot": [x,y,z], "tip": [x,y,z], "radius": r, "start": a, "end": b, "stiffness": .., "damping": ..,
+#  "amount": .., "limit": degrees}; it hangs off the bone owning the point nearest the pivot, and
+# takes points from a along the pivot-tip line (none) to b (all), within radius of that line.
 import bpy, sys, os, json, math
 from mathutils import Vector
 
-out = sys.argv[sys.argv.index('--') + 1]
+args = sys.argv[sys.argv.index('--') + 1:]
+out = args[0]
 ob = bpy.data.objects['model']
 me = ob.data
 gname = {g.index: g.name for g in ob.vertex_groups}
@@ -36,6 +41,20 @@ def add(parent, pivot, tip, weight, stiffness, damping, amount, limit):
         moved += 1
     springs.append(dict(parent=int(parent[4:]), pivot=game(pivot), tip=game(tip), stiffness=stiffness, damping=damping, amount=amount, limit=math.radians(limit)))
     print('spring %s: %d points' % (vg.name, moved))
+
+if len(args) > 1:
+    for s in json.load(open(args[1])):
+        pivot, tip = Vector(s['pivot']), Vector(s['tip'])
+        d = (tip - pivot).normalized()
+        parent = owner(min(me.vertices, key=lambda v: (v.co - pivot).length))
+        def part(p, pivot=pivot, d=d, s=s):
+            o = p - pivot
+            along = o.dot(d)
+            return smoothstep(s['start'], s['end'], along) * (1 - smoothstep(0.7 * s['radius'], s['radius'], (o - d * along).length))
+        add(parent, pivot, tip, part, s['stiffness'], s['damping'], s['amount'], s['limit'])
+    ob['springs'] = json.dumps(springs)
+    bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(out))
+    sys.exit()
 
 ears = [p for p in me.polygons if 'ears' in me.materials[p.material_index].name]
 head = owner(me.vertices[ears[0].vertices[0]])

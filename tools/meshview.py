@@ -1,13 +1,13 @@
 # Blender: builds a character from DLL mesh captures (taz-hd\capture-NNN.bin) in its bind pose,
 # textured from extracted/textures, with one vertex group per bone, and saves it as a .blend that
 # tools/meshpack.py turns back into a replacement for the game.
-# usage: blender -b -P tools/meshview.py -- <out.blend> <buffer index, biggest first> <capture.bin>...
+# usage: blender -b -P tools/meshview.py -- <out.blend> <buffer index, biggest first, or fingerprint> <capture.bin>...
 # Bones are told apart by their matrices in all the given captures (same scene, different frames).
 import bpy, struct, sys, os, json
 from collections import defaultdict
 
 args = sys.argv[sys.argv.index('--') + 1:]
-out, which, caps = args[0], int(args[1]), args[2:]
+out, which, caps = args[0], args[1], args[2:]
 root = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'extracted', 'textures')
 names = {}
 for line in open(os.path.join(root, 'fingerprints.tsv')):
@@ -29,23 +29,31 @@ def load(path):
             o += 28 + 1536
     return vbs, draws
 
+def fnv(raw):
+    h = 0xcbf29ce484222325
+    for x in raw: h = ((h ^ x) * 0x100000001b3) & 0xffffffffffffffff
+    return h
+
 frames = [load(c) for c in caps]
 vbs, draws = frames[0]
-vb = sorted(vbs, key=lambda k: -len(vbs[k]))[which]
+vb = next(k for k in vbs if fnv(vbs[k]) == int(which, 16)) if len(which) == 16 else sorted(vbs, key=lambda k: -len(vbs[k]))[int(which)]
 raw = vbs[vb]
-h = 0xcbf29ce484222325
-for x in raw: h = ((h ^ x) * 0x100000001b3) & 0xffffffffffffffff
+h = fnv(raw)
 V = [struct.unpack_from('<3f3f4B3fI2f', raw, k * 52) for k in range(len(raw) // 52)]
-passes = [[d for d in dr if d[0] == max(f[0], key=lambda k: len(f[0][k])) and d[4]] for f, dr in ((f, f[1]) for f in frames)]
+passes = [[d for d in f[1] if d[0] == vb and d[4]] for f in frames]  # same buffer address in every frame of one run
+# A character drawn more than once a frame (two players, crowds) repeats its batches: keep the first one.
+passes = [next((p[:k] for k in range(1, len(p)) if p[k][1:4] == p[0][1:4]), p) for p in passes]
 batches = [(d[2], d[3], d[1]) for d in passes[0]]
 assert all([(d[2], d[3], d[1]) for d in p] == batches for p in passes), 'captures draw different batches'
 
-bones, sources = {}, []
+bones, sources, palette, merged = {}, [], defaultdict(dict), set()
 def bone(bi, reg):
     key = tuple(round(x, 3) for p in passes for x in p[bi][5][reg * 4:reg * 4 + 12])
     if key not in bones:
         bones[key] = len(bones)
         sources.append((bi, reg))
+    palette[bi][reg] = bones[key]
+    if list(palette[bi].values()).count(bones[key]) > 1: merged.add(bones[key])  # two bones moved alike in every frame given
     return bones[key]
 
 verts, vindex, faces, uvs, nors, mats, groups, texs = [], {}, [], [], [], [], defaultdict(dict), []
@@ -96,4 +104,5 @@ ob['hash'] = '%016x' % h
 ob['batches'] = json.dumps(batches)
 ob['sources'] = json.dumps(sources)
 print('mesh: %d vertices, %d triangles, %d bones, %d batches, buffer %016x' % (len(verts), len(faces), len(sources), len(batches), h))
+if merged: print('mesh: WARNING %d bones stand for several; capture frames with more varied poses' % len(merged))
 bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(out))
