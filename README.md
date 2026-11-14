@@ -75,17 +75,25 @@ cropped to where only the textures differ.</sub>
 
 ## Install
 
-1. Download `taz-wanted-hd-<version>.zip` from [Releases](../../releases).
-2. Unzip it into the game folder, next to `taz.exe`.
-3. Run `taz.exe`.
+1. Download `taz-wanted-hd-<version>-setup.exe` from [Releases](../../releases).
+2. Run it. It finds your Taz: Wanted folder and copies the mod into it; if it doesn't find the
+   game, click Browse and pick the folder with `taz.exe` in it.
+3. Click Play now, or start the game as usual.
 
-Linux and Steam Deck: see below.
+Windows may say "Windows protected your PC" because the installer isn't signed: More info > Run
+anyway. To remove the mod, run the installer again and click Uninstall.
+
+Prefer to do it by hand? Download `taz-wanted-hd-<version>.zip` instead and copy `d3d8.dll` and
+the `taz-hd` folder into the game folder, next to `taz.exe`.
 
 ### Linux and Steam Deck
 
-Any Wine or Proton setup works (Steam, Lutris, Heroic, Bottles, plain Wine). Unzip as above, then
-tell Wine to use the mod's `d3d8.dll` instead of its own: a DLL override for `d3d8` set to `n,b`
-(native, then builtin). Set it wherever you start the game:
+Any Wine or Proton setup works (Steam, Lutris, Heroic, Bottles, plain Wine). Download and unzip
+`taz-wanted-hd-<version>.zip`, open a terminal in the unzipped folder and run `./install.sh` (`./install.sh --uninstall` removes
+the mod). It finds the game, copies the mod and, when the game lives in a Wine prefix it can see,
+tells Wine to use the mod's `d3d8.dll` instead of its own. Otherwise it asks you to add that
+setting yourself: a DLL override for `d3d8` set to `n,b` (native, then builtin), wherever you
+start the game:
 
 - **Steam / Steam Deck** (`taz.exe` added with "Add a Non-Steam Game", Proton chosen under
   Properties > Compatibility): Properties > General > Launch Options:

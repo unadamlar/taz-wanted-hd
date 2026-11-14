@@ -24,14 +24,24 @@ What it does
   level or quit the game; the game's own save slots work as before.
 
 Install (Windows 10 or 11)
-1. Copy everything in this folder into the game folder, next to taz.exe.
+The easy way is the one-file installer from the same download page (taz-wanted-hd-VERSION-setup.exe):
+run it and it finds your game and copies the mod in. From this zip, by hand:
+1. Copy d3d8.dll and the taz-hd folder into the game folder, next to taz.exe.
 2. Run taz.exe.
 
 Install (Linux / Steam Deck)
 Windows games run on Linux through Wine or Proton (also inside Steam, Lutris, Heroic, Bottles).
 Any of them works.
 
-1. Copy everything in this folder into the game folder, next to taz.exe.
+1. Unzip the whole download anywhere.
+2. Run install.sh: open a terminal in the unzipped folder and type  ./install.sh
+   It finds your Taz: Wanted folder, copies the mod into it and, when the game lives in a Wine
+   prefix it can see, tells Wine to use the mod. If it can't, it prints the one setting to add in
+   your launcher (below).
+3. Start the game as usual.
+
+By hand instead:
+1. Copy d3d8.dll and the taz-hd folder into the game folder, next to taz.exe.
 
 2. Tell Wine/Proton to use the mod's d3d8.dll. Wine has its own d3d8.dll and uses it unless told
    otherwise. The setting is a "DLL override": name d3d8, value n,b (native, then builtin).
@@ -90,7 +100,8 @@ The retail PC release, taz.exe dated 2002-07-22
 With another taz.exe you get a one-time warning; HD textures and videos still work.
 
 Uninstall
-Delete d3d8.dll, taz-hd.ini and the taz-hd folder from the game folder.
+Windows installer: run it again and click Uninstall. Linux: ./install.sh --uninstall. Or delete
+d3d8.dll, taz-hd.ini and the taz-hd folder from the game folder.
 
 Problems
 taz-hd.log in the game folder records what the mod did, including crashes. Attach it when reporting.
