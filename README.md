@@ -1,6 +1,6 @@
 # Taz: Wanted HD
 
-An unofficial fan remaster mod for the 2002 PC game Taz: Wanted. You bring the game.
+An unofficial fan remaster mod for the 2002 PC game Taz: Wanted. You need your own copy of the game.
 
 - Quicksave (F5) and quickload (F9) anywhere in a level.
 - WASD to move and the mouse to turn the camera, with every key remappable.
@@ -11,9 +11,9 @@ An unofficial fan remaster mod for the 2002 PC game Taz: Wanted. You bring the g
 
 [Download from Releases](../../releases) · [Install](#install) · [Settings](#settings)
 
-## What's new
+## What the mod does
 
-### Sharper textures
+### Textures upscaled to HD
 
 The game's textures, fonts and loading screens are replaced with versions upscaled 4x. Menu text,
 subtitles and the boss levels' rule books are sharp at any resolution.
@@ -22,10 +22,10 @@ subtitles and the boss levels' rule books are sharp at any resolution.
 
 ![Bonus level crates with the original and the HD textures](docs/images/textures-crates.jpg)
 
-### Your resolution, your screen shape
+### Widescreen and high resolutions
 
-The game runs at your desktop resolution, 4K and beyond, and fills 16:9, 16:10 and ultrawide
-screens with more of the world instead of stretching the picture. The 2002 launcher is skipped.
+The game runs at your desktop resolution, up to 4K and beyond. On 16:9, 16:10 and ultrawide
+screens you see more to the sides instead of a stretched picture. The 2002 launcher is skipped.
 
 ![Zoo hub, original 4:3 and HD 16:9](docs/images/zoo-hub.jpg)
 
@@ -44,20 +44,21 @@ walk towards them. Far and Very Far keep them on screen.
 
 ### Smoother characters
 
-Taz, all his costumes and the Elephant Pong elephant have new dense models that stay round up
-close, with tapered fingers. The other characters' low-poly models are rounded off, and all get
-cleaner cartoon shading without the ragged shadow patches. Taz's ears, fur and tail bounce as he
-moves.
+Taz and all his costumes have new high-detail models that stay round up close, with proper
+fingers. So do the Elephant Pong elephant, Gossamer, Tweety and the zookeeper. The other
+characters' low-poly models are rounded off, and everyone's cartoon shading loses its ragged
+shadow patches. Taz's ears, fur and tail bounce as he moves.
 
 ![Taz close-up, original and HD](docs/images/taz.jpg)
 
 ### Taz Style
 
-Keep Taz as he is, or try one of three newer looks.
+Three optional looks for Taz: Detailed Cartoon, Soft Shading and Fur Detail. The default leaves
+him as he is.
 
 ![Taz in the four Taz Style options](docs/images/taz-style.jpg)
 
-### And also
+### Also
 
 - Intro videos play upscaled and full screen.
 - The live level previews on a level's map are drawn sharp at screen size.
@@ -70,9 +71,10 @@ Keep Taz as he is, or try one of three newer looks.
 
 <sub>How these were taken: in the game, with the mod. Original is everything the mod adds turned
 off (HD textures, anti-aliasing, smoothing, models, Draw Distance Original) at 1024x768, scaled to
-the same height. HD is the default settings at 2560x1440. The textures, anti-aliasing, draw
-distance and Taz Style images are 2560x1440 on both sides with only the named setting changed; the
-Taz close-up is 2880x1800 and uses F11 on a paused frame. The crates are 2560x1440 with F11,
+the same height. HD is the default settings at 2560x1440. The textures, anti-aliasing and draw
+distance images are 2560x1440 on both sides with only the named setting changed; the Taz Style
+image is 2880x1800 with only that setting changed, and the Taz close-up is 2880x1800 and uses F11
+on a paused frame. The crates are 2560x1440 with F11,
 cropped to where only the textures differ.</sub>
 
 ## Install
@@ -85,7 +87,7 @@ cropped to where only the textures differ.</sub>
 Windows may say "Windows protected your PC" because the installer isn't signed: More info > Run
 anyway. To remove the mod, run the installer again and click Uninstall.
 
-Prefer to do it by hand? Download `taz-wanted-hd-<version>.zip` instead and copy `d3d8.dll` and
+To install by hand, download `taz-wanted-hd-<version>.zip` instead and copy `d3d8.dll` and
 the `taz-hd` folder into the game folder, next to `taz.exe`.
 
 ### Linux and Steam Deck
@@ -173,7 +175,7 @@ blender -b extracted/meshes/taz.blend -P tools/hands.py -- extracted/meshes/taz-
 blender -b extracted/meshes/taz-hands.blend -P tools/normals.py -- extracted/meshes/taz-final.blend
 blender -b extracted/meshes/taz-final.blend -P tools/springs.py -- extracted/meshes/taz-springs.blend
 blender -b extracted/meshes/taz-springs.blend -P tools/meshpack.py -- extracted/meshes/out
-tools/package.sh 0.2                                         # dist/taz-wanted-hd-0.2.zip
+tools/package.sh 0.3                                         # dist/taz-wanted-hd-0.3.zip and -setup.exe
 ```
 
 `extracted/`, `build/` and `dist/` are git-ignored. Never commit game files or anything made
