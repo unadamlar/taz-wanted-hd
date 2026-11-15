@@ -76,9 +76,21 @@ static void copy_all(int load)
     threads(held, n, 0);
 }
 
+// A cutscene (level intro or outro) is on screen: one of the game's four cutscene slots is past loading.
+// Its sound and models stream in from other threads; a quickload during a boss outro froze the game.
+static int cutscene_playing(void)
+{
+    for (int i = 0; i < 4; i++) {
+        BYTE *c = ((BYTE **)0x704d38)[i];
+        if (c && *(DWORD *)(c + 0x3f4c) >= 2) return 1;
+    }
+    return 0;
+}
+
 static void quicksave(void)
 {
     if (SCENE <= 1) { overlay_toast("Quicksave works in levels only"); return; }
+    if (cutscene_playing()) { overlay_toast("No quicksave during a cutscene"); return; }
     if (!saved_heap || saved_heap_base != HEAP_BASE || saved_heap_size != HEAP_SIZE) {
         if (saved_heap) VirtualFree(saved_heap, 0, MEM_RELEASE);
         saved_heap = VirtualAlloc(NULL, HEAP_SIZE + GLOBALS_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -102,6 +114,7 @@ static void quicksave(void)
 static void quickload(void)
 {
     if (saved_scene < 0) { overlay_toast("No quicksave yet"); return; }
+    if (cutscene_playing()) { overlay_toast("No quickload during a cutscene"); return; }
     if (SCENE != saved_scene || textures_created != saved_textures || HEAP_BASE != saved_heap_base) {
         log_line("quickload refused: scene %d (saved %d), textures %lu (saved %lu)", SCENE, saved_scene, textures_created, saved_textures);
         saved_scene = -1; // that level or display is gone; its quicksave can't come back
