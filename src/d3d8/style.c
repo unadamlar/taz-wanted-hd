@@ -31,6 +31,7 @@ enum { X = 1, Y = 2, Z = 4, W = 8, XYZ = 7, ALL = 15 };
 #define S(reg) (0x80000000u | (reg) | (DWORD)SW(0, 1, 2, 3) << 16)        // source
 #define SR(reg, k) (0x80000000u | (reg) | (DWORD)SW(k, k, k, k) << 16)    // source, one component
 #define NEG (1u << 24)
+#define COMP (6u << 24) // pixel shader source: 1 - x
 #define REL (1u << 13)
 #define X2 (1u << 24) // destination shift: result times 2
 enum { MOV = 1, ADD, SUB, MAD, MUL, RCP, RSQ, DP3, DP4, MIN, MAX, LRP = 18, TEXCRD = 0x40, TEXLD = 0x42, EXPP = 0x4e, PHASE = 0xfffd };
@@ -87,7 +88,7 @@ static void finish(int cam, int fog)
 // Constants we add: c80 light (kept from the lit pass for the outline), c81 outline (N.L slope,
 // width at N.L = 0, thinnest, 0), c82 outline colour, c83 fur map scale (x, y), c84 and c85 tuft
 // waves (direction / period), c86 (0.5, tuft height, 0, threshold), c87 (|x| where tufts end, 1 /
-// fade length, 0, 1).
+// fade length, 0, 1), c88 fur map mix (slope, offset).
 
 // Tufts: two crossing triangle waves over the bind pose; where both are high, r3.y (world units) is
 // how far the outline juts out, so it zigzags like inked fur. (Pushing the body out the same way
@@ -126,12 +127,11 @@ static void make_lit_vs(void)
     OP1(MOV, D(oT(1), XYZ), S(r(2)));                       // N
     OP1(MOV, D(oT(2), XYZ), S(r(4)));
     OP2(MUL, D(oT(4), X | Y), S(v(0)), S(c(83)));            // fur, front: bind x, y
-    OP2(MUL, D(r(7), X), SR(v(3), 1), SR(v(3), 1));         // fur, side: bind z, y; on top z, x
-    OP2(ADD, D(r(8), Y), SR(v(0), 0), SR(v(0), 1) | NEG);
-    OP3(MAD, D(r(8), Y), SR(r(8), 1), SR(r(7), 0), SR(v(0), 1));
-    OP1(MOV, D(r(8), X), SR(v(0), 2));
+    OP1(MOV, D(r(8), X), SR(v(0), 2));                      // fur, side: bind z, y + x / 2, so his top isn't streaks
+    OP3(MAD, D(r(8), Y), SR(v(0), 0), SR(c(83), 2), SR(v(0), 1)); // (a third map for the top swirled where it met this one)
     OP2(MUL, D(oT(5), X | Y), S(r(8)), S(c(83)));
-    OP2(MUL, D(oD(1), ALL), SR(v(3), 2), SR(v(3), 2));       // how much it faces front or back
+    OP2(MUL, D(r(7), X), SR(v(3), 2), SR(v(3), 2));         // how much it faces front or back, steepened so
+    OP3(MAD, D(oD(1), ALL), SR(r(7), 0), SR(c(88), 0), SR(c(88), 1)); // the two maps only mix in a narrow band (half and half wove a cross-hatch)
     OP2(MUL, D(oD(0), ALL), S(v(4)), S(c(51)));
     code[len++] = 0xffff;
 }
@@ -152,7 +152,7 @@ static void make_outline_vs(void)
     code[len++] = 0xffff;
 }
 
-// c0 light, c1 rim colour, c2 0.5, c3 highlight colour, c4 fur strength, c5 highlight row.
+// c0 light, c2 0.5, c3 highlight colour, c4 fur strength, c5 highlight row.
 static void make_ps(void)
 {
     len = 0;
@@ -171,12 +171,13 @@ static void make_ps(void)
     OP1(TEXLD, D(r(3), ALL), S(t(4)));
     OP1(TEXLD, D(r(4), ALL), S(r(4)));
     OP1(TEXLD, D(r(5), ALL), S(r(5)));
+    OP2(MUL, D(r(5), XYZ), S(r(5)), S(r(0)) | COMP);        // highlight on dark paint only: the nose and pupils, not the cream around them
     OP3(LRP, D(r(3), ALL), SR(v(1), 3), S(r(3)), S(r(2)));  // fur, front and side maps blended
     OP3(LRP, D(r(3), ALL), S(c(4)), S(r(3)), S(c(2)));      // 0.5 is no change
     OP2(MUL, D(r(0), ALL) | X2, S(r(0)), S(v(0)));          // as the game: texture x colour x 2
     OP2(MUL, D(r(0), XYZ) | X2, S(r(0)), S(r(3)));
     OP2(MUL, D(r(0), XYZ) | X2, S(r(0)), S(r(4)));          // shading, stored halved
-    OP3(MAD, D(r(0), XYZ), SR(r(4), 3), S(c(1)), S(r(0)));  // rim
+    OP3(MAD, D(r(0), XYZ), SR(r(4), 3), S(r(0)), S(r(0)));  // rim: a lighter shade of the fur (added cream light turned the brown pink)
     OP3(MAD, D(r(0), XYZ), S(r(5)), S(c(3)), S(r(0)));      // highlight
     code[len++] = 0xffff;
 }
@@ -194,12 +195,12 @@ static void shade(int style, float nl, float nv, float *rgb, float *rim)
     if (style == SOFT) {
         float d = smooth(-0.55f, 0.9f, nl), warm = expf(-(nl * nl) / 0.06f) * 0.05f;
         rgb[0] = mix(0.56f, 1.10f, d) + warm, rgb[1] = mix(0.54f, 1.08f, d) + warm * 0.4f, rgb[2] = mix(0.68f, 1.04f, d);
-        *rim = powf(1 - nv, 3) * (0.25f + 0.5f * smooth(-0.6f, 0.6f, nl));
+        *rim = powf(1 - nv, 3) * (0.12f + 0.25f * smooth(-0.6f, 0.6f, nl));
         return;
     }
-    float lit = smooth(0.14f, 0.2f, nl), top = smooth(0.9f, 0.93f, nl) * 0.06f;
-    rgb[0] = mix(0.72f, 1.0f, lit) + top, rgb[1] = mix(0.68f, 1.0f, lit) + top, rgb[2] = mix(0.76f, 1.0f, lit) + top;
-    *rim = smooth(0.3f, 0.24f, nv) * smooth(-0.3f, 0.2f, nl);
+    float lit = smooth(0.0f, 0.06f, nl), top = smooth(0.9f, 0.93f, nl) * 0.06f;
+    rgb[0] = mix(0.78f, 1.0f, lit) + top, rgb[1] = mix(0.72f, 1.0f, lit) + top, rgb[2] = mix(0.66f, 1.0f, lit) + top; // warm shadow; a bluish one greyed the cream
+    *rim = smooth(0.3f, 0.24f, nv) * smooth(-0.3f, 0.2f, nl) * 0.3f;
 }
 
 // Highlight lookup: u = N.H; top rows broad (soft style's sheen), bottom rows a small sharp dot.
@@ -421,20 +422,19 @@ HRESULT style_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UIN
     IDirect3DDevice8_GetVertexShaderConstant(dev, 48, light, 1);
     int kind = *kind_of(dev, start, count) = texture_kind(textures_bound_hash(0));
     float fs = s == FUR ? (kind == 2 || kind == 4 ? 1.0f : kind == 3 ? 0.4f : 0) : 0;
-    int shiny = kind == 1 || kind == 5;
+    int shiny = kind == 5 || (kind == 1 && s == SOFT); // the cartoon looks keep the nose's painted shine; ours whitened the whiskers beside it
     float sh = shiny ? 1.0f : s == SOFT && kind ? 0.22f : 0;
     float pc[6][4] = {
         { light[0], light[1], light[2], 0 },
-        { 1.0f, 0.92f, 0.75f, 0 },
+        { 0 },
         { 0.5f, 0.5f, 0.5f, 0.5f },
         { sh, sh, sh, 0 },
         { fs, fs, fs, 0 },
         { 0, shiny ? 0.75f : 0.25f, 0, 0 },
     };
-    if (s == SOFT) pc[1][0] = 0.5f, pc[1][1] = 0.5f, pc[1][2] = 0.55f;
-    else pc[1][0] *= 0.45f, pc[1][1] *= 0.45f, pc[1][2] *= 0.45f;
-    float vc[4] = { 1 / 22.0f, 1 / 40.0f, 0, 0 };
+    float vc[4] = { 1 / 36.0f, 1 / 40.0f, 0.5f, 0 }, mixc[4] = { 4, -1.5f, 0, 0 };
     IDirect3DDevice8_SetVertexShaderConstant(dev, 83, vc, 1);
+    IDirect3DDevice8_SetVertexShaderConstant(dev, 88, mixc, 1);
     IDirect3DDevice8_SetPixelShaderConstant(dev, 0, pc, 6);
     static const DWORD stages[] = { 2, 3, 4, 5 };
     IDirect3DBaseTexture8 *bind[] = { (IDirect3DBaseTexture8 *)fur, (IDirect3DBaseTexture8 *)fur,
