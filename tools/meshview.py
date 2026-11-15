@@ -103,6 +103,7 @@ for g in range(len(sources)):
 ob['hash'] = '%016x' % h
 ob['batches'] = json.dumps(batches)
 ob['sources'] = json.dumps(sources)
+ob['poses'] = json.dumps([[[round(x, 4) for x in p[bi][5][reg * 4:reg * 4 + 12]] for bi, reg in sources] for p in passes])  # each frame's bone matrices, for tools/subdivide.py
 print('mesh: %d vertices, %d triangles, %d bones, %d batches, buffer %016x' % (len(verts), len(faces), len(sources), len(batches), h))
 if merged: print('mesh: WARNING %d bones stand for several; capture frames with more varied poses' % len(merged))
 bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(out))

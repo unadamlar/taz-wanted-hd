@@ -75,6 +75,7 @@ UINT64 textures_bound_hash(DWORD stage);
 IDirect3DBaseTexture8 *textures_bound(DWORD stage);
 int smooth_character(IDirect3DDevice8 *dev);
 void mesh_forget(IDirect3DVertexBuffer8 *vb);
+void mesh_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *fn);
 HRESULT mesh_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
                   HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT));
 extern DWORD presents; // frames shown so far

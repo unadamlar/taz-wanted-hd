@@ -52,7 +52,7 @@ static void flush(void)
 static HRESULT WINAPI hook_CreateVertexShader(IDirect3DDevice8 *dev, CONST DWORD *decl, CONST DWORD *fn, DWORD *h, DWORD usage)
 {
     HRESULT hr = real_CreateVertexShader(dev, decl, fn, h, usage);
-    if (SUCCEEDED(hr) && decl && !memcmp(decl, smooth_decl, sizeof smooth_decl) && nshaders < 16) shaders[nshaders++] = *h, style_shader_created(*h, fn);
+    if (SUCCEEDED(hr) && decl && !memcmp(decl, smooth_decl, sizeof smooth_decl) && nshaders < 16) shaders[nshaders++] = *h, style_shader_created(*h, fn), mesh_shader_created(dev, *h, fn);
     return hr;
 }
 
