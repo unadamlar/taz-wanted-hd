@@ -61,7 +61,9 @@ Keep Taz as he is, or try one of three newer looks.
 
 - Intro videos play upscaled and full screen.
 - The live level previews on a level's map are drawn sharp at screen size.
-- WASD to move and the mouse to turn the camera. Original keys and gamepads still work.
+- WASD to move and the mouse to turn the camera. The original keys still work.
+- An Xbox-style gamepad works as soon as it is plugged in, with the camera on the right stick. No
+  need for the 2002 config tool.
 - Quicksave (F5) and quickload (F9) anywhere in a level.
 - Menu text slides in about four times faster.
 - F11 flips between the original graphics and the new ones while you play.
@@ -134,6 +136,11 @@ Settings are saved in `taz-hd.ini` in the game folder. F12 saves a screenshot to
 | Map (in levels) | Tab |
 | Quicksave / quickload | F5 / F9 |
 | Original / HD graphics | F11 |
+
+Gamepad (Xbox-style, plugged in before or during the game): left stick moves, right stick turns and
+tilts the camera, A jumps, B spins, Y bites, X rants, LB and RB swing the camera, either trigger
+tiptoes, pressing the right stick looks around, Start pauses and Back opens the map. In menus A
+selects and B goes back.
 
 Laptop touchpad: turn off the system's "disable touchpad while typing" option, or the camera
 won't turn while you hold a movement key.

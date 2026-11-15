@@ -6,11 +6,13 @@
 // camera control (FUN_004e0f00) the mouse is added to the pad's camera stick for that call only, so
 // the game's own camera rules still apply, except that the camera doesn't trail Taz for a moment
 // after. The mouse is held (DirectInput exclusive, which hides it) only while that camera control
-// runs, so menus get it back.
+// runs, so menus get it back. Gamepad: see bind_gamepad.
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include "proxy.h"
+#include <dinput.h>
+#include <shlwapi.h>
 
 #define BIND_INPUT ((int (*)(void *, UINT, UINT))0x568860)
 #define KEYBOARD_DEFAULTS ((void (*)(BYTE *, int))0x48c100)
@@ -32,7 +34,7 @@
 
 enum { MOUSE_LEFT = 2, MOUSE_RIGHT = 3, MOUSE_MIDDLE = 4, DIGITAL = 0x100 };
 enum { X1 = 0x38, Y1 = 0x3c, X1DB = 0x48, Y1DB = 0x4c, JUMP = 0x60, BITE = 0x64, SPIN = 0x68, RANT = 0x6c,
-       TIPTOE = 0x74, LOOK = 0x80, MAP = 0x8c, DB = 0x40 }; // pad offsets of channel pointers; DB: debounced copy
+       X2 = 0x40, Y2 = 0x44, TIPTOE = 0x74, LOOK = 0x80, MAP = 0x8c, DB = 0x40 }; // pad offsets of channel pointers; DB: debounced copy
 
 // The channels FUN_0048c100 binds for player 1.
 static const int GAME_KEYS[] = { X1, Y1, X1DB, Y1DB, 0x60, 0x64, 0x68, 0x6c, 0x70, 0x74, 0x7c, 0x80, 0x88, 0x8c,
@@ -149,6 +151,97 @@ static void bind_layout(BYTE *pad)
     log_line("controls: WASD and mouse");
 }
 
+// Gamepad. The game only uses one after its 2002 config tool has saved a layout for it; with none saved
+// it binds keys alone. It opens every joystick at startup all the same, so player 1 gets the first one
+// here, if it is an Xbox-style pad (what Windows, Steam Input and Wine show any modern pad as; others
+// number their buttons and axes differently). The game has a camera stick, but its config tool can't
+// bind one.
+#define JOYSTICK ((BYTE *)0x75105c) // first joystick: +0 flags (1 = opened), +0x14 its DirectInput device
+enum { AXIS = 0x2a, BUTTON = 10 }; // joystick codes: axes X Y Z Rx Ry Rz, then buttons from 10
+
+static int known = -1; // first joystick is an Xbox-style pad; -1 not looked at yet
+
+static int xbox_pad(void)
+{
+    if (known >= 0) return known;
+    DIDEVICEINSTANCEA info = { .dwSize = sizeof info };
+    IDirectInputDevice8A *dev = *(IDirectInputDevice8A **)(JOYSTICK + 0x14);
+    known = (*JOYSTICK & 1) && dev && SUCCEEDED(IDirectInputDevice8_GetDeviceInfo(dev, &info))
+            && (StrStrIA(info.tszProductName, "xbox") || StrStrIA(info.tszProductName, "x-box") || StrStrIA(info.tszProductName, "xinput"));
+    if (*JOYSTICK & 1) log_line("controls: gamepad \"%s\"%s", info.tszProductName, known ? "" : " is not Xbox-style, left to the game's config tool");
+    return known;
+}
+
+// With no pad saved by the config tool the game still reserves player 1's joystick for the saved one
+// (an all-ones id that nothing has), so it turns every pad away. Free the place.
+#define INIT_INPUT ((void (*)(int))0x57b020)
+#define WANTED_JOYSTICK (*(const BYTE **)0x751a98) // id of the joystick saved for player 1, if any
+
+static void __cdecl init_input(int flags)
+{
+    static const BYTE NONE[16] = { [0 ... 15] = 0xff };
+    if (WANTED_JOYSTICK && !memcmp(WANTED_JOYSTICK, NONE, 16)) WANTED_JOYSTICK = NULL;
+    INIT_INPUT(flags);
+}
+
+// Binds a joystick code to a channel unless it already is (a pad plugged in again is bound again).
+static void bind_once(BYTE *pad, int off, UINT code)
+{
+    void *ch = channel(pad, off);
+    for (int k = 0; k < *slots(ch); k++)
+        if (slot(ch, k)[0] == code) return;
+    BIND_INPUT(ch, code, 0);
+}
+
+static void bind_gamepad(BYTE *pad, int menus)
+{
+    static const struct { int off, button; } BUTTONS[] = { // A B X Y LB RB Back Start L3 R3 are buttons 0-9
+        { JUMP, 0 }, { SPIN, 1 }, { RANT, 2 }, { BITE, 3 }, { 0x70, 4 }, { 0x7c, 5 }, { MAP, 6 }, { 0x88, 7 },
+        { LOOK, 9 },
+    };
+    if (!xbox_pad()) return;
+    enum { LX = AXIS, LY, LZ, RX, RY };
+    bind_once(pad, X1, LX), bind_once(pad, X1DB, LX | DIGITAL);
+    bind_once(pad, Y1, LY), bind_once(pad, Y1DB, LY | DIGITAL);
+    *slots(channel(pad, X2)) = *slots(channel(pad, Y2)) = *slots(channel(pad, X2 + 0x10)) = 0; // ours alone
+    bind_once(pad, X2, RX), bind_once(pad, X2 + 0x10, RX | DIGITAL);
+    bind_once(pad, Y2, RY);
+    for (UINT i = 0; i < sizeof BUTTONS / sizeof *BUTTONS; i++) {
+        bind_once(pad, BUTTONS[i].off, BUTTON + BUTTONS[i].button);
+        bind_once(pad, BUTTONS[i].off + DB, BUTTON + BUTTONS[i].button);
+    }
+    // Either trigger: they share axis Z (left pushes it up, right down) and a button channel is on for both.
+    bind_once(pad, TIPTOE, LZ), bind_once(pad, TIPTOE + DB, LZ);
+    if (!menus) return;
+    bind_once(pad, 0x168, BUTTON + 1), bind_once(pad, 0x178, BUTTON + 1); // B is Back, as well as the game's Y
+    for (int set = 0x144; set <= 0x154; set += 0x10) { // menu up, down, left, right, twice over
+        bind_once(pad, set, LY | DIGITAL), bind_once(pad, set + 4, LY);
+        bind_once(pad, set + 8, LX | DIGITAL), bind_once(pad, set + 12, LX);
+    }
+}
+
+// A pad plugged in after the game started: the game only looks for joysticks once, so while it has
+// none and Windows reports an Xbox-style pad, have it look again (its own search, joysticks only).
+// Also after a quickload to before the pad was there.
+static void find_gamepad(void)
+{
+    static DWORD (WINAPI *state)(DWORD, void *);
+    static int loaded;
+    if (*JOYSTICK & 1) return;
+    known = -1;
+    for (int i = 0; !loaded && i < 3; i++) {
+        static const char *DLLS[] = { "xinput1_4.dll", "xinput9_1_0.dll", "xinput1_3.dll" };
+        HMODULE x = LoadLibraryA(DLLS[i]);
+        if (x && (state = (void *)GetProcAddress(x, "XInputGetState"))) break;
+    }
+    loaded = 1;
+    BYTE st[32];
+    IDirectInput8A *di = *(IDirectInput8A **)0x751058;
+    if (!state || !di || state(0, st) != 0) return;
+    IDirectInput8_EnumDevices(di, DI8DEVCLASS_GAMECTRL, (LPDIENUMDEVICESCALLBACKA)0x57b0e0, NULL, DIEDFL_ATTACHEDONLY);
+    if (p1_pad && channel(p1_pad, X1) == p1_x1) bind_gamepad(p1_pad, 1);
+}
+
 static void __cdecl keyboard_defaults(BYTE *pad, int player)
 {
     KEYBOARD_DEFAULTS(pad, player);
@@ -156,6 +249,7 @@ static void __cdecl keyboard_defaults(BYTE *pad, int player)
     p1_pad = pad;
     p1_x1 = channel(pad, X1);
     if (settings.wasd) bind_layout(pad);
+    bind_gamepad(pad, 1);
 }
 
 // Rebinds player 1's current pad for the Controls setting or changed keys: back to the game's own
@@ -167,6 +261,7 @@ void controls_apply(void)
     KEYBOARD_DEFAULTS(p1_pad, 0);
     if (settings.wasd) bind_layout(p1_pad);
     else log_line("controls: classic keys");
+    bind_gamepad(p1_pad, 0);
 }
 
 // Key capture for the Controls page. Its rows: Move (the four directions, asked for in turn), then
@@ -276,40 +371,51 @@ void controls_reset_keys(void)
     controls_apply();
 }
 
+// The camera stick with a dead zone, so a worn stick's drift doesn't creep the held tilt.
+static float stick(float v)
+{
+    float m = fabsf(v);
+    return m < 0.2f ? 0 : (v < 0 ? -1 : 1) * (m - 0.2f) / 0.8f;
+}
+
 static void __cdecl camera_control(void **cc)
 {
     BYTE *cam = cc[1];
     float *pad = cc[2];
     camera_frame = now;
-    if (*(int *)((BYTE *)pad + 0x180) != 0 || !settings.wasd || !settings.mouse || !held || FPS <= 0) { // keyboard player only
+    int mouse = settings.wasd && settings.mouse && held;
+    if (*(int *)((BYTE *)pad + 0x180) != 0 || (!mouse && xbox_pad() <= 0) || FPS <= 0) { // player 1 only
         CAMERA_CONTROL(cc);
         return;
     }
-    if (MOUSE_DX || MOUSE_DY) mouse_cam = cam, mouse_time = GetTickCount();
+    // The gamepad's camera stick is made to work like the mouse: the view turns the way it is pushed
+    // and the tilt stays where it was left (the game turns the other way and springs back).
+    float dx = mouse ? MOUSE_DX : 0, dy = mouse ? MOUSE_DY : 0, sx = stick(pad[6]), sy = stick(pad[7]);
+    if (dx || dy || sx || sy) mouse_cam = cam, mouse_time = GetTickCount();
     float sens = settings.mouse * 0.0003f, per_frame = TURN_RATE / FPS;
-    float yaw = -MOUSE_DX * sens / per_frame; // in stick units: the game turns per_frame * stick
+    float yaw = -dx * sens / per_frame; // in stick units: the game turns per_frame * stick
     float saved[8];
     memcpy(saved, pad, sizeof saved);
-    if (*(DWORD *)(cam + 0x74) & 0x800) { // look around (first person): left stick turns and tilts
+    int look = *(DWORD *)(cam + 0x74) & 0x800;
+    if (look) { // look around (first person): left stick turns and tilts
         pad[4] -= yaw; // this mode turns the other way round
-        pad[5] -= MOUSE_DY * sens / (TILT_RATE / FPS);
+        pad[5] -= dy * sens / (TILT_RATE / FPS);
         if (pad[4] || pad[5]) pad[2] = 1;
     } else {
-        pitch -= MOUSE_DY * sens * 2;
+        pitch -= dy * sens * 2 + sy * 1.5f / FPS;
         pitch = pitch > 1 ? 1 : pitch < -1 ? -1 : pitch;
-        pad[6] += yaw;
-        pad[7] += pitch;
-        if (pad[6] || pad[7]) pad[3] = 1;
+        pad[6] = yaw - sx;
+        pad[7] = pitch;
+        pad[3] = pad[6] || pad[7];
     }
     // Camera points (y up): +0x00 eye, +0x10 what it looks at (eased after +0x30), +0x20 where the
     // eye heads, +0x30 Taz. The game turns +0x20 around +0x10 and eases the eye after it, which lags a
     // mouse, and while Taz runs +0x10 trails him, so the turn came out smaller. Turn all three around
     // Taz by the angle the game gave instead.
     float *c = (float *)cam, dest[3] = { c[8], c[9], c[10] }, before = heading(c + 8, c + 4);
-    int look = *(DWORD *)(cam + 0x74) & 0x800;
     CAMERA_CONTROL(cc);
     float turn = heading(c + 8, c + 4) - before;
-    if (MOUSE_DX && turn) {
+    if ((dx || (sx && !look)) && turn) {
         if (look) spin(c, c + 4, turn);
         else memcpy(c + 8, dest, sizeof dest), spin(c, c + 12, turn), spin(c + 4, c + 12, turn), spin(c + 8, c + 12, turn);
     }
@@ -346,6 +452,7 @@ static void hold_mouse(int on)
 void controls_frame(void)
 {
     now++;
+    if (now % 120 == 0) find_gamepad();
     int want = settings.wasd && settings.mouse && now - camera_frame <= 2 && GetForegroundWindow() == GAME_WINDOW;
     if (want != held) hold_mouse(want);
 }
@@ -363,5 +470,6 @@ void controls_patch(void)
     redirect_call((BYTE *)0x48ad74, KEYBOARD_DEFAULTS, keyboard_defaults);
     redirect_call((BYTE *)0x480e5d, CAMERA_CONTROL, camera_control);
     redirect_call((BYTE *)0x4a8687, CAMERA_UPDATE, camera_update);
+    if (calls((BYTE *)0x568450, INIT_INPUT)) redirect_call((BYTE *)0x568450, INIT_INPUT, init_input);
     if (calls((BYTE *)0x568b25, READ_DEVICES)) redirect_call((BYTE *)0x568b25, READ_DEVICES, read_devices);
 }

@@ -76,7 +76,15 @@ Look sets its speed (Off turns it off). Space jumps, Shift or right click spins,
 looks around, Q rants, Ctrl tiptoes and Tab opens the map (in levels;
 the zoo hub has none). Original keys the layout
 doesn't use (C, F, R, X, V, E, T, arrows) still work. Set Controls to Classic for the original keys
-only (D rants, Space opens the map, no mouse look). A gamepad works as before.
+only (D rants, Space opens the map, no mouse look).
+
+Gamepad
+An Xbox-style gamepad (or anything Steam Input shows the game as one) works without setting it up
+in the 2002 config tool, and can be plugged in while the game runs. Left stick moves, right stick turns
+and tilts the camera, A jumps, B spins, Y bites, X rants, LB and RB swing the camera, either
+trigger tiptoes, pressing the right stick looks around, Start pauses, Back opens the map. In menus
+A selects and B goes back. Other pads, and pads you already set up in the config tool, work as
+before. Player two still needs the config tool.
 
 On a laptop touchpad the camera won't turn while you hold W, A, S or D if the system ignores the
 touchpad while typing. Turn that off: Linux, the touchpad's "Disable while typing" setting (KDE,
