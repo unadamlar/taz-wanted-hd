@@ -1,6 +1,6 @@
 // Player installer: finds Taz: Wanted folders and writes d3d8.dll and taz-hd\ into one. The mod's files are
 // packed onto the end of the exe by tools/pack-installer.py.
-// Command line (for tests and the elevated relaunch): --list, --install <dir>, --uninstall <dir>, --quiet.
+// Command line (for tests and the elevated relaunch): --list [--all], --install <dir>, --uninstall <dir>, --quiet.
 #define COBJMACROS
 #include <windows.h>
 #include <commctrl.h>
@@ -24,19 +24,20 @@
 #define CLOSE_GAME L"Taz: Wanted is running. Close the game first, then try again."
 #define PATH 1024
 #define MAX_GAMES 32
+#define FOREVER (~0ULL)
 
 enum { DLL_NONE, DLL_OURS, DLL_OTHER, DLL_LINK };
 enum { OK, FAILED, NEED_ADMIN };
 enum { OP_INSTALL = 1, OP_UNINSTALL };
 enum { ID_LIST = 100, ID_BROWSE, ID_PLAY, ID_INSTALL, ID_UNINSTALL, ID_CLOSE };
-enum { WM_PROGRESS = WM_APP, WM_TASK_DONE, WM_ELEVATED_DONE };
+enum { WM_PROGRESS = WM_APP, WM_TASK_DONE, WM_ELEVATED_DONE, WM_FOUND, WM_SEARCH_DONE };
 
 typedef struct { WCHAR dir[PATH]; int dll, retail, hd; } Game;
 
 static Game games[MAX_GAMES];
-static int ngames, src_ok, wine;
+static int ngames, src_ok, wine, searching, plain_header;
 static WCHAR src[PATH];
-static ULONGLONG deadline, copied, total;
+static ULONGLONG copied, total;
 static HANDLE pack; // this exe
 static DWORD pack_start, pack_count;
 static int last_permille = -1;
@@ -110,23 +111,27 @@ static int add_game(const WCHAR *dir)
     return ngames++;
 }
 
-static void scan(const WCHAR *dir, int depth)
+// until FOREVER: the whole-computer search on its own thread, which hands what it finds to the window.
+static void scan(const WCHAR *dir, int depth, ULONGLONG until)
 {
     WCHAR p[PATH];
     WIN32_FIND_DATAW fd;
-    if (GetTickCount64() > deadline) return;
+    if (GetTickCount64() > until) return;
     join(p, dir, L"taz.exe");
-    if (exists(p)) add_game(dir);
+    if (exists(p)) {
+        if (until == FOREVER && wnd) PostMessageW(wnd, WM_FOUND, 0, (LPARAM)_wcsdup(dir));
+        else add_game(dir);
+    }
     if (!depth) return;
     join(p, dir, L"*");
     HANDLE h = FindFirstFileExW(p, FindExInfoBasic, &fd, FindExSearchLimitToDirectories, NULL, FIND_FIRST_EX_LARGE_FETCH);
     if (h == INVALID_HANDLE_VALUE) return;
     do {
         // reparse points: Windows' compatibility junctions and links that loop back
-        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) || fd.cFileName[0] == '.') continue;
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) || fd.cFileName[0] == '.' || fd.cFileName[0] == '$') continue;
         join(p, dir, fd.cFileName);
-        scan(p, depth - 1);
-    } while (FindNextFileW(h, &fd) && GetTickCount64() <= deadline);
+        scan(p, depth - 1, until);
+    } while (FindNextFileW(h, &fd) && GetTickCount64() <= until);
     FindClose(h);
 }
 
@@ -174,8 +179,8 @@ static void detect(void)
     static const WCHAR *deep[] = { L"Games", L"Program Files (x86)", L"Program Files" };
     static const KNOWNFOLDERID *user[] = { &FOLDERID_Desktop, &FOLDERID_Documents, &FOLDERID_Downloads };
     WCHAR drives[256], p[PATH];
+    ULONGLONG deadline = GetTickCount64() + 2000;
 
-    deadline = GetTickCount64() + 2000;
     for (int r = 0; r < 2; r++)
         for (int v = 0; v < 2; v++) detect_registry(roots[r], views[v]);
     add_game(src); // downloaded into the game folder, or a folder inside it
@@ -191,18 +196,47 @@ static void detect(void)
     for (int i = 0; i < 3; i++) {
         PWSTR f;
         if (SUCCEEDED(SHGetKnownFolderPath(user[i], 0, NULL, &f))) {
-            scan(f, 3);
+            scan(f, 3, deadline);
             CoTaskMemFree(f);
         }
     }
     for (WCHAR *d = drives; *d; d += wcslen(d) + 1) {
         if (GetDriveTypeW(d) != DRIVE_FIXED) continue;
-        scan(d, 1);
+        scan(d, 1, deadline);
         for (int i = 0; i < 3; i++) {
             join(p, d, deep[i]);
-            scan(p, 2);
+            scan(p, 2, deadline);
         }
     }
+}
+
+// Every folder of every fixed drive, for a game copied somewhere detect() doesn't look.
+static DWORD WINAPI search(void *arg)
+{
+    static char *(CDECL *unix_name)(const WCHAR *);
+    WCHAR drives[256], p[PATH];
+    WIN32_FIND_DATAW fd;
+    if (wine) unix_name = (void *)GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "wine_get_unix_file_name");
+    GetLogicalDriveStringsW(255, drives);
+    for (WCHAR *d = drives; *d; d += wcslen(d) + 1) {
+        if (GetDriveTypeW(d) != DRIVE_FIXED) continue;
+        char *u = unix_name ? unix_name(d) : NULL;
+        int unix_root = u && !strcmp(u, "/"); // Wine's Z: is all of Linux, /proc included
+        HeapFree(GetProcessHeap(), 0, u);
+        if (unix_root) continue;
+        join(p, d, L"*");
+        HANDLE h = FindFirstFileExW(p, FindExInfoBasic, &fd, FindExSearchLimitToDirectories, NULL, FIND_FIRST_EX_LARGE_FETCH);
+        if (h == INVALID_HANDLE_VALUE) continue;
+        do {
+            if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
+                || fd.cFileName[0] == '.' || fd.cFileName[0] == '$' || !lstrcmpiW(fd.cFileName, L"Windows")) continue;
+            join(p, d, fd.cFileName);
+            scan(p, 16, FOREVER);
+        } while (FindNextFileW(h, &fd));
+        FindClose(h);
+    }
+    if (wnd) PostMessageW(wnd, WM_SEARCH_DONE, 0, 0);
+    return 0;
 }
 
 // ---- game folder state
@@ -535,15 +569,19 @@ static void header(const WCHAR *fmt, ...)
     va_end(ap);
     b[2 * PATH - 1] = 0;
     SetWindowTextW(text, b);
+    plain_header = 0;
 }
 
 static void normal_header(void)
 {
     if (!src_ok) header(DAMAGED);
+    else if (!ngames && searching) header(L"Looking for Taz: Wanted on this computer... If you know where it is, click Browse... "
+        L"and choose the folder with taz.exe in it.");
     else if (!ngames) header(L"Taz: Wanted wasn't found on this computer. Click Browse... and choose the folder where "
         L"the game is installed (the one with taz.exe in it).");
-    else header(L"Choose your Taz: Wanted folder and click Install. Your saved games are not touched. "
-        L"If your game is not in the list, click Browse...");
+    else header(L"Choose your Taz: Wanted folder and click Install. Your saved games are not touched. %ls",
+        searching ? L"Still looking through the rest of this computer..." : L"If your game is not in the list, click Browse...");
+    plain_header = 1;
 }
 
 static void update_buttons(void)
@@ -660,8 +698,7 @@ static void browse(void)
         if (SUCCEEDED(IShellItem_GetDisplayName(item, SIGDN_FILESYSPATH, &p))) {
             int n = ngames, i = add_game(p);
             if (i < 0) { // maybe a folder above the game's
-                deadline = GetTickCount64() + 2000;
-                scan(p, 2);
+                scan(p, 2, GetTickCount64() + 2000);
                 if (ngames > n) i = n;
             }
             if (i < 0) MessageBoxW(wnd, L"There is no taz.exe in that folder. Choose the folder where Taz: Wanted is installed.", L"Taz: Wanted HD", MB_ICONINFORMATION);
@@ -758,6 +795,20 @@ static LRESULT CALLBACK wndproc(HWND h, UINT m, WPARAM wp, LPARAM lp)
         set_busy(0);
         finished(wp);
         return 0;
+    case WM_FOUND: {
+        int n = ngames, sel = selected();
+        add_game((WCHAR *)lp);
+        free((void *)lp);
+        if (ngames > n) {
+            fill_list(sel);
+            if (plain_header) normal_header();
+        }
+        return 0;
+    }
+    case WM_SEARCH_DONE:
+        searching = 0;
+        if (plain_header) normal_header();
+        return 0;
     case WM_CLOSE:
         if (!busy) DestroyWindow(h);
         return 0;
@@ -790,6 +841,8 @@ static int run_window(int op, int show)
     } else {
         detect();
         fill_list(-1);
+        searching = 1;
+        CloseHandle(CreateThread(NULL, 0, search, NULL, 0, NULL));
         normal_header();
     }
     MSG msg;
@@ -803,7 +856,7 @@ static int run_window(int op, int show)
 
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, PWSTR cmdline, int show)
 {
-    int argc, op = 0, quiet = 0, list_only = 0;
+    int argc, op = 0, quiet = 0, list_only = 0, all = 0;
     WCHAR **argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     const WCHAR *dir = NULL;
     CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
@@ -814,6 +867,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, PWSTR cmdline, int show)
 
     for (int i = 1; i < argc; i++) {
         if (!wcscmp(argv[i], L"--list")) list_only = 1;
+        else if (!wcscmp(argv[i], L"--all")) all = 1;
         else if (!wcscmp(argv[i], L"--quiet")) quiet = 1;
         else if (!wcscmp(argv[i], L"--install") && i + 1 < argc) op = OP_INSTALL, dir = argv[++i];
         else if (!wcscmp(argv[i], L"--uninstall") && i + 1 < argc) op = OP_UNINSTALL, dir = argv[++i];
@@ -821,6 +875,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, PWSTR cmdline, int show)
     if (list_only) {
         WCHAR st[128];
         detect();
+        if (all) search(NULL);
         for (int i = 0; i < ngames; i++) {
             update_game(&games[i]);
             status_text(&games[i], st);
