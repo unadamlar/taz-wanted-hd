@@ -73,8 +73,8 @@ void settings_load(void)
     settings.vsync = GetPrivateProfileIntA("taz-hd", "vsync", 1, INI);
     settings.fps_limit = GetPrivateProfileIntA("taz-hd", "fps_limit", 0, INI);
     settings.smooth = GetPrivateProfileIntA("taz-hd", "smooth_characters", 1, INI);
-    settings.draw = GetPrivateProfileIntA("taz-hd", "draw_distance", 2, INI);
-    if (settings.draw != 1 && settings.draw != 4) settings.draw = 2;
+    settings.draw = GetPrivateProfileIntA("taz-hd", "draw_distance", 4, INI);
+    if (settings.draw != 1 && settings.draw != 2) settings.draw = 4;
     settings.mouse = GetPrivateProfileIntA("taz-hd", "mouse_sensitivity", 5, INI);
     GetPrivateProfileStringA("taz-hd", "controls", "wasd", res, sizeof res, INI);
     settings.wasd = _stricmp(res, "classic") != 0;
@@ -114,7 +114,7 @@ static struct item items[] = {
     { "Anti-Aliasing", "Smooths jagged edges", "antialiasing", "4", { "0", "2", "4", "8" }, 4, 0, GFX },
     { "Smooth Characters", "Rounder characters with smoother shading", "smooth_characters", "1", { "0", "1" }, 2, 0, GFX },
     { "Taz Style", "Other looks for Taz: crisper, softer or furrier", "taz_style", "current", { "current", "cartoon", "soft", "fur" }, 4, 0, GFX | PAUSE },
-    { "Draw Distance", "How far away scenery and objects stay visible", "draw_distance", "2", { "1", "2", "4" }, 3, 0, GFX | PAUSE },
+    { "Draw Distance", "How far away scenery and objects stay visible", "draw_distance", "4", { "1", "2", "4" }, 3, 0, GFX | PAUSE },
     { "Frame Cap", "Limits the frame rate", "fps_limit", "0", { "0", "30", "60", "120", "144" }, 5, 0, GFX },
     { "Controls", "WASD and mouse, or the original keys", "controls", "wasd", { "wasd", "classic" }, 2, 0, PAUSE | KEYS },
     { "Controls", "Keys, mouse look and layout", "keys", "", { "" }, 0, 0, FRONT },
