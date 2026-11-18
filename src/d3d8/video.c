@@ -183,16 +183,9 @@ void video_patch(void)
     // The game locks the back buffer for each frame and retries until that works, which with anti-aliasing
     // it never does. We don't use the back buffer, so skip the lock: drop its 4 arguments and go to the copy.
     static const BYTE lock_call[] = { 0xff, 0x50, 0x24, 0x85, 0xc0 }, skip[] = { 0x83, 0xc4, 0x10, 0xeb, 0x15 };
-    BYTE *at = (BYTE *)0x4782bd;
-    DWORD old;
-    if (memcmp(at, lock_call, sizeof lock_call)) {
+    if (!write_code((BYTE *)0x4782bd, lock_call, skip, sizeof skip)) {
         log_line("video: unexpected code, anti-aliasing stays off");
         settings.antialiasing = 0;
-    } else {
-        VirtualProtect(at, sizeof skip, PAGE_EXECUTE_READWRITE, &old);
-        memcpy(at, skip, sizeof skip);
-        VirtualProtect(at, sizeof skip, old, &old);
-        FlushInstructionCache(GetCurrentProcess(), at, sizeof skip);
     }
     InitializeCriticalSection(&lock);
     wake = CreateEventA(NULL, FALSE, FALSE, NULL);

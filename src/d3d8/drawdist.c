@@ -16,18 +16,12 @@ static float fog_start, fog_end, fog_scale;
 // Jumps from fn to hook; returns a copy of fn's first n bytes (whole instructions) that continues in fn.
 static void *hook_entry(BYTE *fn, const BYTE *orig, int n, void *hook)
 {
-    if (memcmp(fn, orig, n)) return NULL;
-    BYTE *t = VirtualAlloc(NULL, n + 5, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    BYTE *t = memcmp(fn, orig, n) ? NULL : VirtualAlloc(NULL, n + 5, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if (!t) return NULL;
     memcpy(t, fn, n);
     t[n] = 0xe9;
     *(INT32 *)(t + n + 1) = (INT32)(fn + n - (t + n + 5));
-    DWORD old;
-    VirtualProtect(fn, 5, PAGE_EXECUTE_READWRITE, &old);
-    fn[0] = 0xe9;
-    *(INT32 *)(fn + 1) = (INT32)((BYTE *)hook - (fn + 5));
-    VirtualProtect(fn, 5, old, &old);
-    FlushInstructionCache(GetCurrentProcess(), fn, 5);
-    return t;
+    return write_jump(fn, orig, n, 0xe9, hook) ? t : NULL;
 }
 
 static void hook_projection(float near_z, float far_z)

@@ -10,7 +10,7 @@ void textures_frame(void);
 void textures_dump_recent(void);
 void widescreen_patch(void);
 
-struct settings { int hd_textures, hd_models, vsync, antialiasing, fps_limit, smooth, wasd, mouse, draw; float menu_speed; int exe_known, passthrough, taz_style; };
+struct settings { int hd_textures, hd_models, vsync, antialiasing, fps_limit, smooth, wasd, mouse, draw; float menu_speed; int exe_known, passthrough, taz_style, tests; };
 extern struct settings settings;
 void settings_load(void);
 void settings_frame(void);
@@ -18,6 +18,10 @@ void menuspeed_patch(float speed);
 void menuspeed_set(float speed);
 void asserts_patch(void);
 void *patch_import(const char *dll, const char *func, void *hook);
+int write_code(BYTE *at, const BYTE *expect, const void *bytes, SIZE_T n);
+int write_jump(BYTE *at, const BYTE *expect, SIZE_T n, BYTE op, void *to);
+int key_pressed(int vk);
+void textures_bind_own(IDirect3DDevice8 *dev, DWORD stage, IDirect3DBaseTexture8 *t);
 void overlay_frame(IDirect3DDevice8 *dev);
 struct vertex { float x, y, z, rhw; DWORD color; float u, v; };
 #define FVF (D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1)

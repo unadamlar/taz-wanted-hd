@@ -1,3 +1,4 @@
+// The test rig's trigger files, read only with tests=1 in the ini (players' games never look for them).
 // Mesh capture for modelling work: a taz-hd\capture file records the next frame's character draws
 // (or the next N frames, for a number N in it) into taz-hd\capture-NNN.bin, one file per frame.
 // A taz-hd\scene file holding a scene number (names at 0x646d9c; add "intro" to see a hub's intro again) sends
@@ -7,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "proxy.h"
+#include "game.h"
 
 #define TRIGGER "taz-hd\\capture"
 
@@ -17,10 +19,11 @@ static int nseen;
 // Between game frames (quicksave.c): FUN_004a9730 is the game's scene change, as the attract demo uses it.
 void capture_scene(void)
 {
+    if (!settings.tests) return;
     if (GetFileAttributesA("taz-hd\\costume") != INVALID_FILE_ATTRIBUTES) {
         DeleteFileA("taz-hd\\costume");
-        void *taz = *(void **)0x6c8c80; // player one's actor
-        if (taz && *(BYTE *)0x704cf0 >= 2) {
+        void *taz = PLAYER;
+        if (taz && SCENE >= 2) {
             ((void(__cdecl *)(void *))0x430160)(taz);
             log_line("capture: costume on (%d)", *(signed char *)(*(BYTE **)((BYTE *)taz + 0x1cc) + 0x10c));
         }
@@ -34,20 +37,20 @@ void capture_scene(void)
             if (n >= 0 && n < 0x25 && slot >= 0) *(int *)(0x6c97c0 + slot * 0x13d4 + n * 0xa8) = 1, marked++;
         fclose(f);
         DeleteFileA("taz-hd\\complete");
-        void *taz = *(void **)0x6c8c80;
+        void *taz = PLAYER;
         log_line("capture: %d levels marked won%s", marked, !marked && taz ? ", winning this one" : "");
-        if (!marked && taz && *(BYTE *)0x704cf0 >= 2) ((void(__cdecl *)(void *, int))0x4cd830)(taz, 0);
+        if (!marked && taz && SCENE >= 2) ((void(__cdecl *)(void *, int))0x4cd830)(taz, 0);
     }
     f = fopen("taz-hd\\scene", "r");
     if (!f) return;
     char word[8] = "";
-    int scene, ok = fscanf(f, "%d %7s", &scene, word) >= 1 && scene >= 0 && scene < 0x25 && *(BYTE *)0x704cf0 >= 2; // in play, not menus
+    int scene, ok = fscanf(f, "%d %7s", &scene, word) >= 1 && scene >= 0 && scene < 0x25 && SCENE >= 2; // in play, not menus
     fclose(f);
     DeleteFileA("taz-hd\\scene"); // first: loading runs game frames, which come back here
     if (ok && !strcmp(word, "intro")) *(BYTE *)(0x6c9860 + *(int *)0x6c8eec * 0x13d4 + scene * 0xa8) &= ~1; // hub intro not seen yet
     if (ok) {
         log_line("capture: going to scene %d", scene);
-        ((void(__cdecl *)(void *, int))0x4a9730)((void *)0x6c8c18, scene);
+        ((void(__cdecl *)(void *, int))0x4a9730)(GAME, scene);
     }
 }
 
@@ -60,7 +63,7 @@ void capture_frame(void)
         fclose(out);
         out = NULL;
     }
-    FILE *f = left ? NULL : fopen(TRIGGER, "r");
+    FILE *f = left || !settings.tests ? NULL : fopen(TRIGGER, "r");
     if (f) {
         if (fscanf(f, "%d", &left) != 1 || left < 1) left = 1;
         fclose(f);

@@ -48,14 +48,7 @@ void startup_patch(void)
     real_RegCloseKey = patch_import("ADVAPI32.dll", "RegCloseKey", hook_RegCloseKey);
     if (!real_RegOpenKeyExA || !real_RegQueryValueExA || !real_RegCloseKey) log_line("startup: registry imports not found");
 
-    static const BYTE orig[] = { 0x74, 0x13 };
-    if (memcmp(LAUNCHER_JUMP, orig, sizeof orig)) {
+    static const BYTE orig[] = { 0x74, 0x13 }, always[] = { 0xeb, 0x13 }; // jump, as if "Launched" was given
+    if (!write_code(LAUNCHER_JUMP, orig, always, sizeof always))
         log_line("startup: unexpected code at %p, the launcher still opens without \"Launched\"", LAUNCHER_JUMP);
-        return;
-    }
-    DWORD old;
-    VirtualProtect(LAUNCHER_JUMP, 1, PAGE_EXECUTE_READWRITE, &old);
-    *LAUNCHER_JUMP = 0xeb; // always jump, as if "Launched" was given
-    VirtualProtect(LAUNCHER_JUMP, 1, old, &old);
-    FlushInstructionCache(GetCurrentProcess(), LAUNCHER_JUMP, 1);
 }

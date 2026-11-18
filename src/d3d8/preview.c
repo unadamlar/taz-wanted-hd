@@ -4,8 +4,8 @@
 // its own depth buffer: the shared one is multisampled with anti-aliasing on, and doesn't fit it.
 #define COBJMACROS
 #include "proxy.h"
+#include "game.h"
 
-#define CREATE_TARGET ((BYTE *)0x56c500) // FUN_0056c500(w, h, colour bits, depth bits, flags) -> target
 #define SET_VIEWPORT ((BYTE *)0x569a10)  // FUN_00569a10(x, y, w, h)
 #define TARGET (*(BYTE **)0x6f8c9c)      // the preview's target; +0x80 surface, +0x84 depth, +0x90/+0x94 size
 #define DEVICE (*(IDirect3DDevice8 **)0x741fc4)
@@ -19,7 +19,7 @@ static UINT pow2(UINT n)
 
 static BYTE *create_target(UINT w, UINT h, int bits, int depth_bits, int flags)
 {
-    UINT sw = *(UINT *)0x6c6b78, sh = *(UINT *)0x6c6b7c; // shown at 240/640 x 180/448 of the screen
+    UINT sw = SCREEN_W, sh = SCREEN_H; // shown at 240/640 x 180/448 of the screen
     BYTE *rt = ((BYTE * (*)(UINT, UINT, int, int, int)) CREATE_TARGET)(pow2(sw * 3 / 8), pow2(sh * 180 / 448), bits, depth_bits, flags);
     IDirect3DSurface8 *shared, *own;
     D3DSURFACE_DESC d;

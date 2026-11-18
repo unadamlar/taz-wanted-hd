@@ -279,17 +279,6 @@ void menu_frame(void)
     if (open_sub && (closing || !sub_current(open_sub))) sub_close();
 }
 
-int redirect_call(BYTE *at, void *expect, void *to)
-{
-    if (at[0] != 0xe8 || at + 5 + *(INT32 *)(at + 1) != expect) return 0;
-    DWORD old;
-    VirtualProtect(at, 5, PAGE_EXECUTE_READWRITE, &old);
-    *(INT32 *)(at + 1) = (INT32)((BYTE *)to - (at + 5));
-    VirtualProtect(at, 5, old, &old);
-    FlushInstructionCache(GetCurrentProcess(), at, 5);
-    return 1;
-}
-
 void menu_patch(void)
 {
     if (!redirect_call(WIDESCREEN_ROW, (void *)ADD_TEXT, options_rows) || !redirect_call(EXIT_ROW, (void *)ADD_ITEM, pause_rows))

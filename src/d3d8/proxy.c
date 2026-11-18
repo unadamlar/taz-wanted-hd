@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "proxy.h"
+#include "game.h"
 
 #define RETAIL_TIMESTAMP 0x3d3bc9b0 // taz.exe linked 2002-07-22
 
@@ -22,15 +23,6 @@ void log_line(const char *fmt, ...)
     va_end(ap);
     fputc('\n', logf);
     fflush(logf);
-}
-
-void patch(void **slot, void *hook, void **orig)
-{
-    DWORD old;
-    VirtualProtect(slot, sizeof *slot, PAGE_EXECUTE_READWRITE, &old);
-    if (orig) *orig = *slot;
-    *slot = hook;
-    VirtualProtect(slot, sizeof *slot, old, &old);
 }
 
 // Compares the game's measured cycle-counter rate (bInitTimer, 0x750010/0x750018) with the real one.
@@ -82,39 +74,31 @@ static HRESULT WINAPI hook_Present(IDirect3DDevice8 *dev, CONST RECT *src, CONST
         frames = 0;
     }
     static int scene = -1;
-    if (settings.exe_known && *(BYTE *)0x704cf0 != scene) log_line("scene %d", scene = *(BYTE *)0x704cf0);
-    textures_frame();
-    controls_frame();
-    settings_frame();
-    drawdist_frame();
-    menu_frame();
-    video_frame(dev);
-    overlay_frame(dev);
-    screenshot_frame(dev);
-    capture_frame();
+    if (settings.exe_known && SCENE != scene) log_line("scene %d", scene = SCENE);
+    if (!settings.passthrough) {
+        textures_frame();
+        if (settings.exe_known) controls_frame();
+        settings_frame();
+        drawdist_frame();
+        menu_frame();
+        video_frame(dev);
+        overlay_frame(dev);
+        screenshot_frame(dev);
+        capture_frame();
+    }
     if (settings.fps_limit > 0) limit_frame_rate(settings.fps_limit);
     return real_Present(dev, src, dst, wnd, dirty);
 }
 
-// Points one import of the exe at hook; returns the previous target.
-void *patch_import(const char *dll, const char *func, void *hook)
+// A key going down while the game is the window in front (keys typed into other programs don't count).
+int key_pressed(int vk)
 {
-    BYTE *base = (BYTE *)GetModuleHandleA(NULL);
-    IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
-    IMAGE_DATA_DIRECTORY dir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
-    for (IMAGE_IMPORT_DESCRIPTOR *d = (void *)(base + dir.VirtualAddress); dir.VirtualAddress && d->Name; d++) {
-        if (_stricmp((char *)base + d->Name, dll)) continue;
-        IMAGE_THUNK_DATA *names = (void *)(base + (d->OriginalFirstThunk ? d->OriginalFirstThunk : d->FirstThunk));
-        IMAGE_THUNK_DATA *slots = (void *)(base + d->FirstThunk);
-        for (; names->u1.AddressOfData; names++, slots++) {
-            if (IMAGE_SNAP_BY_ORDINAL(names->u1.Ordinal)) continue;
-            if (strcmp((char *)((IMAGE_IMPORT_BY_NAME *)(base + names->u1.AddressOfData))->Name, func)) continue;
-            void *orig;
-            patch((void **)&slots->u1.Function, hook, &orig);
-            return orig;
-        }
-    }
-    return NULL;
+    static BYTE was[256];
+    DWORD pid = 0;
+    GetWindowThreadProcessId(GetForegroundWindow(), &pid);
+    int down = (GetAsyncKeyState(vk) & 0x8000) && pid == GetCurrentProcessId(), edge = down && !was[vk & 255];
+    was[vk & 255] = (BYTE)down;
+    return edge;
 }
 
 // The game's own debug prints (bkPrintf, asserts) go to OutputDebugString; keep them in our log.
@@ -147,14 +131,18 @@ static HRESULT WINAPI hook_CreateDevice(IDirect3D8 *d3d, UINT adapter, D3DDEVTYP
     return hr;
 }
 
+static DWORD exe_timestamp(void)
+{
+    BYTE *base = (BYTE *)GetModuleHandleA(NULL);
+    return ((IMAGE_NT_HEADERS *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew))->FileHeader.TimeDateStamp;
+}
+
 // Tells the player once when taz.exe isn't the build our code patches were made for (each patch checks
 // its bytes and skips itself; textures and videos work regardless).
 static void check_version(void)
 {
-    BYTE *base = (BYTE *)GetModuleHandleA(NULL);
-    IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
-    if (nt->FileHeader.TimeDateStamp == RETAIL_TIMESTAMP) return;
-    log_line("taz.exe build %08lx is not the 2002 retail one (%08x)", nt->FileHeader.TimeDateStamp, RETAIL_TIMESTAMP);
+    if (settings.exe_known) return;
+    log_line("taz.exe build %08lx is not the 2002 retail one (%08x)", exe_timestamp(), RETAIL_TIMESTAMP);
     if (!GetPrivateProfileIntA("taz-hd", "version_warning", 1, ".\\taz-hd.ini")) return;
     settings_save("version_warning", "0");
     MessageBoxA(NULL, "This taz.exe is not the 2002 retail PC version that Taz: Wanted HD was made for.\n\n"
@@ -193,6 +181,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         logf = fopen("taz-hd.log", "a"); // the game relaunches itself; both processes log here
         log_line("taz-hd proxy loaded: %s", GetCommandLineA());
         settings_load();
+        settings.exe_known = exe_timestamp() == RETAIL_TIMESTAMP; // the one test for "the exe game.h describes"
         if (settings.passthrough) return TRUE;
         startup_patch();
         widescreen_patch();

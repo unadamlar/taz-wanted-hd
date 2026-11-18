@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "proxy.h"
+#include "game.h"
 
 enum { CURRENT, CARTOON, SOFT, FUR, STYLES };
 
@@ -345,7 +346,7 @@ static IDirect3DVertexBuffer8 *player_vb(void)
     if (frame == presents) return vb;
     frame = presents;
     vb = NULL;
-    BYTE *p = *(BYTE **)0x6c8c80;
+    BYTE *p = PLAYER;
     for (int k = 0; k < 3 && p; k++) {
         MEMORY_BASIC_INFORMATION mi;
         BYTE *at = p + (k == 0 ? 0x130 : k == 1 ? 0x3c : 0);
@@ -357,7 +358,7 @@ static IDirect3DVertexBuffer8 *player_vb(void)
 
 int style_is_player(IDirect3DVertexBuffer8 *vb)
 {
-    return settings.taz_style && settings.exe_known && *(BYTE *)0x704cf0 >= 2 && vb == player_vb();
+    return settings.taz_style && settings.exe_known && SCENE >= 2 && vb == player_vb();
 }
 
 // Taz's textures by fingerprint: eyes and nose get a highlight, his fur the strand pattern.
@@ -449,18 +450,18 @@ HRESULT style_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UIN
             IDirect3DDevice8_GetTextureStageState(dev, stages[i], states[k], &saved[i][k]);
             IDirect3DDevice8_SetTextureStageState(dev, stages[i], states[k], want[k]);
         }
-        IDirect3DDevice8_SetTexture(dev, stages[i], bind[i]);
+        textures_bind_own(dev, stages[i], bind[i]);
     }
     IDirect3DBaseTexture8 *game = textures_bound(0);
-    if (kind == 5) IDirect3DDevice8_SetTexture(dev, 0, (IDirect3DBaseTexture8 *)eye);
+    if (kind == 5) textures_bind_own(dev, 0, (IDirect3DBaseTexture8 *)eye);
     IDirect3DDevice8_SetVertexShader(dev, lit_vs);
     IDirect3DDevice8_SetPixelShader(dev, ps);
     hr = draw(dev, type, start, count);
     IDirect3DDevice8_SetPixelShader(dev, 0);
-    if (kind == 5) IDirect3DDevice8_SetTexture(dev, 0, game);
+    if (kind == 5) IDirect3DDevice8_SetTexture(dev, 0, game); // through our hook: its HD replacement comes back
     IDirect3DDevice8_SetVertexShader(dev, vs);
     for (int i = 0; i < 4; i++) {
-        IDirect3DDevice8_SetTexture(dev, stages[i], NULL);
+        textures_bind_own(dev, stages[i], NULL);
         for (int k = 0; k < 5; k++) IDirect3DDevice8_SetTextureStageState(dev, stages[i], states[k], saved[i][k]);
     }
     return hr;

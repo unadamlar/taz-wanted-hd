@@ -163,8 +163,8 @@ void draw_2d(IDirect3DDevice8 *dev, IDirect3DTexture8 *tex, const struct vertex 
     IDirect3DDevice8_SetRenderState(dev, D3DRS_STENCILENABLE, FALSE);
     IDirect3DDevice8_SetVertexShader(dev, FVF);
     IDirect3DDevice8_SetPixelShader(dev, 0);
-    IDirect3DDevice8_SetTexture(dev, 0, (IDirect3DBaseTexture8 *)tex);
-    IDirect3DDevice8_SetTexture(dev, 1, NULL);
+    textures_bind_own(dev, 0, (IDirect3DBaseTexture8 *)tex);
+    textures_bind_own(dev, 1, NULL);
     IDirect3DDevice8_SetTextureStageState(dev, 0, D3DTSS_COLOROP, D3DTOP_MODULATE);
     IDirect3DDevice8_SetTextureStageState(dev, 0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
     IDirect3DDevice8_SetTextureStageState(dev, 0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);

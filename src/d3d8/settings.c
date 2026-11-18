@@ -80,6 +80,7 @@ void settings_load(void)
     settings.wasd = _stricmp(res, "classic") != 0;
     settings.antialiasing = GetPrivateProfileIntA("taz-hd", "antialiasing", 4, INI);
     settings.passthrough = GetPrivateProfileIntA("taz-hd", "passthrough", 0, INI); // testing: no patches at all
+    settings.tests = GetPrivateProfileIntA("taz-hd", "tests", 0, INI); // the test rig's trigger files (screenshot.c, capture.c)
     GetPrivateProfileStringA("taz-hd", "taz_style", "current", res, sizeof res, INI);
     settings.taz_style = style_index(res);
     GetPrivateProfileStringA("taz-hd", "menu_text_speed", "3", res, sizeof res, INI);
@@ -235,9 +236,8 @@ void setting_step(int i, int dir)
 // the mod's, for comparing. Saved settings are left alone; the menus show the saved values.
 void settings_frame(void)
 {
-    static int was, original, hd_textures, smooth, hd_models, taz_style, draw;
-    int down = (GetAsyncKeyState(VK_F11) & 0x8000) && GetForegroundWindow() == *(HWND *)0x753724; // the game's window
-    if (down && !was) {
+    static int original, hd_textures, smooth, hd_models, taz_style, draw;
+    if (key_pressed(VK_F11)) {
         if ((original = !original)) {
             hd_textures = settings.hd_textures, smooth = settings.smooth, hd_models = settings.hd_models, taz_style = settings.taz_style, draw = settings.draw;
             settings.hd_textures = settings.smooth = settings.hd_models = settings.taz_style = 0;
@@ -249,5 +249,4 @@ void settings_frame(void)
         overlay_toast(original ? "Original graphics (F11)" : "HD graphics (F11)");
         log_line("graphics: %s", original ? "original" : "hd");
     }
-    was = down;
 }

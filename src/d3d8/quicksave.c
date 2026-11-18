@@ -4,6 +4,7 @@
 // display is reset, so a quicksave only loads in the same level, before any new textures were created.
 #include <string.h>
 #include "proxy.h"
+#include "game.h"
 #include <tlhelp32.h>
 
 #define FRAME_CALL ((BYTE *)0x4dc12a) // call FUN_004a9f50, one game frame; nothing of the game's is on the stack
@@ -12,7 +13,6 @@
 #define HEAP_SIZE (*(DWORD *)0x73f79c)
 #define GLOBALS ((BYTE *)0x630000) // .data and .data1, up to .rsrc
 #define GLOBALS_SIZE 0x12e000
-#define SCENE (*(BYTE *)0x704cf0)
 #define MAX_LOCKS 256
 
 // Kept as they are now on quickload: the frame clock (or the first frame would cover the time since the
@@ -127,17 +127,9 @@ static void quickload(void)
     overlay_toast("Quickloaded");
 }
 
-static int pressed(int vk)
-{
-    static BYTE was[256];
-    int down = (GetAsyncKeyState(vk) & 0x8000) != 0, edge = down && !was[vk];
-    was[vk] = (BYTE)down;
-    return edge;
-}
-
 static void frame(void)
 {
-    int save = pressed(VK_F5), load = pressed(VK_F9);
+    int save = key_pressed(VK_F5), load = key_pressed(VK_F9);
     if (save) quicksave();
     else if (load) quickload();
     capture_scene();
@@ -146,15 +138,9 @@ static void frame(void)
 
 void quicksave_patch(void)
 {
-    BYTE *at = FRAME_CALL;
-    if (at[0] != 0xe8 || at + 5 + *(INT32 *)(at + 1) != GAME_FRAME) {
-        log_line("quicksave: unexpected code at %p, F5/F9 disabled", at);
+    if (!redirect_call(FRAME_CALL, GAME_FRAME, frame)) {
+        log_line("quicksave: unexpected code at %p, F5/F9 disabled", FRAME_CALL);
         return;
     }
     real_InitializeCriticalSection = patch_import("KERNEL32.dll", "InitializeCriticalSection", hook_InitializeCriticalSection);
-    DWORD old;
-    VirtualProtect(at, 5, PAGE_EXECUTE_READWRITE, &old);
-    *(INT32 *)(at + 1) = (INT32)((BYTE *)frame - (at + 5));
-    VirtualProtect(at, 5, old, &old);
-    FlushInstructionCache(GetCurrentProcess(), at, 5);
 }

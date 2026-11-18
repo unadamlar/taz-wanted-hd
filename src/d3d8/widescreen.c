@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "proxy.h"
+#include "game.h"
 
 // FUN_0048fd20(on): "mov al,[esp+4]" at entry; its 4:3 branch: movb $4,0x6c6b88 ; movb $3,0x6c6b89
 static BYTE *const ASPECT_FN = (BYTE *)0x48fd20;
@@ -23,15 +24,6 @@ static UINT gcd(UINT a, UINT b)
     return a;
 }
 
-static void write_code(BYTE *at, const BYTE *bytes, SIZE_T n)
-{
-    DWORD old;
-    VirtualProtect(at, n, PAGE_EXECUTE_READWRITE, &old);
-    memcpy(at, bytes, n);
-    VirtualProtect(at, n, old, &old);
-    FlushInstructionCache(GetCurrentProcess(), at, n);
-}
-
 static void set_aspect(UINT w, UINT h)
 {
     UINT g = gcd(w, h), ax = w / g, ay = h / g;
@@ -39,15 +31,15 @@ static void set_aspect(UINT w, UINT h)
         ax = (ax + 1) / 2;
         ay = (ay + 1) / 2;
     }
-    write_code(ASPECT_CODE + 6, (BYTE[]){ (BYTE)ax }, 1);
-    write_code(ASPECT_CODE + 13, (BYTE[]){ (BYTE)ay }, 1);
+    write_code(ASPECT_CODE + 6, NULL, (BYTE[]){ (BYTE)ax }, 1);
+    write_code(ASPECT_CODE + 13, NULL, (BYTE[]){ (BYTE)ay }, 1);
     log_line("aspect: %ux%u, %u:%u", w, h, ax, ay);
 }
 
 // After a resolution change, on the game thread between frames.
 void widescreen_apply(void)
 {
-    UINT w = *(UINT *)0x6c6b78, h = *(UINT *)0x6c6b7c;
+    UINT w = SCREEN_W, h = SCREEN_H;
     if (!patched || !w || !h) return;
     set_aspect(w, h);
     ((void (*)(int))ASPECT_FN)(0); // the game's own: sets the aspect, rebuilds the cameras
@@ -59,9 +51,8 @@ void widescreen_patch(void)
         log_line("aspect: unexpected code at %p, not patching (different exe?)", ASPECT_FN);
         return;
     }
-    settings.exe_known = 1; // the exe is the one these addresses come from
     patched = 1;
-    write_code(ASPECT_FN, (const BYTE[]){ 0x31, 0xc0, 0x90, 0x90 }, 4); // xor eax,eax: the game's option is always off
+    write_code(ASPECT_FN, NULL, (const BYTE[]){ 0x31, 0xc0, 0x90, 0x90 }, 4); // xor eax,eax: the game's option is always off
     UINT size[2] = { 0, 0 };
     FILE *f = fopen("taz.dat", "rb");
     if (f) {

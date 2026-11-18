@@ -6,6 +6,7 @@
 // Anti-aliasing (multisampling) goes the same way.
 #define COBJMACROS
 #include "proxy.h"
+#include "game.h"
 
 #define GAME_PP ((D3DPRESENT_PARAMETERS *)0x7420a4)
 #define SETTLE_MS 600 // Left/Right through several resolutions makes one change, not one each
@@ -81,8 +82,8 @@ static void resize_game(UINT w, UINT h)
     *(UINT *)0x741f80 = h / 2;
     *(float *)0x741f94 = (float)h / w * 0.5f;
     ((void (*)(void))0x56afb0)(); // 2D projection
-    *(UINT *)0x6c6b78 = w;
-    *(UINT *)0x6c6b7c = h;
+    SCREEN_W = w;
+    SCREEN_H = h;
     ((void (*)(int, int))0x48fac0)(*(BYTE *)0x6f4b18, *(int *)0x6f4b20); // camera rectangles, split screen
     widescreen_apply();
     for (BYTE *p = (BYTE *)0x708d38; p < (BYTE *)0x710b50; p += 0x3f0c) // per player: full-screen fade quads

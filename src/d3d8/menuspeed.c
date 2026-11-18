@@ -51,25 +51,6 @@ static char __fastcall slide_update(void *fx, int unused)
     return done;
 }
 
-static int write_code(BYTE *at, const BYTE *bytes, SIZE_T n)
-{
-    DWORD old;
-    if (!VirtualProtect(at, n, PAGE_EXECUTE_READWRITE, &old)) return 0;
-    memcpy(at, bytes, n);
-    VirtualProtect(at, n, old, &old);
-    FlushInstructionCache(GetCurrentProcess(), at, n);
-    return 1;
-}
-
-static int call_at(BYTE *at, SIZE_T len, const BYTE *expect, void *target)
-{
-    BYTE code[16] = { 0xe8 };
-    if (memcmp(at, expect, len)) return 0;
-    *(INT32 *)(code + 1) = (INT32)((BYTE *)target - (at + 5));
-    memset(code + 5, 0x90, len - 5);
-    return write_code(at, code, len);
-}
-
 void menuspeed_set(float speed)
 {
     menu_speed = speed;
@@ -97,15 +78,15 @@ void menuspeed_patch(float speed)
         return;
     }
     menu_speed = speed;
-    call_at((BYTE *)0x4dc124, sizeof store, store, store_frame_time);
-    call_at((BYTE *)0x4dc10c, sizeof zero, zero, zero_frame_time);
+    write_jump((BYTE *)0x4dc124, store, sizeof store, 0xe8, store_frame_time);
+    write_jump((BYTE *)0x4dc10c, zero, sizeof zero, 0xe8, zero_frame_time);
     float *copy = &menu_time;
     for (UINT i = 0; i < sizeof SITES / sizeof *SITES; i++)
-        write_code(operand[i], (BYTE *)&copy, 4);
+        write_code(operand[i], NULL, &copy, 4);
     if (*SLIDE_SLOT == (DWORD)0x537840) {
         real_slide = (void *)*SLIDE_SLOT;
         DWORD to = (DWORD)slide_update;
-        write_code((BYTE *)SLIDE_SLOT, (BYTE *)&to, 4);
+        write_code((BYTE *)SLIDE_SLOT, NULL, &to, 4);
     }
     log_line("menu speed: %.2fx (%u sites)", speed, (UINT)(sizeof SITES / sizeof *SITES));
 }

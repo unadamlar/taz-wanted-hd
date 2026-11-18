@@ -79,35 +79,14 @@ void asserts_patch(void)
     real_PostQuitMessage = patch_import("USER32.dll", "PostQuitMessage", hook_PostQuitMessage);
     real_ExitProcess = patch_import("KERNEL32.dll", "ExitProcess", hook_ExitProcess);
 
-    static const BYTE cd_call[] = { 0xe8, 0xf7, 0x8f, 0xfe, 0xff }; // call 0x4a1de0 at 0x4b8de4
-    if (!memcmp((BYTE *)0x4b8de4, cd_call, sizeof cd_call)) {
-        BYTE call[5] = { 0xe8 };
-        *(INT32 *)(call + 1) = (INT32)((BYTE *)cd_check - ((BYTE *)0x4b8de4 + 5));
-        DWORD old;
-        VirtualProtect((BYTE *)0x4b8de4, 5, PAGE_EXECUTE_READWRITE, &old);
-        memcpy((BYTE *)0x4b8de4, call, 5);
-        VirtualProtect((BYTE *)0x4b8de4, 5, old, &old);
-    }
+    redirect_call((BYTE *)0x4b8de4, (void *)0x4a1de0, cd_check);
 
     // FUN_004a1f10 (asked by FUN_004a1de0 on the way into a scene) looks for the game's volume label
     // and reports it missing otherwise; we answer yes, so the game never stops there.
     static const BYTE label_check[] = { 0x81, 0xec, 0x38, 0x01, 0x00, 0x00 }; // sub esp, 0x138
     static const BYTE label_ok[] = { 0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3 };    // mov eax, 1; ret
-    if (!memcmp((BYTE *)0x4a1f10, label_check, sizeof label_check)) {
-        DWORD old;
-        VirtualProtect((BYTE *)0x4a1f10, sizeof label_ok, PAGE_EXECUTE_READWRITE, &old);
-        memcpy((BYTE *)0x4a1f10, label_ok, sizeof label_ok);
-        VirtualProtect((BYTE *)0x4a1f10, sizeof label_ok, old, &old);
-        FlushInstructionCache(GetCurrentProcess(), (BYTE *)0x4a1f10, sizeof label_ok);
-    }
+    write_code((BYTE *)0x4a1f10, label_check, label_ok, sizeof label_ok);
 
     static const BYTE orig[] = { 0xa1, 0xf0, 0x4a, 0x6f, 0x00 }; // mov eax, [0x6f4af0]
-    if (memcmp(ASSERT_HANDLER, orig, sizeof orig)) return;
-    BYTE jmp[5] = { 0xe9 };
-    *(INT32 *)(jmp + 1) = (INT32)((BYTE *)on_assert - (ASSERT_HANDLER + 5));
-    DWORD old;
-    VirtualProtect(ASSERT_HANDLER, sizeof jmp, PAGE_EXECUTE_READWRITE, &old);
-    memcpy(ASSERT_HANDLER, jmp, sizeof jmp);
-    VirtualProtect(ASSERT_HANDLER, sizeof jmp, old, &old);
-    FlushInstructionCache(GetCurrentProcess(), ASSERT_HANDLER, sizeof jmp);
+    write_jump(ASSERT_HANDLER, orig, sizeof orig, 0xe9, on_assert);
 }

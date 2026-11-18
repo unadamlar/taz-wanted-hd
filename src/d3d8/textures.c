@@ -12,6 +12,7 @@
 #include <string.h>
 #include "proxy.h"
 #include "image.h"
+#include "game.h"
 
 #define DUMP_DIR "taz-hd\\dump"
 #define REPLACE_DIR "taz-hd\\textures"
@@ -459,7 +460,7 @@ static HRESULT WINAPI hook_LockRect(IDirect3DTexture8 *t, UINT level, D3DLOCKED_
     HRESULT hr = real_LockRect(t, level, r, rect, flags);
     if (SUCCEEDED(hr) && level == 0 && !(flags & D3DLOCK_READONLY)) {
         EnterCriticalSection(&lock);
-        struct tex_entry *e = tex_lookup(t, 1);
+        struct tex_entry *e = tex_lookup(t, 0); // the game's textures only (hook_CreateTexture)
         if (e) {
             e->bits = rect ? NULL : r->pBits; // partial updates can't be fingerprinted
             e->pitch = r->Pitch;
@@ -503,12 +504,20 @@ static HRESULT WINAPI hook_CreateTexture(IDirect3DDevice8 *dev, UINT w, UINT h, 
 {
     HRESULT hr = real_CreateTexture(dev, w, h, levels, usage, fmt, pool, tex);
     if (SUCCEEDED(hr)) {
+        // Only the game's textures are tracked and fingerprinted. Ours (video frames, the overlay's font,
+        // the Taz style's lookups) are created from this DLL; hashing each upscaled video frame cost 38 ms.
+        static BYTE *exe, *exe_end;
+        if (!exe) {
+            exe = (BYTE *)GetModuleHandleA(NULL);
+            exe_end = exe + ((IMAGE_NT_HEADERS *)(exe + ((IMAGE_DOS_HEADER *)exe)->e_lfanew))->OptionalHeader.SizeOfImage;
+        }
         BYTE *caller = __builtin_return_address(0);
-        if (caller >= (BYTE *)0x401000 && caller < (BYTE *)0x5f7000) textures_created++; // taz.exe's code, not ours
-        // A freed texture's address can be reused; forget what was there.
+        int game = caller >= exe && caller < exe_end;
+        textures_created += game;
         EnterCriticalSection(&lock);
         struct tex_entry *e = tex_lookup(*tex, 0);
-        if (e) unuse(e), tex_remove(e);
+        if (e) unuse(e), tex_remove(e); // a freed texture's address can be reused; forget what was there
+        if (game) tex_lookup(*tex, 1);
         LeaveCriticalSection(&lock);
     }
     return hr;
@@ -586,6 +595,14 @@ static int bind_replacement(IDirect3DDevice8 *dev, DWORD stage, IDirect3DBaseTex
     return rep != NULL;
 }
 
+// Binds one of the mod's own textures (or none), which have no replacements and aren't the game's
+// binding: what the game bound stays on record.
+void textures_bind_own(IDirect3DDevice8 *dev, DWORD stage, IDirect3DBaseTexture8 *t)
+{
+    if (real_SetTexture) real_SetTexture(dev, stage, t);
+    else IDirect3DDevice8_SetTexture(dev, stage, t);
+}
+
 IDirect3DBaseTexture8 *textures_bound(DWORD stage)
 {
     return stage < STAGES ? bound[stage] : NULL;
@@ -603,17 +620,17 @@ UINT64 textures_bound_hash(DWORD stage)
 
 // The last texture binds, for crash reports.
 static struct { DWORD stage; void *tex, *caller; } recent[16];
-static LONG nrecent;
+static DWORD nrecent; // unsigned: it wraps after a day or so of play
 
 void textures_dump_recent(void)
 {
-    for (LONG i = nrecent > 16 ? nrecent - 16 : 0; i < nrecent; i++)
+    for (DWORD i = nrecent - (nrecent > 16 ? 16 : nrecent); i != nrecent; i++)
         log_line("crash: recent SetTexture(%lu, %p) from %p", recent[i % 16].stage, recent[i % 16].tex, recent[i % 16].caller);
 }
 
 static HRESULT WINAPI hook_SetTexture(IDirect3DDevice8 *dev, DWORD stage, IDirect3DBaseTexture8 *bt)
 {
-    LONG n = nrecent++ % 16;
+    DWORD n = nrecent++ % 16;
     recent[n].stage = stage;
     recent[n].tex = bt;
     recent[n].caller = __builtin_return_address(0);
@@ -771,7 +788,7 @@ void textures_reset(IDirect3DDevice8 *dev)
 // stretch it over a page about 1100x1300 pixels on an 1800-pixel-high screen. 1024x1024 keeps HD detail.
 static void *__cdecl page_target(int w, int h, int rgb, int z, int flags)
 {
-    return ((void *(__cdecl *)(int, int, int, int, int))0x56c500)(w * 2, h * 4, rgb, z, flags);
+    return ((void *(__cdecl *)(int, int, int, int, int))CREATE_TARGET)(w * 2, h * 4, rgb, z, flags);
 }
 
 void textures_install(IDirect3DDevice8 *dev)
@@ -779,7 +796,7 @@ void textures_install(IDirect3DDevice8 *dev)
     if (real_CreateTexture) return;
     static const DWORD page_targets[] = { 0x4562c5, 0x456607, 0x4566b0, 0x4567e5, 0x456bde, 0x4581bb };
     int n = 0;
-    for (int i = 0; i < 6; i++) n += redirect_call((BYTE *)page_targets[i], (void *)0x56c500, page_target);
+    for (int i = 0; i < 6; i++) n += redirect_call((BYTE *)page_targets[i], CREATE_TARGET, page_target);
     if (n < 6) log_line("paper book pages: %d of 6 render target sites patched (unknown exe)", n);
     start_worker();
     device = dev;
@@ -793,18 +810,8 @@ void textures_install(IDirect3DDevice8 *dev)
     patch((void **)&vt->SetTexture, hook_SetTexture, (void **)&real_SetTexture);
     real_SetTransform = vt->SetTransform;
     real_GetTransform = vt->GetTransform;
-    static const BYTE copy_call[] = { 0xe8, 0x8a, 0x91, 0x09, 0x00 }; // call 0x574960 at 0x4db7d1
-    if (!memcmp((void *)0x4db7d1, copy_call, sizeof copy_call)) {
-        BYTE call[5] = { 0xe8 };
-        DWORD old;
-        *(INT32 *)(call + 1) = (INT32)((BYTE *)scroll_copy - ((BYTE *)0x4db7d1 + 5));
-        VirtualProtect((void *)0x4db7d1, 5, PAGE_EXECUTE_READWRITE, &old);
-        memcpy((void *)0x4db7d1, call, 5);
-        VirtualProtect((void *)0x4db7d1, 5, old, &old);
-        log_line("scrolling textures handled");
-    } else {
-        log_line("scrolling textures left alone (unknown exe)");
-    }
+    log_line(redirect_call((BYTE *)0x4db7d1, (void *)0x574960, scroll_copy) ? "scrolling textures handled"
+                                                                              : "scrolling textures left alone (unknown exe)");
     patch((void **)&vt->ApplyStateBlock, hook_ApplyStateBlock, (void **)&real_ApplyStateBlock);
     patch((void **)&vt->BeginStateBlock, hook_BeginStateBlock, (void **)&real_BeginStateBlock);
     patch((void **)&vt->EndStateBlock, hook_EndStateBlock, (void **)&real_EndStateBlock);

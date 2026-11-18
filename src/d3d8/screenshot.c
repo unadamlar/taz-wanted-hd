@@ -1,5 +1,6 @@
-// Saves frames to taz-hd\shots: F12 or an empty taz-hd\shot file saves the next frame; a number N in
-// taz-hd\shot saves the next N frames at 1/8 size, or 1/S for "N S" (for checking motion in scripted tests).
+// Saves frames to taz-hd\shots: F12 saves the next frame. With tests=1 in the ini, so does an empty
+// taz-hd\shot file; a number N in it saves the next N frames at 1/8 size, or 1/S for "N S" (for
+// checking motion in scripted tests).
 #define COBJMACROS
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,12 +13,9 @@ static int burst_scale = 8;
 
 static int requested(void)
 {
-    static int key_was_down;
-    int key_down = (GetAsyncKeyState(VK_F12) & 0x8000) != 0, n = 1;
-    int pressed = key_down && !key_was_down;
-    key_was_down = key_down;
-    if (pressed) return 1;
-    FILE *f = fopen(TRIGGER, "r");
+    int n = 1;
+    if (key_pressed(VK_F12)) return 1;
+    FILE *f = settings.tests ? fopen(TRIGGER, "r") : NULL;
     if (!f) return 0;
     burst_scale = 8;
     if (fscanf(f, "%d %d", &n, &burst_scale) < 1 || n < 1) n = 1;
@@ -62,7 +60,8 @@ void screenshot_frame(IDirect3DDevice8 *dev)
             }
             CreateDirectoryA(SHOT_DIR, NULL);
             if (burst) snprintf(path, sizeof path, SHOT_DIR "\\burst-%04d.png", ++burst_frame);
-            else snprintf(path, sizeof path, SHOT_DIR "\\shot-%03d.png", ++count);
+            else do snprintf(path, sizeof path, SHOT_DIR "\\shot-%03d.png", ++count); // after earlier sessions' shots
+                while (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES);
             queue_png(path, w, h, px);
             px = NULL;
             LARGE_INTEGER t, f;

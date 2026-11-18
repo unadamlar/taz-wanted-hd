@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "proxy.h"
+#include "game.h"
 #include <dinput.h>
 #include <shlwapi.h>
 
@@ -23,13 +24,10 @@
 #define MOUSE_DY (*(const LONG *)0x75154c)
 #define MOUSE_DEVICE (*(IUnknown **)0x7513a4)
 #define MOUSE_FLAGS (*(const BYTE *)0x751390)
-#define GAME_WINDOW (*(HWND *)0x753724)
 #define TURN_RATE (*(const float *)0x5f7364) // camera swing, radians per second at full stick
 #define TILT_RATE (*(const float *)0x5f7360) // look-around tilt
 #define TILT_SWING (*(const float *)0x5f73ec) // camera tilt at full stick, radians...
 #define TILT_REST (*(const float *)0x649b44)  // ...around this resting tilt
-#define SCENE (*(const char *)0x704cf0)
-#define FPS (*(const float *)0x642cdc)
 #define READ_DEVICES ((void (*)(void))0x57bb20)
 #define KEY_STATE ((BYTE *)0x751438)      // DirectInput keyboard state, by DIK
 #define MOUSE_BUTTONS ((BYTE *)0x751554)  // this frame's mouse buttons
