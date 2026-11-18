@@ -71,6 +71,7 @@ static const struct { const char *name; BYTE dik; } KEYS[] = {
 };
 
 static float pitch;             // held camera tilt from the mouse, -1..1 like the stick
+static float tilt_step;         // tilt change this frame (radians)
 static BYTE *tilt_cam;          // camera whose tilt the mouse holds this frame
 static BYTE *mouse_cam;         // camera the mouse last turned...
 static DWORD mouse_time;        // ...and when (ms)
@@ -87,6 +88,17 @@ static void spin(float *p, const float *o, float a)
     float x = p[0] - o[0], z = p[2] - o[2], cs = cosf(a), sn = sinf(a);
     p[0] = o[0] + x * cs - z * sn;
     p[2] = o[2] + x * sn + z * cs;
+}
+// Raises p's elevation around o by a, keeping its distance and heading.
+static void lift(float *p, const float *o, float a)
+{
+    float x = p[0] - o[0], y = p[1] - o[1], z = p[2] - o[2], h = sqrtf(x * x + z * z);
+    float r = sqrtf(h * h + y * y), e = atan2f(y, h) + a;
+    e = e > 1.5f ? 1.5f : e < -1.5f ? -1.5f : e;
+    if (h < 1e-4f) return;
+    p[0] = o[0] + x / h * r * cosf(e);
+    p[1] = o[1] + r * sinf(e);
+    p[2] = o[2] + z / h * r * cosf(e);
 }
 
 static void *channel(BYTE *pad, int off) { return *(void **)(pad + off); }
@@ -387,7 +399,7 @@ static void __cdecl camera_control(void **cc)
     float *pad = cc[2];
     camera_frame = now;
     int mouse = settings.wasd && settings.mouse && held, p1 = *(int *)((BYTE *)pad + 0x180) == 0;
-    if (p1) tilt_cam = NULL;
+    if (p1) tilt_cam = NULL, tilt_step = 0;
     if (!p1 || (!mouse && xbox_pad() <= 0) || FPS <= 0) { // player 1 only
         CAMERA_CONTROL(cc);
         return;
@@ -407,8 +419,10 @@ static void __cdecl camera_control(void **cc)
         pad[5] -= dy * sens / (TILT_RATE / FPS);
         if (pad[4] || pad[5]) pad[2] = 1;
     } else {
+        float was = pitch;
         pitch -= dy * sens * 2 + sy * 1.5f / FPS;
         pitch = pitch > 1 ? 1 : pitch < -1 ? -1 : pitch;
+        tilt_step = (was - pitch) * TILT_SWING;
         pad[6] = yaw - sx;
         pad[7] = pitch;
         pad[3] = pad[6] || pad[7];
@@ -431,14 +445,17 @@ static void __cdecl camera_control(void **cc)
 // straight ahead turns it, fighting the mouse. For a while after mouse input it keeps the direction
 // it had around Taz, then gently hands back to the game. Taz's moves also set the tilt after the
 // camera control ran (level while he spins, steeper while he falls), so the mouse's tilt is put back.
+// The game only moves the eye's destination for a tilt and eases the eye after it, which lags the
+// mouse, so the eye is tilted by the same step, as it is turned.
 static void __cdecl camera_update(BYTE *cam)
 {
     float *c = (float *)cam, before = heading(c + 8, c + 12), t = (GetTickCount() - mouse_time) / 1000.f;
     float keep = cam != mouse_cam || (*(DWORD *)(cam + 0x74) & 0x1b00) != 0x1000 || *(void **)(cam + 0xac) ? 0
                : t < 1.5f ? 1 : t < 3 ? (3 - t) / 1.5f : 0; // player camera, not scripted, look-around or catching up
-    if (cam == tilt_cam && now - camera_frame <= 1 && !*(void **)(cam + 0xac))
-        c[0x19] = TILT_REST - pitch * TILT_SWING, *(DWORD *)(cam + 0x74) |= 1;
+    int tilt = cam == tilt_cam && now - camera_frame <= 1 && !*(void **)(cam + 0xac);
+    if (tilt) c[0x19] = TILT_REST - pitch * TILT_SWING, *(DWORD *)(cam + 0x74) |= 1;
     CAMERA_UPDATE(cam);
+    if (tilt && tilt_step) lift(c, c + 12, tilt_step), tilt_step = 0;
     if (keep) spin(c + 8, c + 12, wrap(before - heading(c + 8, c + 12)) * keep);
 }
 
