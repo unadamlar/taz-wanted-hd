@@ -26,6 +26,9 @@
 #define GAME_WINDOW (*(HWND *)0x753724)
 #define TURN_RATE (*(const float *)0x5f7364) // camera swing, radians per second at full stick
 #define TILT_RATE (*(const float *)0x5f7360) // look-around tilt
+#define TILT_SWING (*(const float *)0x5f73ec) // camera tilt at full stick, radians...
+#define TILT_REST (*(const float *)0x649b44)  // ...around this resting tilt
+#define SCENE (*(const char *)0x704cf0)
 #define FPS (*(const float *)0x642cdc)
 #define READ_DEVICES ((void (*)(void))0x57bb20)
 #define KEY_STATE ((BYTE *)0x751438)      // DirectInput keyboard state, by DIK
@@ -70,6 +73,7 @@ static const struct { const char *name; BYTE dik; } KEYS[] = {
 };
 
 static float pitch;             // held camera tilt from the mouse, -1..1 like the stick
+static BYTE *tilt_cam;          // camera whose tilt the mouse holds this frame
 static BYTE *mouse_cam;         // camera the mouse last turned...
 static DWORD mouse_time;        // ...and when (ms)
 static DWORD camera_frame, now; // frames: last camera control call, current
@@ -79,6 +83,7 @@ static void *p1_x1;             // ...and its movement channel then, to tell a p
 
 // Horizontal angle of p around o, and turning p around o by a (y up).
 static float heading(const float *p, const float *o) { return atan2f(p[2] - o[2], p[0] - o[0]); }
+static float wrap(float a) { return a > 3.14159265f ? a - 6.2831853f : a < -3.14159265f ? a + 6.2831853f : a; }
 static void spin(float *p, const float *o, float a)
 {
     float x = p[0] - o[0], z = p[2] - o[2], cs = cosf(a), sn = sinf(a);
@@ -383,8 +388,9 @@ static void __cdecl camera_control(void **cc)
     BYTE *cam = cc[1];
     float *pad = cc[2];
     camera_frame = now;
-    int mouse = settings.wasd && settings.mouse && held;
-    if (*(int *)((BYTE *)pad + 0x180) != 0 || (!mouse && xbox_pad() <= 0) || FPS <= 0) { // player 1 only
+    int mouse = settings.wasd && settings.mouse && held, p1 = *(int *)((BYTE *)pad + 0x180) == 0;
+    if (p1) tilt_cam = NULL;
+    if (!p1 || (!mouse && xbox_pad() <= 0) || FPS <= 0) { // player 1 only
         CAMERA_CONTROL(cc);
         return;
     }
@@ -397,6 +403,7 @@ static void __cdecl camera_control(void **cc)
     float saved[8];
     memcpy(saved, pad, sizeof saved);
     int look = *(DWORD *)(cam + 0x74) & 0x800;
+    if ((*(DWORD *)(cam + 0x74) & 0x9800) == 0x1000 && SCENE != 0x14) tilt_cam = cam; // where the game lets the stick tilt
     if (look) { // look around (first person): left stick turns and tilts
         pad[4] -= yaw; // this mode turns the other way round
         pad[5] -= dy * sens / (TILT_RATE / FPS);
@@ -424,14 +431,17 @@ static void __cdecl camera_control(void **cc)
 
 // The camera trails Taz on a leash (and in some states swings behind him), so running anywhere but
 // straight ahead turns it, fighting the mouse. For a while after mouse input it keeps the direction
-// it had around Taz, then gently hands back to the game.
+// it had around Taz, then gently hands back to the game. Taz's moves also set the tilt after the
+// camera control ran (level while he spins, steeper while he falls), so the mouse's tilt is put back.
 static void __cdecl camera_update(BYTE *cam)
 {
     float *c = (float *)cam, before = heading(c + 8, c + 12), t = (GetTickCount() - mouse_time) / 1000.f;
     float keep = cam != mouse_cam || (*(DWORD *)(cam + 0x74) & 0x1b00) != 0x1000 || *(void **)(cam + 0xac) ? 0
                : t < 1.5f ? 1 : t < 3 ? (3 - t) / 1.5f : 0; // player camera, not scripted, look-around or catching up
+    if (cam == tilt_cam && now - camera_frame <= 1 && !*(void **)(cam + 0xac))
+        c[0x19] = TILT_REST - pitch * TILT_SWING, *(DWORD *)(cam + 0x74) |= 1;
     CAMERA_UPDATE(cam);
-    if (keep) spin(c + 8, c + 12, (before - heading(c + 8, c + 12)) * keep);
+    if (keep) spin(c + 8, c + 12, wrap(before - heading(c + 8, c + 12)) * keep);
 }
 
 // IDirectInputDevice8 vtable slots.
