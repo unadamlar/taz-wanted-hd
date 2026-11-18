@@ -191,10 +191,14 @@ static int xbox_pad(void)
 // (an all-ones id that nothing has), so it turns every pad away. Free the place.
 #define INIT_INPUT ((void (*)(int))0x57b020)
 #define WANTED_JOYSTICK (*(const BYTE **)0x751a98) // id of the joystick saved for player 1, if any
+// taz.dat's copy of that id. All ones is the game's "nothing saved", which makes it bind its default
+// keys (FUN_0048c100); anything else makes it use the keys or pad saved by config.exe instead.
+#define SAVED_PLAYER1 0x6a5d38
 
 static void __cdecl init_input(int flags)
 {
     static const BYTE NONE[16] = { [0 ... 15] = 0xff };
+    if (settings.wasd) memset((void *)SAVED_PLAYER1, 0xff, sizeof NONE); // ignore the launcher's keys and pad; the mod's layout wins
     if (WANTED_JOYSTICK && !memcmp(WANTED_JOYSTICK, NONE, 16)) WANTED_JOYSTICK = NULL;
     INIT_INPUT(flags);
 }

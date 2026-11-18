@@ -150,10 +150,12 @@ static void check_version(void)
                 "Details are in taz-hd.log in the game folder.", "Taz: Wanted HD", MB_OK | MB_ICONWARNING | MB_TOPMOST | MB_SETFOREGROUND);
 }
 
+static int in_game; // false in the 2002 launcher's config.exe, which also loads this DLL
+
 __declspec(dllexport) IDirect3D8 *WINAPI Direct3DCreate8(UINT sdk)
 {
     static int checked;
-    if (!checked++ && !settings.passthrough) check_version();
+    if (!checked++ && in_game && !settings.passthrough) check_version();
     char path[MAX_PATH];
     GetSystemDirectoryA(path, MAX_PATH);
     strcat(path, "\\d3d8.dll");
@@ -165,7 +167,7 @@ __declspec(dllexport) IDirect3D8 *WINAPI Direct3DCreate8(UINT sdk)
     }
     IDirect3D8 *d3d = create(sdk);
     log_line("Direct3DCreate8(%u) -> %p", sdk, d3d);
-    if (d3d && !real_CreateDevice)
+    if (d3d && in_game && !real_CreateDevice)
         patch((void **)&d3d->lpVtbl->CreateDevice, hook_CreateDevice, (void **)&real_CreateDevice);
     return d3d;
 }
@@ -176,6 +178,8 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         char dir[MAX_PATH]; // everything (game data, our ini and log) is relative to the game folder
         DWORD n = GetModuleFileNameA(NULL, dir, sizeof dir);
         while (n && dir[n - 1] != '\\') n--;
+        in_game = !_stricmp(dir + n, "taz.exe");
+        if (!in_game) return TRUE;
         dir[n] = 0;
         if (n) SetCurrentDirectoryA(dir);
         logf = fopen("taz-hd.log", "a"); // the game relaunches itself; both processes log here
