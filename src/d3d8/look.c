@@ -164,13 +164,13 @@ static struct rec *recs; static UINT nrecs, cap_recs;     // static world (once)
 static float cam_view[4][4], cam_proj[4][4], sun[3], srows[3][4], sclip[4][4], crows[3][4], cclip[4][4];
 static HRESULT (WINAPI *draw_real)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT);
 static HRESULT (WINAPI *draw_indexed_real)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT, UINT, UINT);
-static struct { int frames, want; double look_ms, frame_ms, present_ms; UINT draws, tris, world; LARGE_INTEGER last; } m;
-static UINT stat_draws, stat_tris, stat_world;
+static struct { int frames, want; double look_ms, frame_ms, present_ms; UINT draws, tris, world, game, pieces, merged; LARGE_INTEGER last; } m;
+static UINT stat_draws, stat_tris, stat_world, stat_game;
 // What of ours is still bound, so a run of world draws doesn't set it all again: textures and sampler
 // states on stages 1-3 (the game sets those only for characters), and the vertex constants' matrices.
 static int bound_ok, ground_ok;
 static float last_m[3][4][4];
-static IDirect3DSurface8 *frame_bb; // the back buffer, compared by pointer only
+static DWORD merge_sb;
 
 void look_state_changed(void) { bound_ok = ground_ok = 0; }
 
@@ -199,7 +199,21 @@ static void unload(void)
     free(protos), free(chunks), free(file), free(hide);
     protos = NULL, chunks = NULL, file = NULL, hide = NULL, ground = NULL, nprotos = nchunks = nhide = nhide_all = nground = 0;
     for (UINT i = 0; i < nrecs; i++) IDirect3DVertexBuffer8_Release(recs[i].vb);
-    nrecs = 0, built = 0;
+    nrecs = 0, built = 0, recording = 0;
+    merge_reset();
+}
+
+// Before a device Reset: everything in the default pool goes, or Reset fails. Remade by look_frame.
+void look_reset(IDirect3DDevice8 *dev)
+{
+    IDirect3DTexture8 **tex[] = { &smap, &cmap, &frame_tex };
+    IDirect3DSurface8 **surf[] = { &smap_rt, &cmap_rt };
+    for (int i = 0; i < 3; i++) if (*tex[i]) IDirect3DTexture8_Release(*tex[i]), *tex[i] = NULL;
+    for (int i = 0; i < 2; i++) if (*surf[i]) IDirect3DSurface8_Release(*surf[i]), *surf[i] = NULL;
+    for (UINT i = 0; i < nrecs; i++) IDirect3DVertexBuffer8_Release(recs[i].vb);
+    nrecs = 0, built = 0, recording = 0;
+    if (merge_sb) IDirect3DDevice8_DeleteStateBlock(dev, merge_sb), merge_sb = 0;
+    merge_device_reset();
 }
 
 static DWORD avail_mb(void)
@@ -286,6 +300,18 @@ static int load(IDirect3DDevice8 *dev, int scene)
     return 1;
 }
 
+// Depth textures sampled with a depth compare (hardware shadow maps); each needs a colour target as big.
+static int make_targets(IDirect3DDevice8 *dev)
+{
+    if (smap) return 1;
+    if (FAILED(IDirect3DDevice8_CreateTexture(dev, SMAP, SMAP, 1, D3DUSAGE_DEPTHSTENCIL, D3DFMT_D24S8, D3DPOOL_DEFAULT, &smap))
+        || FAILED(IDirect3DDevice8_CreateTexture(dev, CMAP, CMAP, 1, D3DUSAGE_DEPTHSTENCIL, D3DFMT_D24S8, D3DPOOL_DEFAULT, &cmap))
+        || FAILED(IDirect3DDevice8_CreateRenderTarget(dev, SMAP, SMAP, D3DFMT_R5G6B5, D3DMULTISAMPLE_NONE, FALSE, &smap_rt))
+        || FAILED(IDirect3DDevice8_CreateRenderTarget(dev, CMAP, CMAP, D3DFMT_R5G6B5, D3DMULTISAMPLE_NONE, FALSE, &cmap_rt)))
+        return log_line("look: shadow map textures failed"), 0;
+    return 1;
+}
+
 static int ready(IDirect3DDevice8 *dev)
 {
     if (ps || failed) return !failed;
@@ -321,12 +347,7 @@ static int ready(IDirect3DDevice8 *dev)
     IDirect3DTexture8_LockRect(white, 0, &lr, NULL, 0);
     *(DWORD *)lr.pBits = 0xffffffff;
     IDirect3DTexture8_UnlockRect(white, 0);
-    // Depth textures sampled with a depth compare (hardware shadow maps); each needs a colour target as big.
-    if (FAILED(IDirect3DDevice8_CreateTexture(dev, SMAP, SMAP, 1, D3DUSAGE_DEPTHSTENCIL, D3DFMT_D24S8, D3DPOOL_DEFAULT, &smap))
-        || FAILED(IDirect3DDevice8_CreateTexture(dev, CMAP, CMAP, 1, D3DUSAGE_DEPTHSTENCIL, D3DFMT_D24S8, D3DPOOL_DEFAULT, &cmap))
-        || FAILED(IDirect3DDevice8_CreateRenderTarget(dev, SMAP, SMAP, D3DFMT_R5G6B5, D3DMULTISAMPLE_NONE, FALSE, &smap_rt))
-        || FAILED(IDirect3DDevice8_CreateRenderTarget(dev, CMAP, CMAP, D3DFMT_R5G6B5, D3DMULTISAMPLE_NONE, FALSE, &cmap_rt)))
-        return log_line("look: shadow map textures failed"), 0;
+    if (!make_targets(dev)) return 0;
     float t = 3.14159265f / 180, az = 45 * t, el = 38 * t; // Blender azimuth/elevation of the kit's sun; game y up
     sun[0] = cosf(el) * cosf(az), sun[1] = sinf(el), sun[2] = cosf(el) * sinf(az);
     failed = 0;
@@ -575,14 +596,13 @@ static struct rec *add_rec(void)
 // Before each game draw. Returns 1 to skip it. A world draw it can light is drawn here (returns 1).
 int look_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count)
 {
+    stat_game++;
     if (!level || !protos || !ps || in_grade) return 0;
     double t0 = now_ms();
     DWORD shader, value;
-    IDirect3DSurface8 *rt = NULL;
-    IDirect3DDevice8_GetRenderTarget(dev, &rt);
-    if (rt) IDirect3DSurface8_Release(rt);
     int result = 0;
-    if (rt != frame_bb) goto done;
+    if (level >= 2 && built && !recording && merge_draw(dev, api, type, start, count)) { result = 1; goto done; }
+    if (!merge_on_backbuffer()) goto done;
     IDirect3DDevice8_GetVertexShader(dev, &shader);
     if (IS_VERTEX_SHADER(shader)) {
         seen_vs = 1;
@@ -660,6 +680,56 @@ done:
     return result;
 }
 
+int look_hidden(UINT64 h) { return hidden(h); }
+
+// The merged static world: state as the per-draw path above sets it, once per flush.
+void look_merge_begin(IDirect3DDevice8 *dev, IDirect3DVertexBuffer8 *vb, IDirect3DIndexBuffer8 *ib)
+{
+    static const float identity[4][4] = { { 1, 0, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 1, 0 }, { 0, 0, 0, 1 } };
+    float pv[4][4], pp[4][4], vp[4][4], clip[4][4];
+    if (!merge_sb) IDirect3DDevice8_CreateStateBlock(dev, D3DSBT_ALL, &merge_sb);
+    else IDirect3DDevice8_CaptureStateBlock(dev, merge_sb);
+    get_matrix(dev, D3DTS_VIEW, pv), get_matrix(dev, D3DTS_PROJECTION, pp);
+    if (pp[2][3] == 1) memcpy(cam_view, pv, 64), memcpy(cam_proj, pp, 64);
+    mul4(vp, pv, pp), rows_of(clip, vp);
+    consts(dev, clip, identity, pv, 1);
+    float pc[2][4] = { { 0.7f, 0.66f, 0.58f, 0 }, { 0.5f, 0.53f, 0.6f, 1 } };
+    IDirect3DDevice8_SetPixelShaderConstant(dev, 1, pc, 2);
+    bind_shadows(dev);
+    if (level >= 3 && dirt) {
+        textures_bind_own(dev, 3, (IDirect3DBaseTexture8 *)dirt);
+        IDirect3DDevice8_SetTextureStageState(dev, 3, D3DTSS_ADDRESSU, D3DTADDRESS_WRAP);
+        IDirect3DDevice8_SetTextureStageState(dev, 3, D3DTSS_ADDRESSV, D3DTADDRESS_WRAP);
+        IDirect3DDevice8_SetTextureStageState(dev, 3, D3DTSS_MAGFILTER, D3DTEXF_LINEAR);
+        IDirect3DDevice8_SetTextureStageState(dev, 3, D3DTSS_MINFILTER, D3DTEXF_LINEAR);
+        IDirect3DDevice8_SetTextureStageState(dev, 3, D3DTSS_MIPFILTER, D3DTEXF_NONE);
+    }
+    IDirect3DDevice8_SetVertexShader(dev, vs_world);
+    IDirect3DDevice8_SetStreamSource(dev, 0, vb, 36);
+    IDirect3DDevice8_SetIndices(dev, ib, 0);
+}
+
+void look_merge_texture(IDirect3DDevice8 *dev, IDirect3DBaseTexture8 *tex, UINT64 hash, const DWORD *rs, const DWORD *ids, int n)
+{
+    int is_ground = 0;
+    for (UINT i = 0; level >= 3 && dirt && i < nground; i++) is_ground |= ground[i] == hash;
+    textures_bind_own(dev, 0, textures_effective(tex));
+    for (int i = 0; i < n; i++) IDirect3DDevice8_SetRenderState(dev, ids[i], rs[i]);
+    IDirect3DDevice8_SetPixelShader(dev, debug ? ps_debug[debug - 8] : is_ground ? ps_ground : ps);
+}
+
+void look_merge_draw(IDirect3DDevice8 *dev, UINT nverts, UINT first, UINT tris)
+{
+    draw_indexed_real(dev, D3DPT_TRIANGLELIST, 0, nverts, first, tris);
+    stat_world++;
+}
+
+void look_merge_end(IDirect3DDevice8 *dev)
+{
+    if (merge_sb) IDirect3DDevice8_ApplyStateBlock(dev, merge_sb);
+    look_state_changed(), last_m[0][0][0] = 1e30f;
+}
+
 // Level 3: the finished frame (HUD included, for now) through the grade.
 static void grade(IDirect3DDevice8 *dev)
 {
@@ -711,7 +781,7 @@ void look_frame(IDirect3DDevice8 *dev)
         fscanf(f, "%d", &n);
         fclose(f);
         DeleteFileA("taz-hd\\look");
-        if (n != level) log_line("look: level %d", n);
+        if (n != level) log_line("look: level %d", n), merge_reset();
         debug = n >= 8 ? n : 0;
         level = n >= 8 ? 2 : n;
     }
@@ -724,15 +794,16 @@ void look_frame(IDirect3DDevice8 *dev)
         m.frames = -30, m.want = n;
     }
     double t0 = now_ms();
+    merge_frame(dev);
     int scene = settings.exe_known ? SCENE : -1;
     if (protos && (scene != loaded_scene || !level)) unload(), loaded_scene = -1;
     if (level && !protos && scene >= 2 && scene != loaded_scene && ready(dev)) {
         loaded_scene = scene;
         if (!load(dev, scene)) unload();
     }
-    if (protos && level >= 2) {
-        if (!built && recording) build_static(dev), recording = 0;
-        else if (!built) { // record this frame's world draws for the static map
+    if (protos && level >= 2 && make_targets(dev)) {
+        if (!built && recording && nrecs) build_static(dev), recording = 0; // a loading frame draws no world: keep recording
+        else if (!built && !recording) { // record this frame's world draws for the static map
             for (UINT i = 0; i < nrecs; i++) IDirect3DVertexBuffer8_Release(recs[i].vb);
             nrecs = 0, recording = 1;
         } else if (nrecs) { // characters: a small map around player one, every frame
@@ -778,26 +849,23 @@ void look_frame(IDirect3DDevice8 *dev)
     m.look_ms += now_ms() - t0;
     LARGE_INTEGER t;
     QueryPerformanceCounter(&t);
-    if (m.frames < 0 && ++m.frames == 0) QueryPerformanceCounter(&m.last), m.look_ms = 0, m.draws = m.tris = m.world = 0;
+    if (m.frames < 0 && ++m.frames == 0) QueryPerformanceCounter(&m.last), m.look_ms = 0, m.draws = m.tris = m.world = m.game = m.pieces = m.merged = 0;
     else if (m.frames >= 0 && m.last.QuadPart) {
-        m.frames++, m.draws += stat_draws, m.tris += stat_tris, m.world += stat_world;
+        m.frames++, m.draws += stat_draws, m.tris += stat_tris, m.world += stat_world, m.game += stat_game, m.pieces += merge_stat_pieces, m.merged += merge_stat_draws;
         if (m.frames == m.want) {
             LARGE_INTEGER fq;
             QueryPerformanceFrequency(&fq);
             double ms = (t.QuadPart - m.last.QuadPart) * 1000.0 / fq.QuadPart / m.frames;
-            log_line("look: measured level %d: %.2f ms/frame (%.1f fps), look code %.2f ms, Present %.2f ms, additions %u draws %u triangles, %u world draws lit, address space free %lu MB",
-                     level, ms, 1000 / ms, m.look_ms / m.frames, m.present_ms / m.frames, m.draws / m.frames, m.tris / m.frames, m.world / m.frames, avail_mb());
+            log_line("look: measured level %d: %.2f ms/frame (%.1f fps), look code %.2f ms, Present %.2f ms, additions %u draws %u triangles, %u world draws lit, game issued %u draws, %u of them merged into %u, address space free %lu MB",
+                     level, ms, 1000 / ms, m.look_ms / m.frames, m.present_ms / m.frames, m.draws / m.frames, m.tris / m.frames, m.world / m.frames, m.game / m.frames, m.pieces / m.frames, m.merged / m.frames, avail_mb());
             m.last.QuadPart = 0;
         }
     }
-    stat_draws = stat_tris = stat_world = 0;
+    stat_draws = stat_tris = stat_world = stat_game = merge_stat_pieces = merge_stat_draws = 0;
     injected = seen_vs = 0;
     look_state_changed(), last_m[0][0][0] = 1e30f;
-    if (protos) { // stages 1-3 back to none for the frame's first draws (menus, 2D)
+    if (protos) // stages 1-3 back to none for the frame's first draws (menus, 2D)
         for (DWORD st = 1; st < 4; st++) textures_bind_own(dev, st, NULL);
-        IDirect3DDevice8_GetBackBuffer(dev, 0, D3DBACKBUFFER_TYPE_MONO, &frame_bb);
-        if (frame_bb) IDirect3DSurface8_Release(frame_bb);
-    }
 }
 
 void look_present_ms(double ms)

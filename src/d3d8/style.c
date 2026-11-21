@@ -338,6 +338,12 @@ void style_shader_created(DWORD h, const DWORD *fn)
     }
 }
 
+void style_shader_deleted(DWORD h)
+{
+    if (lit_shader == h) lit_shader = 0;
+    if (outline_shader == h) outline_shader = 0;
+}
+
 // Player one's vertex buffer: actor +0x130 -> +0x3c -> +0.
 static IDirect3DVertexBuffer8 *player_vb(void)
 {

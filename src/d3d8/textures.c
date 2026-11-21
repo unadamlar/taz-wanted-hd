@@ -495,6 +495,7 @@ static ULONG WINAPI hook_Release(IDirect3DTexture8 *t)
         struct tex_entry *e = tex_lookup(t, 0);
         if (e) unuse(e), tex_remove(e);
         LeaveCriticalSection(&lock);
+        merge_texture_gone((IDirect3DBaseTexture8 *)t);
     }
     return n;
 }
@@ -595,6 +596,15 @@ static int bind_replacement(IDirect3DDevice8 *dev, DWORD stage, IDirect3DBaseTex
     return rep != NULL;
 }
 
+// The texture a draw of the game's texture really shows, following the HD switch.
+IDirect3DBaseTexture8 *textures_effective(IDirect3DBaseTexture8 *game)
+{
+    IDirect3DBaseTexture8 *rep = replacement_for(game);
+    return rep ? rep : game;
+}
+
+int textures_scrolling(IDirect3DBaseTexture8 *t) { return scroller_of(t) >= 0; }
+
 // Binds one of the mod's own textures (or none), which have no replacements and aren't the game's
 // binding: what the game bound stays on record.
 void textures_bind_own(IDirect3DDevice8 *dev, DWORD stage, IDirect3DBaseTexture8 *t)
@@ -680,6 +690,7 @@ static HRESULT WINAPI hook_ApplyStateBlock(IDirect3DDevice8 *dev, DWORD token)
 {
     HRESULT hr = real_ApplyStateBlock(dev, token);
     look_state_changed();
+    merge_state_changed();
     for (int i = 0; SUCCEEDED(hr) && i < BLOCKS; i++) {
         if (blocks[i].token != token) continue;
         for (DWORD stage = 0; stage < STAGES; stage++)
@@ -774,6 +785,7 @@ static HRESULT WINAPI hook_DrawIndexedPrimitiveUP(IDirect3DDevice8 *dev, D3DPRIM
 static HRESULT WINAPI hook_SetTextureStageState(IDirect3DDevice8 *dev, DWORD stage, D3DTEXTURESTAGESTATETYPE type, DWORD value)
 {
     if (stage >= 1 && stage <= 3) look_state_changed();
+    merge_stage_state(stage, type, value);
     if (type == D3DTSS_MIPFILTER && value == D3DTEXF_NONE) value = D3DTEXF_LINEAR;
     return real_SetTextureStageState(dev, stage, type, value);
 }

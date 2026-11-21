@@ -243,6 +243,16 @@ void mesh_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *fn)
     if (found == 9 && FAILED(IDirect3DDevice8_CreateVertexShader(dev, decl, code, &v->bent, 0))) v->bent = 0, log_line("mesh: no per-bone copy of shader %#lx", h);
 }
 
+void mesh_shader_deleted(IDirect3DDevice8 *dev, DWORD h)
+{
+    for (int i = 0; i < nvshaders; i++) {
+        if (vshaders[i].game != h) continue;
+        DWORD bent = vshaders[i].bent;
+        vshaders[i--] = vshaders[--nvshaders];
+        if (bent) IDirect3DDevice8_DeleteVertexShader(dev, bent);
+    }
+}
+
 // What to draw a replacement with in place of the game's shader vs; *bent says it reads the places.
 static DWORD shader_for(DWORD vs, int places, int *bent)
 {

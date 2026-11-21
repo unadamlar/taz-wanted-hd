@@ -92,6 +92,8 @@ static void resize_game(UINT w, UINT h)
 
 static HRESULT WINAPI hook_Reset(IDirect3DDevice8 *dev, D3DPRESENT_PARAMETERS *pp)
 {
+    look_reset(dev); // our render targets, and anything holding the game's buffers
+    overlay_reset(dev);
     if (state != 3 || pp != GAME_PP) return real_Reset(dev, pp);
     state = 0;
     D3DPRESENT_PARAMETERS old = *pp;
@@ -111,7 +113,6 @@ static HRESULT WINAPI hook_Reset(IDirect3DDevice8 *dev, D3DPRESENT_PARAMETERS *p
     if (SUCCEEDED(IDirect3DDevice8_GetBackBuffer(dev, 0, D3DBACKBUFFER_TYPE_MONO, &bb)))
         IDirect3DDevice8_SetRenderTarget(dev, bb, NULL), IDirect3DSurface8_Release(bb);
     ((void (*)(void))0x573400)(); // the game's alt-tab path forgets its index buffers too
-    overlay_reset(dev);
     HRESULT hr = real_Reset(dev, pp);
     if (FAILED(hr)) {
         log_line("display: %ux%u interval %u samples %u failed (0x%08lx), keeping %ux%u", pp->BackBufferWidth,

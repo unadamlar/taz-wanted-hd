@@ -84,6 +84,26 @@ int look_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start,
 void look_frame(IDirect3DDevice8 *dev);
 void look_present_ms(double ms);
 void look_state_changed(void);
+void look_reset(IDirect3DDevice8 *dev);
+int look_hidden(UINT64 hash);
+void look_merge_begin(IDirect3DDevice8 *dev, IDirect3DVertexBuffer8 *vb, IDirect3DIndexBuffer8 *ib);
+void look_merge_texture(IDirect3DDevice8 *dev, IDirect3DBaseTexture8 *tex, UINT64 hash, const DWORD *rs, const DWORD *ids, int n);
+void look_merge_draw(IDirect3DDevice8 *dev, UINT nverts, UINT first, UINT tris);
+void look_merge_end(IDirect3DDevice8 *dev);
+void merge_install(IDirect3DDevice8 *dev);
+int merge_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count);
+void merge_flush(IDirect3DDevice8 *dev);
+void merge_frame(IDirect3DDevice8 *dev);
+void merge_reset(void);
+void merge_device_reset(void);
+int merge_on_backbuffer(void);
+void merge_state_changed(void);
+void merge_stage_state(DWORD stage, DWORD type, DWORD value);
+void merge_vb_created(IDirect3DVertexBuffer8 *vb);
+void merge_texture_gone(IDirect3DBaseTexture8 *t);
+extern int merge_stat_pieces, merge_stat_draws;
+IDirect3DBaseTexture8 *textures_effective(IDirect3DBaseTexture8 *game);
+int textures_scrolling(IDirect3DBaseTexture8 *t);
 void capture_world(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT count, UINT first, UINT nverts, UINT start_index,
                    const void *data, UINT stride, const void *idx, D3DFORMAT fmt);
 UINT64 textures_bound_hash(DWORD stage);
@@ -91,12 +111,14 @@ IDirect3DBaseTexture8 *textures_bound(DWORD stage);
 int smooth_character(IDirect3DDevice8 *dev);
 void mesh_forget(IDirect3DVertexBuffer8 *vb);
 void mesh_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *fn);
+void mesh_shader_deleted(IDirect3DDevice8 *dev, DWORD h);
 HRESULT mesh_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
                   HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT));
 extern DWORD presents; // frames shown so far
 extern const DWORD smooth_decl[8];
 extern int style_player;
 void style_shader_created(DWORD h, const DWORD *fn);
+void style_shader_deleted(DWORD h);
 int style_is_player(IDirect3DVertexBuffer8 *vb);
 HRESULT style_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
                    HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT));

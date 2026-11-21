@@ -132,7 +132,7 @@ static HRESULT WINAPI hook_CreateDevice(IDirect3D8 *d3d, UINT adapter, D3DDEVTYP
     log_line("CreateDevice -> 0x%08lx, %u samples", hr, pp->MultiSampleType);
     if (SUCCEEDED(hr) && !real_Present) {
         patch((void **)&(*dev)->lpVtbl->Present, hook_Present, (void **)&real_Present);
-        if (!settings.passthrough) textures_install(*dev), display_install(*dev), smooth_install(*dev);
+        if (!settings.passthrough) textures_install(*dev), display_install(*dev), smooth_install(*dev), merge_install(*dev);
     }
     return hr;
 }

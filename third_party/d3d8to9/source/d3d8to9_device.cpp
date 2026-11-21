@@ -1524,6 +1524,10 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::SetVertexShader(DWORD Handle)
 	}
 	else
 	{
+		// A deleted handle is an error in Direct3D 8; here it would be a freed pointer.
+		if (VertexShaderHandles.count(Handle) == 0)
+			return D3DERR_INVALIDCALL;
+
 		const DWORD handleMagic = Handle << 1;
 		VertexShaderInfo *const ShaderInfo = reinterpret_cast<VertexShaderInfo *>(handleMagic);
 
