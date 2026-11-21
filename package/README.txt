@@ -119,3 +119,4 @@ Upscaling: Real-ESRGAN (Xintao Wang et al., BSD 3-Clause).
 Taz: Wanted is (c) Warner Bros. Entertainment, developed by Blitz Games and published by
 Infogrames. This is an unofficial fan project, not affiliated with or endorsed by them.
 The mod's own code is under the MIT license (LICENSE.txt).
+Direct3D 9 layer: d3d8to9 by Patrick Mours (BSD 2-Clause, taz-hd/licenses/d3d8to9-LICENSE.txt).

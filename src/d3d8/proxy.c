@@ -1,4 +1,4 @@
-// d3d8.dll proxy: loads the system d3d8 and patches vtable entries we care about.
+// d3d8.dll proxy: runs the game on Direct3D 9 through d3d8to9 and patches vtable entries we care about.
 #define COBJMACROS
 #include <stdarg.h>
 #include <stdio.h>
@@ -162,17 +162,8 @@ __declspec(dllexport) IDirect3D8 *WINAPI Direct3DCreate8(UINT sdk)
 {
     static int checked;
     if (!checked++ && in_game && !settings.passthrough) check_version();
-    char path[MAX_PATH];
-    GetSystemDirectoryA(path, MAX_PATH);
-    strcat(path, "\\d3d8.dll");
-    HMODULE real = LoadLibraryA(path);
-    IDirect3D8 *(WINAPI *create)(UINT) = real ? (void *)GetProcAddress(real, "Direct3DCreate8") : NULL;
-    if (!create) {
-        log_line("could not load %s", path);
-        return NULL;
-    }
-    IDirect3D8 *d3d = create(sdk);
-    log_line("Direct3DCreate8(%u) -> %p", sdk, d3d);
+    IDirect3D8 *d3d = d3d8to9_create();
+    log_line("Direct3DCreate8(%u) -> %p (on Direct3D 9)", sdk, d3d);
     if (d3d && in_game && !real_CreateDevice)
         patch((void **)&d3d->lpVtbl->CreateDevice, hook_CreateDevice, (void **)&real_CreateDevice);
     return d3d;

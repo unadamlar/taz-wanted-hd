@@ -195,7 +195,7 @@ void capture_world(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT c
     if (rt) IDirect3DSurface8_Release(rt);
     if (bb) IDirect3DSurface8_Release(bb);
     IDirect3DDevice8_GetVertexShader(dev, &w.shader);
-    int vs = w.shader >= 0xf0000000;
+    int vs = IS_VERTEX_SHADER(w.shader) != 0;
     if (rt != bb || (vs && wframe > 1) || (!vs && (w.shader & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW)) return;
 
     IDirect3DVertexBuffer8 *vb = NULL;

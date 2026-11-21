@@ -2,6 +2,9 @@
 #include <windows.h>
 #include <d3d8.h>
 
+IDirect3D8 *d3d8to9_create(void);
+struct IDirect3DDevice9 *d3d9_device(IDirect3DDevice8 *dev); // the real device under d3d8to9
+#define IS_VERTEX_SHADER(handle) ((handle) & 0x80000000) // otherwise an FVF code
 void log_line(const char *fmt, ...);
 void patch(void **slot, void *hook, void **orig);
 void textures_install(IDirect3DDevice8 *dev);

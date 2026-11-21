@@ -584,7 +584,7 @@ int look_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start,
     int result = 0;
     if (rt != frame_bb) goto done;
     IDirect3DDevice8_GetVertexShader(dev, &shader);
-    if (shader >= 0xf0000000) {
+    if (IS_VERTEX_SHADER(shader)) {
         seen_vs = 1;
         last_m[0][0][0] = 1e30f; // characters load their own constants
         IDirect3DDevice8_GetRenderState(dev, D3DRS_CULLMODE, &value);

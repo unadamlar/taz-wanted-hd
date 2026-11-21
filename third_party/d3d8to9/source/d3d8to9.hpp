@@ -183,6 +183,16 @@ private:
 
 	// Store shader handles and state block tokens so they can be destroyed later to mirror D3D8 behavior
 	std::unordered_set<DWORD> PixelShaderHandles, VertexShaderHandles, StateBlockTokens;
+
+	// What Direct3D 9 state blocks restore but these wrappers track themselves.
+	struct TrackedState
+	{
+		DWORD VertexShader = 0, PixelShader = 0;
+		INT BaseVertexIndex = 0;
+		bool HasVertexShader = false, HasPixelShader = false, HasIndices = false;
+	};
+	std::unordered_map<DWORD, TrackedState> StateBlockState;
+	TrackedState RecordedState;
 	unsigned int VertexShaderAndDeclarationCount = 0;
 };
 
