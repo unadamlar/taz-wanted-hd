@@ -608,11 +608,13 @@ IDirect3DBaseTexture8 *textures_bound(DWORD stage)
     return stage < STAGES ? bound[stage] : NULL;
 }
 
-// Fingerprint of the game's texture bound at stage (0 if none or unknown).
+// Fingerprint of the game's texture bound at stage (0 if none or unknown); for a scrolling one, its big texture's.
 UINT64 textures_bound_hash(DWORD stage)
 {
     EnterCriticalSection(&lock);
-    struct tex_entry *e = stage < STAGES && bound[stage] ? tex_lookup((IDirect3DTexture8 *)bound[stage], 0) : NULL;
+    IDirect3DBaseTexture8 *t = stage < STAGES ? bound[stage] : NULL;
+    if (t && scroll_stage[stage] >= 0) t = (IDirect3DBaseTexture8 *)scrolls[scroll_stage[stage]].big;
+    struct tex_entry *e = t ? tex_lookup((IDirect3DTexture8 *)t, 0) : NULL;
     UINT64 h = e ? e->hash : 0;
     LeaveCriticalSection(&lock);
     return h;
@@ -634,6 +636,7 @@ static HRESULT WINAPI hook_SetTexture(IDirect3DDevice8 *dev, DWORD stage, IDirec
     recent[n].stage = stage;
     recent[n].tex = bt;
     recent[n].caller = __builtin_return_address(0);
+    if (stage >= 1 && stage <= 3) look_state_changed();
     if (stage < STAGES) {
         bound[stage] = bt;
         if (recording) {
@@ -676,6 +679,7 @@ static HRESULT WINAPI hook_DeleteStateBlock(IDirect3DDevice8 *dev, DWORD token)
 static HRESULT WINAPI hook_ApplyStateBlock(IDirect3DDevice8 *dev, DWORD token)
 {
     HRESULT hr = real_ApplyStateBlock(dev, token);
+    look_state_changed();
     for (int i = 0; SUCCEEDED(hr) && i < BLOCKS; i++) {
         if (blocks[i].token != token) continue;
         for (DWORD stage = 0; stage < STAGES; stage++)
@@ -732,37 +736,44 @@ static void after_draw(IDirect3DDevice8 *dev, int mask, struct saved *saved)
     }
 }
 
-#define DRAW(call)                                  \
+#define WORLD(...) if (capture_world_on) capture_world(__VA_ARGS__)
+#define DRAW(record, call)                          \
     struct saved saved[STAGES];                     \
     int mask = before_draw(dev, saved);             \
-    HRESULT hr = call;                              \
+    record;                                         \
+    HRESULT hr = look_draw(dev, api, t, start, count) ? D3D_OK : call; \
     if (mask) after_draw(dev, mask, saved);         \
     return hr
 
 static HRESULT WINAPI hook_DrawPrimitive(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE t, UINT start, UINT count)
 {
-    DRAW((t == D3DPT_TRIANGLESTRIP || t == D3DPT_TRIANGLELIST) ? mesh_draw(dev, t, start, count, real_DrawPrimitive) : real_DrawPrimitive(dev, t, start, count));
+    const int api = 0;
+    DRAW(WORLD(dev, 0, t, count, start, 0, 0, NULL, 0, NULL, 0), (t == D3DPT_TRIANGLESTRIP || t == D3DPT_TRIANGLELIST) ? mesh_draw(dev, t, start, count, real_DrawPrimitive) : real_DrawPrimitive(dev, t, start, count));
 }
 
 static HRESULT WINAPI hook_DrawIndexedPrimitive(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE t, UINT min, UINT n, UINT start, UINT count)
 {
-    DRAW(real_DrawIndexedPrimitive(dev, t, min, n, start, count));
+    const int api = 1;
+    DRAW(WORLD(dev, 1, t, count, min, n, start, NULL, 0, NULL, 0), real_DrawIndexedPrimitive(dev, t, min, n, start, count));
 }
 
 static HRESULT WINAPI hook_DrawPrimitiveUP(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE t, UINT count, CONST void *data, UINT stride)
 {
-    DRAW(real_DrawPrimitiveUP(dev, t, count, data, stride));
+    const int api = 2, start = 0;
+    DRAW(WORLD(dev, 2, t, count, 0, 0, 0, data, stride, NULL, 0), real_DrawPrimitiveUP(dev, t, count, data, stride));
 }
 
 static HRESULT WINAPI hook_DrawIndexedPrimitiveUP(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE t, UINT min, UINT n, UINT count,
                                                   CONST void *idx, D3DFORMAT fmt, CONST void *data, UINT stride)
 {
-    DRAW(real_DrawIndexedPrimitiveUP(dev, t, min, n, count, idx, fmt, data, stride));
+    const int api = 3, start = 0;
+    DRAW(WORLD(dev, 3, t, count, min, n, 0, data, stride, idx, fmt), real_DrawIndexedPrimitiveUP(dev, t, min, n, count, idx, fmt, data, stride));
 }
 
 // The game never asks for mip filtering because its textures have no mips; ours do.
 static HRESULT WINAPI hook_SetTextureStageState(IDirect3DDevice8 *dev, DWORD stage, D3DTEXTURESTAGESTATETYPE type, DWORD value)
 {
+    if (stage >= 1 && stage <= 3) look_state_changed();
     if (type == D3DTSS_MIPFILTER && value == D3DTEXF_NONE) value = D3DTEXF_LINEAR;
     return real_SetTextureStageState(dev, stage, type, value);
 }
@@ -821,6 +832,7 @@ void textures_install(IDirect3DDevice8 *dev)
     patch((void **)&vt->DrawPrimitiveUP, hook_DrawPrimitiveUP, (void **)&real_DrawPrimitiveUP);
     patch((void **)&vt->DrawIndexedPrimitiveUP, hook_DrawIndexedPrimitiveUP, (void **)&real_DrawIndexedPrimitiveUP);
     patch((void **)&vt->SetTextureStageState, hook_SetTextureStageState, (void **)&real_SetTextureStageState);
+    look_install(real_DrawPrimitive, real_DrawIndexedPrimitive);
 
     // All textures share one vtable; a throwaway texture gives us access to it.
     IDirect3DTexture8 *probe;

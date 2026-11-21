@@ -75,6 +75,14 @@ HRESULT smooth_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UI
 void capture_frame(void);
 void capture_scene(void);
 void capture_draw(IDirect3DDevice8 *dev, IDirect3DVertexBuffer8 *vb, D3DPRIMITIVETYPE type, UINT start, UINT count);
+extern int capture_world_on;
+void look_install(void *draw, void *draw_indexed);
+int look_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count);
+void look_frame(IDirect3DDevice8 *dev);
+void look_present_ms(double ms);
+void look_state_changed(void);
+void capture_world(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT count, UINT first, UINT nverts, UINT start_index,
+                   const void *data, UINT stride, const void *idx, D3DFORMAT fmt);
 UINT64 textures_bound_hash(DWORD stage);
 IDirect3DBaseTexture8 *textures_bound(DWORD stage);
 int smooth_character(IDirect3DDevice8 *dev);

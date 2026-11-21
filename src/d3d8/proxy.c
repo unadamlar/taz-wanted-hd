@@ -76,6 +76,7 @@ static HRESULT WINAPI hook_Present(IDirect3DDevice8 *dev, CONST RECT *src, CONST
     static int scene = -1;
     if (settings.exe_known && SCENE != scene) log_line("scene %d", scene = SCENE);
     if (!settings.passthrough) {
+        look_frame(dev);
         textures_frame();
         if (settings.exe_known) controls_frame();
         settings_frame();
@@ -87,7 +88,12 @@ static HRESULT WINAPI hook_Present(IDirect3DDevice8 *dev, CONST RECT *src, CONST
         capture_frame();
     }
     if (settings.fps_limit > 0) limit_frame_rate(settings.fps_limit);
-    return real_Present(dev, src, dst, wnd, dirty);
+    LARGE_INTEGER t0, t1, f;
+    QueryPerformanceCounter(&t0);
+    HRESULT hr = real_Present(dev, src, dst, wnd, dirty);
+    QueryPerformanceCounter(&t1), QueryPerformanceFrequency(&f);
+    look_present_ms((t1.QuadPart - t0.QuadPart) * 1000.0 / f.QuadPart);
+    return hr;
 }
 
 // A key going down while the game is the window in front (keys typed into other programs don't count).
