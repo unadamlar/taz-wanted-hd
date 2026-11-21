@@ -32,7 +32,10 @@ MODEL = "realesrgan-x4plus-anime"
 PAD = 8
 # Opaque textures enlarged by flat_up, with how far it rounds (in original pixels). Single-pixel dots
 # need under ~0.47 or they vanish.
-FLAT = {"citybloom01": 0.5, "citybloom02": 0.5, "cowboystubble01": 0.3}
+FLAT = {"citybloom01": 0.5, "citybloom02": 0.5, "cowboystubble01": 0.3,
+        "zoohubgrass5": 0.5, "zoohubgrass6": 0.5, "zoohubgrass7": 0.5}
+# FLAT textures whose edges are antialiased: treated as separate colours, those edges come out as blocky rims.
+BLENDED = {"zoohubgrass5", "zoohubgrass6", "zoohubgrass7"}
 
 
 def bleed(px):
@@ -149,14 +152,39 @@ def up4(e, modes):
     return e
 
 
-def flat_up(px, modes, sg):
+def coverage(px, tol):
+    """Each main colour's share of each pixel. A colour within tol of the line between two more common
+    ones is an antialiased edge, split between them."""
+    cols, lab, n = np.unique(px.reshape(-1, 3), axis=0, return_inverse=True, return_counts=True)
+    lab = lab.reshape(px.shape[:2])
+    main, parts = [], {}
+    for c in sorted(range(len(cols)), key=lambda c: (-n[c], c)) if tol else range(len(cols)):
+        x, best = cols[c].astype(float), None
+        for i, a in enumerate(main):
+            for j in range(i + 1, len(main)):
+                p, q = cols[a].astype(float), cols[main[j]].astype(float)
+                t = np.clip((x - p) @ (q - p) / ((q - p) @ (q - p)), 0, 1)
+                d = np.linalg.norm(p + t * (q - p) - x)
+                if d < tol and (best is None or d < best[0]):
+                    best = d, i, j, t
+        if best is None:
+            best = 0, len(main), len(main), 0.0
+            main.append(c)
+        parts[c] = best[1:]
+    cover = np.zeros((len(main), *lab.shape), np.float32)
+    for c, (i, j, t) in parts.items():
+        cover[i][lab == c] += 1 - t
+        cover[j][lab == c] += t
+    return cols[main], cover
+
+
+def flat_up(px, modes, sg, tol=0):
     """4x for flat-colour pixel art too small for the upscaler (the city's grass flowers, each petal a few
     pixels, came out as blurry squares; the cowboy costume's one-pixel stubble as squiggles): each colour's
     area is rounded off on its own (blur of sg pixels) and every pixel takes the colour that covers it most,
     worked out at 8x and averaged down so edges are antialiased."""
     h, w = px.shape[:2]
-    cols, lab = np.unique(px.reshape(-1, 3), axis=0, return_inverse=True)
-    lab = lab.reshape(h, w)
+    cols, cover = coverage(px, tol)
     s, sg = 8, sg * 8
     r = int(3 * sg) + 1
     k = np.exp(-np.arange(-r, r + 1) ** 2 / (2 * sg * sg)).astype(np.float32)
@@ -164,7 +192,7 @@ def flat_up(px, modes, sg):
     best = np.full((h * s, w * s), -1, np.float32)
     out = np.zeros((h * s, w * s), np.intp)
     for i in range(len(cols)):
-        m = pad(np.repeat(np.repeat((lab == i).astype(np.float32), s, 0), s, 1)[..., None], r, modes)[..., 0]
+        m = pad(np.repeat(np.repeat(cover[i], s, 0), s, 1)[..., None], r, modes)[..., 0]
         m = sum(k[j] * m[j:j + h * s] for j in range(2 * r + 1))
         m = sum(k[j] * m[:, j:j + w * s] for j in range(2 * r + 1))
         more = m > best
@@ -241,7 +269,8 @@ def main():
                 a = np.asarray(Image.open(done / f"{i}a.png").convert("L"))[n:n + h * 4, n:n + w * 4]
                 a = np.where(a >= 128, 255, 0).astype(np.uint8) if alpha[i] else clamp(a[..., None], px[..., 3:])[..., 0]
             if p.stem in FLAT:
-                img = Image.fromarray(flat_up(px[..., :3], modes[i], FLAT[p.stem]), "RGB")
+                tol = 32 if p.stem in BLENDED else 0
+                img = Image.fromarray(flat_up(px[..., :3], modes[i], FLAT[p.stem], tol), "RGB")
             elif blocky(px):
                 img = Image.fromarray(px if i in alpha else px[..., :3]).resize((w * 4, h * 4), Image.NEAREST)
             elif i in soft or lost(rgb, a, px, target):
