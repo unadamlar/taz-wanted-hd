@@ -42,6 +42,10 @@ bind (24 bytes): how a game texture's world surface gets a material
                1 where the game texture is redder than green (painted dirt; grass paint stays)
                2 where its brightness is above the threshold (brick faces, not mortar)
   f32 lo, hi   smoothstep range for the mask
+               x = r - g (mask 1) or 0.3r + 0.59g + 0.11b (mask 2), on the game texture's raw sRGB values
+               t = saturate((x - lo) / (hi - lo)); m = t * t * (3 - 2 * t). lo > hi inverts the mask.
+               A fingerprint can have several binds: apply them in file order, each over the last.
+               Where the masks leave a pixel uncovered, the game's texture shows.
 
 proto
   u32 nv, ni, nsub
@@ -55,6 +59,14 @@ chunk
   run               u32 proto, n; f32 rows[n][12]   3x4 instance matrices, shuffled so a prefix thins evenly
 ```
 
+Conventions:
+
+- A vertex colour multiplies the albedo; on a material with no albedo it is the colour.
+- tile > 0 maps by world position: triplanar with the flag, else top-down on world x, z. Row 0 of a DDS is the top of
+  the image and v runs down, so on walls v = -y / tile keeps a texture upright. Mesh UVs are already in this convention.
+- Normal maps are tangent space with +x along +u and +y towards the top of the image (OpenGL style).
+- sky.dds is sampled with the game-space view direction as is.
+
 ## level.ini
 
 One `[level]` section, floats, colours linear RGB as three numbers:
@@ -66,6 +78,12 @@ fog_color, fog_start, fog_end
 exposure, bloom_threshold, bloom_strength, saturation, contrast
 water_height, water_color, water_clarity
 grass_fade_start, grass_fade_end
+sky_scale
 ```
+
+- sun_dir points towards the sun, in game space. sun_color already includes the 1/pi: diffuse = albedo * sun_color * N.L.
+- Sky samples are linear after sRGB decoding; multiply them by sky_scale (clouds are brighter than 1).
+- exposure is a linear multiplier. Fog is linear from fog_start to fog_end, in game units.
+- water_clarity: 0 opaque, 1 clear, looking straight down.
 
 Change this file together with both sides of the format.

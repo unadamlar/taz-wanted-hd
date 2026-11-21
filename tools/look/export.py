@@ -1,149 +1,539 @@
-# Blender: exports the look kit's additions in a dressed scene as a runtime file for src/d3d8/look.c.
-# usage: blender -b <zoohub-dressed.blend> -P tools/look/export.py -- <out.bin>
-# Prototype meshes (scatter variants, and each prop as a one-off) with their albedo baked into vertex
-# colours, instances as 3x4 matrices in game space, grouped in grid chunks for culling and thinning,
-# and the fingerprints of game textures the dressing hides or gives its ground material. The scene is not saved.
+# Blender: exports a dressed level as look data, format version 3 (see FORMAT.md).
+# usage: blender -b extracted/look/pass3/zoohub-dressed.blend --factory-startup --python-exit-code 1 \
+#          -P tools/look/export.py -- [--scene 3] [--rebake]
+# Writes extracted/look/runtime/scene<NN>/ atomically. Bakes are cached in extracted/look/runtime/.bake/.
 # Game space is worldview.py's inverse: Blender (x, y, z) * 250 -> game (x, z, y).
-import bpy, bmesh, struct, sys, os, fnmatch, collections, random
+import argparse, collections, ctypes, json, math, os, random, shutil, struct, sys, time
+import bmesh, bpy
 import numpy as np
-from mathutils import Matrix
+from mathutils import Matrix, Vector, noise as mnoise
 
-out = sys.argv[sys.argv.index('--') + 1]
 here = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, here)
-import zoohub  # RULES: texture -> role
+import bake, dds, kit, zoohub
+
+a = argparse.ArgumentParser()
+a.add_argument("--scene", type=int, default=3)
+a.add_argument("--rebake", action="store_true")
+args = a.parse_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else [])
+
 K = 250.0
 CHUNK = 1500.0  # game units (6 Blender units)
+SPLIT = 4000  # one-off meshes above this many triangles are cut along the chunk grid
 S = Matrix(((1, 0, 0, 0), (0, 0, 1, 0), (0, 1, 0, 0), (0, 0, 0, 1)))
-ext = next(p for p in [os.path.join(here, *(['..'] * n), 'extracted') for n in range(1, 7)] if os.path.isdir(os.path.join(p, 'textures')))
-
+SC = zoohub.SCALE
+root = next(p for p in [os.path.join(here, *([".."] * n)) for n in range(1, 7)] if os.path.isdir(os.path.join(p, "extracted", "textures")))
+ext = os.path.join(root, "extracted")
+base = os.path.join(ext, "look", "runtime")
+cache = os.path.join(base, ".bake")
+out = os.path.join(base, "scene%02d" % args.scene)
+tmp = out + ".tmp%d" % os.getpid()
+if args.rebake:
+    shutil.rmtree(cache, ignore_errors=True)
+os.makedirs(cache, exist_ok=True)
+os.makedirs(os.path.join(tmp, "tex"))
+kit.USE_ASSETS = True
 sc = bpy.context.scene
-scatter = [o for c in ('kit_grass', 'kit_clutter') for o in bpy.data.collections[c].objects]
-scatter += [o for o in bpy.data.objects if o.name.startswith(('kit_vines', 'kit_ledge')) and o.type == 'MESH']
-props = [o for o in bpy.data.collections['kit_props'].objects if o.type == 'MESH' and len(o.data.polygons)]
+for img in bpy.data.images:  # blends saved on another machine keep that machine's absolute paths
+    if img.source == "FILE" and "/personal-games/" in img.filepath:
+        img.filepath = os.path.join(os.path.dirname(kit.ASSET_LIB), img.filepath.split("/personal-games/", 1)[1])
+        img.reload()
+bake.use_gpu(sc)
+LV = zoohub.LEVEL
 
-# Instances (depsgraph) -> prototype objects and matrices.
+# ---------------------------------------------------------------- materials
+# name: (bake graph, tile in Blender units, px, vertical bake plane)
+TILES = {
+    "dirt": (lambda: kit.mat_dirt(scale=SC), 2 * 2.4 * SC, 2048, False),
+    "lawn": (lambda: kit.mat_grass_ground(scale=SC), 2 * 2.4 * SC, 1024, False),
+    "brick": (lambda: kit.mat_brick(scale=SC), 4.6 * SC, 2048, True),
+    "trim": (lambda: kit.mat_trim_stone(scale=SC), 2.6 * SC, 1024, True),
+    "cliff": (lambda: kit.mat_sandstone(kit.srgb("#d98e62"), SC, 0.7, drips=False, base_dark=False), 2 * 3.0 * SC, 2048, True),
+    "wood": (lambda: kit.mat_wood(scale=SC), 3.0, 1024, True),
+    "bark": (lambda: kit.mat_bark(scale=SC), 1.2 * SC, 1024, True),
+    "boulder": (lambda: kit.mat_boulder_dry(SC), 2 * 1.4 * SC, 1024, True),
+}
+TRIPLANAR, TWO_SIDED, WIND = 1, 2, 4
+OPAQUE, CARD, GRASS, WATER = 0, 1, 2, 3
+MATS = {  # name: albedo, has normal, kind, flags, tile (game units, 0 = mesh UVs), tint, rough, normal strength, alpha cut
+    "dirt": ("dirt", True, OPAQUE, 0, TILES["dirt"][1] * K, (1, 1, 1), 0.88, 1.0, 0),
+    "lawn": ("lawn", True, OPAQUE, 0, TILES["lawn"][1] * K, (1, 1, 1), 0.92, 1.0, 0),
+    "brick": ("brick", True, OPAQUE, TRIPLANAR, TILES["brick"][1] * K, (1, 1, 1), 0.85, 1.0, 0),
+    "trim": ("trim", True, OPAQUE, TRIPLANAR, TILES["trim"][1] * K, (1, 1, 1), 0.8, 1.0, 0),
+    "cliff": ("cliff", True, OPAQUE, TRIPLANAR, TILES["cliff"][1] * K, (1, 1, 1), 0.9, 1.0, 0),
+    "boulder": ("boulder", True, OPAQUE, TRIPLANAR, TILES["boulder"][1] * K, (1, 1, 1), 0.8, 1.0, 0),
+    "bark": ("bark", True, OPAQUE, TRIPLANAR, TILES["bark"][1] * K, (1, 1, 1), 0.85, 1.0, 0),
+    "wood": ("wood", True, OPAQUE, 0, 0.0, (1, 1, 1), 0.75, 1.0, 0),
+    "water_bed": ("dirt", True, OPAQUE, 0, TILES["dirt"][1] * K, (0.42, 0.55, 0.56), 0.9, 0.6, 0),
+    "water": ("", True, WATER, 0, 2.5 * SC * K, kit.srgb("#2aa6c8"), 0.03, 0.5, 0),
+    "foam": ("foam", False, CARD, TWO_SIDED, 0.0, (1, 1, 1), 0.5, 0, 0.5),
+    "leaves": ("leaves", False, CARD, TWO_SIDED | WIND, 0.0, (1, 1, 1), 0.75, 0, 0.5),
+    "ivy": ("ivy", False, CARD, TWO_SIDED | WIND, 0.0, (1, 1, 1), 0.6, 0, 0.5),
+    "leaf_core": ("", False, OPAQUE, 0, 0.0, (1, 1, 1), 0.75, 0, 0),
+    "grass": ("", False, GRASS, TWO_SIDED | WIND, 0.0, (1, 1, 1), 0.7, 0, 0),
+    "flat": ("", False, OPAQUE, TWO_SIDED, 0.0, (1, 1, 1), 0.7, 0, 0),
+    "flat_wind": ("", False, OPAQUE, TWO_SIDED | WIND, 0.0, (1, 1, 1), 0.7, 0, 0),
+}
+MAT_ID = {n: i for i, n in enumerate(MATS)}
+BLENDER_MAT = {
+    "kit_grass_blades": "grass", "kit_foliage": "leaf_core", "kit_foliage_cards": "leaves", "kit_ivy": "ivy",
+    "kit_wood": "wood", "kit_bark": "bark", "kit_boulder_dry": "boulder", "kit_sandstone_mass": "cliff",
+    "kit_water_bed": "water_bed", "kit_foam": "foam", "kit_pebble": "flat", "kit_stem": "flat_wind",
+    "kit_petal_pink": "flat_wind", "kit_petal_white": "flat_wind", "kit_petal_blue": "flat_wind",
+    "kit_flower_center": "flat_wind", "kit_weed_leaf": "flat_wind",
+}
+
+
+def format_mat(name):
+    if name in BLENDER_MAT:
+        return BLENDER_MAT[name]
+    if name.startswith("kit_leaf_"):
+        return "flat"
+    if name.startswith("kit_water_clear"):
+        return "water"
+    raise KeyError("no look material for " + name)
+
+
+# ---------------------------------------------------------------- textures
+tex_bytes = {}
+
+
+def put_tex(name, chain, fourcc):
+    tex_bytes[name] = dds.write_dxt(os.path.join(tmp, "tex", name + ".dds"), chain, fourcc)
+
+
+def put_normal(name, nor):
+    h, w = nor.shape[:2]
+    # DXT5nm: x in alpha, y in green
+    xy = np.dstack([np.zeros((h, w)), nor[..., 1], np.zeros((h, w)), nor[..., 0]])
+    put_tex(name, dds.mips_data(xy.astype(np.float32)), b"DXT5")
+
+
+def periodic_noise(n, power, seed):
+    """Tileable noise in 0..1 with a 1/f^power spectrum."""
+    f = np.fft.fftfreq(n)
+    r = np.sqrt(f[:, None] ** 2 + f[None, :] ** 2)
+    r[0, 0] = 1
+    spec = np.fft.fft2(np.random.default_rng(seed).normal(size=(n, n))) / r ** power
+    spec[0, 0] = 0
+    a = np.fft.ifft2(spec).real
+    return (a - a.min()) / (a.max() - a.min())
+
+
+def card_tile(name, mat, opacity, px=1024):
+    """Atlas for alpha cards: the kit graph baked over the UV square, cut by the set's opacity map."""
+    alb, _ = bake.bake_tile(cache, name, mat, 1.0, px, overlap=0, seamless=False)
+    img = bpy.data.images.load(str(kit.ASSET_LIB / opacity), check_existing=True)
+    img.colorspace_settings.name = "Non-Color"
+    w, h = img.size
+    a_ = np.empty(w * h * 4, np.float32)
+    img.pixels.foreach_get(a_)
+    a_ = a_.reshape(h, w, 4)[::-1, :, 0]
+    a_ = a_[(np.arange(px) * h // px)][:, (np.arange(px) * w // px)]
+    rgb = dds.bleed(np.asarray(alb, np.float32), a_)
+    return np.dstack([rgb, a_]).astype(np.float32)
+
+
+t0 = time.time()
+for name, (graph, tile, px, vertical) in TILES.items():
+    alb, nor = bake.bake_tile(cache, name, graph(), tile, px, vertical)
+    alb, nor = np.asarray(alb, np.float32), np.asarray(nor, np.float32)
+    put_tex(name, dds.mips(np.dstack([alb, np.ones(alb.shape[:2])])), b"DXT1")
+    put_normal(name + "_n", nor)
+for name, mat, folder in (("leaves", kit._cards_mat(SC), "leaves024"), ("ivy", kit._ivy_mat(), "ivy017")):
+    set_ = kit.TEXSETS[folder]
+    put_tex(name, dds.mips(card_tile(name, mat, f"{set_[0]}/{set_[2]}"), cut=0.5), b"DXT5")
+n = periodic_noise(512, 1.6, 5)
+gx, gy = (np.roll(n, -1, 1) - np.roll(n, 1, 1)) / 2, (np.roll(n, -1, 0) - np.roll(n, 1, 0)) / 2
+put_normal("water_n", np.dstack([gx * 12 + 1, gy * 12 + 1, np.ones((512, 512))]).clip(0, 2) / 2)
+foam_u = periodic_noise(256, 1.2, 6)
+fade = np.linspace(0, 1, 256)[:, None]  # shore at v = 1
+foam_a = np.clip(fade * 1.6 * (0.35 + foam_u), 0, 1)
+put_tex("foam", dds.mips(np.dstack([np.full((256, 256, 3), 0.97), foam_a]).astype(np.float32), cut=0.5), b"DXT5")
+print("export: textures %.1fs, %.1f MB" % (time.time() - t0, sum(tex_bytes.values()) / 1e6))
+
+# ---------------------------------------------------------------- instances and prototypes
 dg = bpy.context.evaluated_depsgraph_get()
-names = {o.name for o in scatter}
+scatter_names = {o.name for c in ("kit_grass", "kit_clutter") for o in bpy.data.collections[c].objects}
+scatter_names |= {o.name for o in bpy.data.objects if o.name.startswith(("kit_vines", "kit_ledge")) and o.type == "MESH"}
 inst = collections.defaultdict(list)
 for i in dg.object_instances:
-    if i.is_instance and i.parent and i.parent.original.name in names:
-        inst[i.object.original.name].append(i.matrix_world.copy())
-protos = [bpy.data.objects[n] for n in sorted(inst)] + props
-print('export: %d prototypes, %d instances, %d props' % (len(inst), sum(map(len, inst.values())), len(props)))
+    if i.is_instance and i.parent and i.parent.original.name in scatter_names:
+        inst[i.object.original.name].append(np.array(i.matrix_world, np.float32))
+props = [o for o in bpy.data.collections["kit_props"].objects if o.type == "MESH" and len(o.data.polygons)]
 
-# Albedo baked into a colour attribute per corner (Cycles, diffuse colour only).
-sc.render.engine = 'CYCLES'
+
+def game_rows(m):
+    g = np.array(S) @ m @ np.array(S)
+    r = g[:3].copy()
+    r[:, 3] *= K
+    return r.ravel()
+
+
+TIP_RAMP = [(0.2, kit.srgb("#3f8f22")), (0.45, kit.srgb("#62b02e")), (0.75, kit.srgb("#86c63a")), (0.97, kit.srgb("#b2c94c"))]
+
+
+def ramp(t):
+    xs = [p for p, _ in TIP_RAMP]
+    return np.array([np.interp(t, xs, [c[k] for _, c in TIP_RAMP]) for k in range(3)], np.float32)
+
+
+# grass variants ordered by tip colour; instances pick by the kit's patch noise so the lawn keeps its colour patches
+grass_names = sorted(n for n in inst if n.startswith("kit_v_grass"))
+if grass_names:
+    mats = [m for n in grass_names for m in inst[n]]
+    rng = np.random.default_rng(11)
+    v = np.array([(mnoise.noise(Vector(m[:3, 3]) * 0.3 / SC) + 1) / 2 * 0.8 for m in mats]) + rng.random(len(mats)) * 0.35
+    order = np.argsort(v)
+    for n in grass_names:
+        inst[n] = []
+    for rank, idx in enumerate(order):
+        inst[grass_names[rank * len(grass_names) // len(order)]].append(mats[idx])
+
+
+def srgb8(c):
+    return np.rint(dds.to_srgb(np.clip(c, 0, 1)) * 255).astype(np.uint32)
+
+
+def packed(c):
+    q = srgb8(c)
+    return 0xff000000 | q[..., 0] << 16 | q[..., 1] << 8 | q[..., 2]
+
+
+# blades lose their middle ring: 5 triangles -> 3, same silhouette at game distances
+for n in grass_names:
+    me = bpy.data.objects[n].data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.verts.ensure_lookup_table()
+    bmesh.ops.dissolve_verts(bm, verts=[bm.verts[7 * b + k] for b in range(len(bm.verts) // 7) for k in (2, 3)])
+    bm.to_mesh(me)
+    bm.free()
+
+# flat-coloured variants: albedo through Cycles into a corner colour attribute
+flat = [bpy.data.objects[n] for n in sorted(inst) if not n.startswith(("kit_v_grass", "kit_v_bush", "kit_v_vine"))]
 sc.cycles.samples = 4
-sc.cycles.device = 'GPU'
-bpy.ops.object.select_all(action='DESELECT')
-todo = []
-for o in protos:
-    me = o.data
-    if 'look_bake' not in me.color_attributes:
-        me.color_attributes.new('look_bake', 'BYTE_COLOR', 'CORNER')
-    me.color_attributes.active_color = me.color_attributes['look_bake']
-    if o.name not in bpy.context.view_layer.objects: sc.collection.objects.link(o)  # scatter variants live in an excluded collection
-    bpy.context.view_layer.update()
+bpy.ops.object.select_all(action="DESELECT")
+for o in flat:
+    if "look_bake" not in o.data.color_attributes:
+        o.data.color_attributes.new("look_bake", "FLOAT_COLOR", "CORNER")
+    o.data.color_attributes.active_color = o.data.color_attributes["look_bake"]
+    if o.name not in bpy.context.view_layer.objects:
+        sc.collection.objects.link(o)
     o.hide_set(False); o.hide_render = False; o.select_set(True)
-    todo.append(o)
-bpy.context.view_layer.objects.active = todo[0]
-bpy.ops.object.bake(type='DIFFUSE', pass_filter={'COLOR'}, target='VERTEX_COLORS')
-print('export: baked %d objects' % len(todo))
-for o in protos:
-    c = np.empty(len(o.data.loops) * 4, np.float32); o.data.color_attributes['look_bake'].data.foreach_get('color', c)
-    print('export:   albedo %-26s %s' % (o.name, (c.reshape(-1, 4)[:, :3].mean(0) * 255).astype(int)))
+bpy.context.view_layer.update()
+bpy.context.view_layer.objects.active = flat[0]
+bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, target="VERTEX_COLORS")
 
-def mesh_data(o, world):
-    """Triangles in game space: unique (position, normal, colour) vertices and u16/u32 indices.
-    Faces with foliage card materials are left out (they need their alpha texture)."""
+
+def corner_colors(o, co, grass_rank):
+    """Linear RGB per corner: multiplies the albedo, or is the colour for materials without one."""
+    me = o.data
+    nl = len(me.loops)
+    if o.name.startswith("kit_v_grass"):
+        tip = np.empty(len(me.vertices), np.float32)
+        me.attributes["kit_tip"].data.foreach_get("value", tip)
+        vi = np.empty(nl, np.int32); me.loops.foreach_get("vertex_index", vi)
+        t = (tip[vi] ** 0.8)[:, None]
+        return np.array(kit.srgb("#1e4410"))[None] * (1 - t) + ramp(0.2 + 0.77 * (grass_rank + 0.5) / 8)[None] * t
+    if "look_bake" in me.color_attributes:
+        c = np.empty(nl * 4, np.float32)
+        me.color_attributes["look_bake"].data.foreach_get("color", c)
+        return c.reshape(-1, 4)[:, :3]
+    if "kit_ao" in me.attributes:
+        ao = np.empty(len(me.vertices), np.float32)
+        me.attributes["kit_ao"].data.foreach_get("value", ao)
+        vi = np.empty(nl, np.int32); me.loops.foreach_get("vertex_index", vi)
+        ao = ao[vi][:, None]
+        base = np.array(kit.srgb("#58a52e"))[None]
+        wob = np.array([1 + 0.25 * mnoise.noise(Vector(p) * 0.6 / SC) for p in co[vi][::4]], np.float32).repeat(4)[:nl][:, None]
+        return (base * ao + np.array(kit.srgb("#1f4a14"))[None] * (1 - ao)) * wob
+    return np.ones((nl, 3), np.float32)
+
+
+def tris_of(o, world):
+    """Corner arrays of an object in game space: (pos, normal, colour, uv, material id), three per triangle."""
     me = o.data
     me.calc_loop_triangles()
-    col = me.color_attributes['look_bake'].data
-    M = (S @ o.matrix_world) if world else S
-    N = M.to_3x3().inverted().transposed()
-    vi, verts, idx = {}, [], []
-    for t in me.loop_triangles:
-        mat = me.materials[t.material_index] if me.materials else None
-        if mat and 'cards' in mat.name: continue
-        for li in t.loops:
-            l = me.loops[li]
-            p = M @ me.vertices[l.vertex_index].co * K
-            n = (N @ l.normal).normalized()
-            c = col[li].color
-            rgb = [min(255, int((x * 12.92 if x <= 0.0031308 else 1.055 * x ** (1 / 2.4) - 0.055) * 255 + 0.5)) for x in c[:3]]  # the game works in sRGB
-            key = (round(p.x, 2), round(p.y, 2), round(p.z, 2), round(n.x, 2), round(n.y, 2), round(n.z, 2), *rgb)
-            if key not in vi:
-                vi[key] = len(verts)
-                verts.append((p.x, p.y, p.z, n.x, n.y, n.z, 0xff000000 | rgb[0] << 16 | rgb[1] << 8 | rgb[2]))
-            idx.append(vi[key])
-    return verts, idx
+    n = len(me.loop_triangles)
+    lt = np.empty(n * 3, np.int32); me.loop_triangles.foreach_get("loops", lt)
+    mi = np.empty(n, np.int32); me.loop_triangles.foreach_get("material_index", mi)
+    vi = np.empty(len(me.loops), np.int32); me.loops.foreach_get("vertex_index", vi)
+    co = np.empty(len(me.vertices) * 3, np.float32); me.vertices.foreach_get("co", co); co = co.reshape(-1, 3)
+    cn = np.empty(len(me.loops) * 3, np.float32); me.corner_normals.foreach_get("vector", cn); cn = cn.reshape(-1, 3)
+    uv = np.zeros((len(me.loops), 2), np.float32)
+    if me.uv_layers:
+        me.uv_layers[0].data.foreach_get("uv", uv.ravel())
+        uv[:, 1] = 1 - uv[:, 1]  # Direct3D's v runs down from the image's top row
+    rank = grass_names.index(o.name) if o.name in grass_names else 0
+    col = corner_colors(o, co, rank)
+    M = np.array(S @ o.matrix_world if world else S, np.float32)
+    pos = (co[vi] @ M[:3, :3].T + M[:3, 3]) * K
+    N = np.linalg.inv(M[:3, :3]).T
+    nor = cn @ N.T
+    nor /= np.maximum(np.linalg.norm(nor, axis=1, keepdims=True), 1e-9)
+    ids = np.array([MAT_ID[format_mat(m.name)] for m in me.materials], np.int32)[mi] if me.materials else np.zeros(n, np.int32)
+    if "kit_gdir" in me.attributes:  # fences: planks' UVs run along the grain, one repeat per wood tile
+        gd = np.empty(len(me.vertices) * 3, np.float32); me.attributes["kit_gdir"].data.foreach_get("vector", gd)
+        gd = gd.reshape(-1, 3)[vi] @ M[:3, :3].T
+        gd /= np.maximum(np.linalg.norm(gd, axis=1, keepdims=True), 1e-9)
+        side = np.cross(gd, nor)
+        tile = TILES["wood"][1] * K
+        uv = np.stack([(pos * gd).sum(1), (pos * side).sum(1)], 1) / tile
+    return pos[lt], nor[lt], col[lt], uv[lt], ids.repeat(3)
 
-def game_matrix(m):  # Blender matrix_world -> game rows (x, y, z) of [linear | translation]
-    g = S @ m @ S
-    return [x for r in range(3) for x in (g[r][0], g[r][1], g[r][2], g[r][3] * K)]
 
-blob = []
-proto_bbox = []
-for o in protos:
-    v, ix = mesh_data(o, world=o in props)
-    a = np.array([p[:3] for p in v]) if v else np.zeros((1, 3))
-    proto_bbox.append((a.min(0), a.max(0)))
-    blob.append((v, ix))
+def weld(p, n, c, uv, m):
+    """Corners -> unique vertices + triangles sorted by material."""
+    order = np.argsort(m[::3], kind="stable")
+    idx = np.stack([order * 3, order * 3 + 1, order * 3 + 2], 1).ravel()
+    p, n, c, uv, m = p[idx], n[idx], c[idx], uv[idx], m[idx]
+    key = np.hstack([np.round(p, 2), np.round(n, 3), np.round(c, 3), np.round(uv, 4), m[:, None]])
+    uniq, first, inv = np.unique(key, axis=0, return_index=True, return_inverse=True)
+    subs, start = [], 0
+    for mid in np.unique(m):
+        k = int((m == mid).sum())
+        subs.append((int(mid), start, k))
+        start += k
+    return p[first], n[first], c[first], uv[first], inv.ravel().astype(np.uint32), subs
 
-# Chunks: instance centre -> grid cell; each cell lists (prototype, matrices), shuffled for thinning.
+
+protos = []  # dict(v, i, subs, lo, hi, name)
+place = []  # (proto index, rows or None for identity)
+
+
+def add_proto(name, p, n, c, uv, m):
+    v, vn, vc, vuv, ix, subs = weld(p, n, c, uv, m)
+    protos.append(dict(name=name, p=v, n=vn, c=packed(vc), uv=vuv, ix=ix, subs=subs))
+    return len(protos) - 1
+
+
+for name in sorted(inst):
+    o = bpy.data.objects[name]
+    pi = add_proto(name, *tris_of(o, False))
+    place.append((pi, [game_rows(m) for m in inst[name]]))
+
+for o in props:
+    p, n, c, uv, m = tris_of(o, True)
+    ntri = len(p) // 3
+    if ntri > SPLIT:
+        cen = p.reshape(-1, 3, 3).mean(1)
+        cell = (np.floor(cen[:, 0] / CHUNK).astype(np.int64) << 32) + np.floor(cen[:, 2] / CHUNK).astype(np.int64)
+        for cid in np.unique(cell):
+            t = np.where(cell == cid)[0]
+            k = np.stack([t * 3, t * 3 + 1, t * 3 + 2], 1).ravel()
+            place.append((add_proto("%s.%d" % (o.name, cid & 0xffff), p[k], n[k], c[k], uv[k], m[k]), None))
+    else:
+        place.append((add_proto(o.name, p, n, c, uv, m), None))
+
+# game water faces (their texture is hidden below): same positions, drawn with the water material
+water = []
+hub_roles = {}
+for o in bpy.data.objects:
+    if o.type != "MESH" or not any(s.material and s.material.name.startswith("kit_water_clear") for s in o.material_slots):
+        continue
+    me = o.data
+    me.calc_loop_triangles()
+    mi = np.empty(len(me.loop_triangles), np.int32); me.loop_triangles.foreach_get("material_index", mi)
+    slot_water = np.array([bool(s.material and s.material.name.startswith("kit_water_clear")) for s in o.material_slots])
+    tv = np.empty(len(me.loop_triangles) * 3, np.int32); me.loop_triangles.foreach_get("vertices", tv)
+    co = np.empty(len(me.vertices) * 3, np.float32); me.vertices.foreach_get("co", co)
+    M = np.array(S @ o.matrix_world, np.float32)
+    w = (co.reshape(-1, 3)[tv.reshape(-1, 3)[slot_water[mi]].ravel()] @ M[:3, :3].T + M[:3, 3]) * K
+    water.append(w)
+if water:
+    wp = np.concatenate(water)
+    # the capture repeats draws (hero + sweep): keep one copy of each triangle
+    t = wp.reshape(-1, 3, 3)
+    _, u = np.unique(np.round(np.sort(t.reshape(-1, 3, 3), axis=1), 1).reshape(-1, 9), axis=0, return_index=True)
+    wp = t[np.sort(u)].reshape(-1, 3)
+    wn = np.tile([0, 1, 0], (len(wp), 1)).astype(np.float32)
+    place.append((add_proto("water_surface", wp, wn, np.ones((len(wp), 3), np.float32),
+                            wp[:, [0, 2]] / MATS["water"][4], np.full(len(wp), MAT_ID["water"])), None))
+    water_y = float(np.median(wp[:, 1]))
+else:
+    water_y = 0.0
+
+# chunks: instance centre -> grid cell; each cell lists (proto, matrices), shuffled for thinning
 cells = collections.defaultdict(lambda: collections.defaultdict(list))
 boxes = {}
-def add(cell, pi, rows, lo, hi):
-    cells[cell][pi].append(rows)
-    b = boxes.get(cell)
-    boxes[cell] = (np.minimum(b[0], lo), np.maximum(b[1], hi)) if b else (lo, hi)
+IDENT = np.array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0], np.float32)
+for pi, rows in place:
+    P = protos[pi]["p"]
+    lo, hi = P.min(0), P.max(0)
+    corners = np.array([[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])], np.float32)
+    for r in (rows if rows is not None else [IDENT]):
+        R = np.asarray(r).reshape(3, 4)
+        w = corners @ R[:3, :3].T + R[:3, 3]
+        cen = w.mean(0)
+        cell = (int(cen[0] // CHUNK), int(cen[2] // CHUNK))
+        cells[cell][pi].append(np.asarray(r, np.float32))
+        b = boxes.get(cell)
+        boxes[cell] = (np.minimum(b[0], w.min(0)), np.maximum(b[1], w.max(0))) if b else (w.min(0), w.max(0))
 rng = random.Random(1)
-for pi, o in enumerate(protos):
-    lo, hi = proto_bbox[pi]
-    mats = [Matrix.Identity(4)] if o in props else inst[o.name]
-    for m in mats:
-        rows = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0] if o in props else game_matrix(m)
-        R = np.array(rows).reshape(3, 4)
-        corners = np.array([[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])]) @ R[:, :3].T + R[:, 3]
-        c = corners.mean(0)
-        add((int(c[0] // CHUNK), int(c[2] // CHUNK)), pi, rows, corners.min(0), corners.max(0))
 for cell in cells.values():
-    for runs in cell.values(): rng.shuffle(runs)
+    for runs in cell.values():
+        rng.shuffle(runs)
 
-# Game textures the dressing hides (role -> fingerprints); 'shadow' ones only once real shadows are on.
+# ---------------------------------------------------------------- game textures -> materials, from RULES
 fp = {}
-for line in open(os.path.join(ext, 'textures', 'fingerprints.tsv')):
-    h, f = line.rstrip('\n').split('\t')[:2]
+for line in open(os.path.join(ext, "textures", "fingerprints.tsv")):
+    h, f = line.rstrip("\n").split("\t")[:2]
     fp.setdefault(f, int(h, 16))
-hide, shadow, ground = set(), set(), set()
-for line in list(open(os.path.join(ext, 'textures', 'index.tsv')))[1:]:
-    pak, name, w, h, f = line.rstrip('\n').split('\t')
-    label = pak + '/' + os.path.splitext(name)[0]
-    role = zoohub.role_of(label) if pak.startswith('zoohub') or pak == 'resTex' else None
-    if f in fp and role in ('hide', 'fence_rail', 'fence_post', 'fence_cap', 'tree'):
-        (shadow if 'shadowsub' in label else hide).add(fp[f])
-    if f in fp and role == 'ground':
-        ground.add(fp[f])
+hide, shade, binds = set(), set(), {}
 
-with open(out, 'wb') as f:
-    f.write(struct.pack('<4sI', b'TZLK', 2))
-    for s_ in (hide, shadow, ground):
-        f.write(struct.pack('<I', len(s_)) + b''.join(struct.pack('<Q', h) for h in sorted(s_)))
-    f.write(struct.pack('<I', len(protos)))
-    for (v, ix), o in zip(blob, protos):
-        f.write(struct.pack('<II', len(v), len(ix)))
-        f.write(b''.join(struct.pack('<6fI', *p) for p in v))
-        f.write(struct.pack('<%dI' % len(ix), *ix))
-    f.write(struct.pack('<I', len(cells)))
+
+def tex_pixels(file):
+    img = bpy.data.images.load(os.path.join(ext, "textures", file), check_existing=True)
+    img.colorspace_settings.name = "Non-Color"
+    w, h = img.size
+    px = np.empty(w * h * 4, np.float32)
+    img.pixels.foreach_get(px)
+    return px.reshape(h, w, 4)[..., :3]
+
+
+def smooth(x, lo, hi):
+    t = np.clip((x - lo) / (hi - lo), 0, 1)
+    return t * t * (3 - 2 * t)
+
+
+def kit_trim_mask(srgb):
+    """kit.light_mask_node on the texture as Blender sees it (linear)."""
+    lin = dds.to_linear(srgb)
+    lum = lin @ np.array([0.3, 0.59, 0.11])
+    sat = lin.max(2) - lin.min(2)
+    return smooth(lum, 0.55, 0.7) * (1 - smooth(sat, 0.25, 0.45))
+
+
+LUMA = np.array([0.3, 0.59, 0.11])
+mask_report = []
+
+
+def brick_binds(fprint, file):
+    """Brick where the game paints brick, trim where the kit's pale-and-unsaturated test says so,
+    fitted to a plain brightness threshold on the raw texture."""
+    px = tex_pixels(file)
+    want = kit_trim_mask(px)
+    lum = px @ LUMA
+    if want.mean() < 0.01:
+        return [(fprint, MAT_ID["brick"], 0, 0.0, 1.0)]
+    best = min(np.arange(0.3, 0.98, 0.02), key=lambda t: np.abs(smooth(lum, t - 0.05, t + 0.05) - want).mean())
+    err = float(np.abs(smooth(lum, best - 0.05, best + 0.05) - want).mean())
+    mask_report.append((file, float(want.mean()), float(best), err))
+    return [(fprint, MAT_ID["brick"], 2, float(best + 0.05), float(best - 0.05)),
+            (fprint, MAT_ID["trim"], 2, float(best - 0.05), float(best + 0.05))]
+
+
+REDDER = (-0.14, -0.05)  # r - g on the raw texture; the kit's "green dominates" edge lands here
+for line in list(open(os.path.join(ext, "textures", "index.tsv")))[1:]:
+    pak, name, w_, h_, f = line.rstrip("\n").split("\t")
+    if f not in fp or not (pak.startswith("zoohub") or pak == "resTex"):
+        continue
+    label = pak + "/" + os.path.splitext(name)[0]
+    role = zoohub.role_of(label)
+    h = fp[f]
+    if "shadowsub" in label:
+        shade.add(h)
+    elif role in ("hide", "fence_rail", "fence_post", "fence_cap", "tree", "water", "sky"):
+        hide.add(h)
+    elif h in binds:
+        continue
+    elif role == "ground":
+        binds[h] = [(h, MAT_ID["dirt"], 1, *REDDER)]
+    elif role == "lawn":
+        binds[h] = [(h, MAT_ID["lawn"], 0, 0.0, 1.0)]
+    elif role == "cliff":
+        binds[h] = [(h, MAT_ID["cliff"], 0, 0.0, 1.0)]
+    elif role == "brick":
+        binds[h] = brick_binds(h, f)
+bind_list = [b for h in sorted(binds) for b in binds[h]]
+
+# ---------------------------------------------------------------- sky
+eye = bpy.data.objects["hero camera"].matrix_world.translation.copy() if "hero camera" in bpy.data.objects else Vector()
+sky = np.asarray(bake.bake_sky(cache, sc, eye), np.float32)
+sky_scale = max(1.0, float(np.quantile(sky, 0.9999)))
+faces = [np.asarray(dds.to_srgb(f / sky_scale), np.float32) for f in bake.cube_faces(sky, 1024)]
+sky_bytes = dds.write_cube(os.path.join(tmp, "sky.dds"), faces)
+
+# ---------------------------------------------------------------- scene.bin
+
+
+def name32(s):
+    b = s.encode()
+    if len(b) > 31:
+        raise ValueError("name too long: " + s)
+    return b.ljust(32, b"\0")
+
+
+with open(os.path.join(tmp, "scene.bin"), "wb") as f:
+    f.write(struct.pack("<4sI", b"TZLK", 3))
+    for s_ in (hide, shade):
+        f.write(struct.pack("<I", len(s_)) + b"".join(struct.pack("<Q", h) for h in sorted(s_)))
+    f.write(struct.pack("<I", len(MATS)))
+    for n, (alb, has_n, kind, flags, tile, tint, rough, ns, cut) in MATS.items():
+        nrm = "water_n" if n == "water" else (alb + "_n" if has_n else "")
+        f.write(name32(n) + name32(alb) + name32(nrm))
+        f.write(struct.pack("<HHf3ffff", kind, flags, tile, *tint, rough, ns, cut))
+    f.write(struct.pack("<I", len(bind_list)))
+    for fprint, mid, mask, lo, hi in bind_list:
+        f.write(struct.pack("<QIIff", fprint, mid, mask, lo, hi))
+    f.write(struct.pack("<I", len(protos)))
+    vt = np.dtype([("p", "<f4", 3), ("n", "<f4", 3), ("c", "<u4"), ("uv", "<f4", 2)])
+    for P in protos:
+        f.write(struct.pack("<III", len(P["p"]), len(P["ix"]), len(P["subs"])))
+        v = np.zeros(len(P["p"]), vt)
+        v["p"], v["n"], v["c"], v["uv"] = P["p"], P["n"], P["c"], P["uv"]
+        f.write(v.tobytes())
+        f.write(P["ix"].astype("<u4").tobytes())
+        for sub in P["subs"]:
+            f.write(struct.pack("<III", *sub))
+    f.write(struct.pack("<I", len(cells)))
     for cell, runs in sorted(cells.items()):
         lo, hi = boxes[cell]
-        f.write(struct.pack('<6fI', *lo, *hi, len(runs)))
+        f.write(struct.pack("<6fI", *lo, *hi, len(runs)))
         for pi, rows in sorted(runs.items()):
-            f.write(struct.pack('<II', pi, len(rows)))
-            f.write(b''.join(struct.pack('<12f', *r) for r in rows))
-tris = sum(len(ix) // 3 * (1 if o in props else len(inst[o.name])) for (v, ix), o in zip(blob, protos))
-print('export: %s, %d chunks, %d triangles in all, %d hidden + %d shadow fingerprints, %.1f MB'
-      % (out, len(cells), tris, len(hide), len(shadow), os.path.getsize(out) / 1e6))
-for (v, ix), o in zip(blob, protos):
-    print('export:  %-28s %6d verts %6d tris x %d' % (o.name, len(v), len(ix) // 3, 1 if o in props else len(inst[o.name])))
+            f.write(struct.pack("<II", pi, len(rows)))
+            f.write(np.stack(rows).astype("<f4").tobytes())
+
+# ---------------------------------------------------------------- level.ini
+sun, grade, sk = LV["sun"], LV["grade"], LV["sky"]
+az, el = math.radians(sun["sun_azimuth"]), math.radians(sun["sun_elevation"])
+amb = np.array(kit.srgb(sk["ambient"])) * grade["ambient_strength"]
+fog_start = grade["fog_start"] * SC * K
+vals = [
+    ("sun_dir", (math.cos(az) * math.cos(el), math.sin(el), math.sin(az) * math.cos(el))),
+    ("sun_color", np.array(kit.srgb(sun["sun_color"])) * sun["sun_strength"] / math.pi),
+    ("sky_ambient", amb), ("ground_ambient", amb * np.array((0.55, 0.47, 0.38))),
+    ("shadow_softness", math.tan(math.radians(1.0))), ("ao_radius", 2.5 * SC * K), ("ao_strength", 1.0),
+    ("fog_color", kit.srgb("#b8d6f2")), ("fog_start", fog_start),
+    ("fog_end", fog_start + grade["fog_depth"] * SC * K / grade["fog"]),  # Blender's fog tops out at this 7%
+    ("exposure", 2 ** grade["exposure"]), ("bloom_threshold", 0.9), ("bloom_strength", grade["bloom"]),
+    ("saturation", grade["saturation"]), ("contrast", 1.15),
+    ("water_height", water_y), ("water_color", kit.srgb("#2aa6c8")), ("water_clarity", 0.72),
+    ("grass_fade_start", 5000.0), ("grass_fade_end", 10000.0), ("sky_scale", sky_scale),
+]
+with open(os.path.join(tmp, "level.ini"), "w") as f:
+    f.write("[level]\n")
+    for k, x in vals:
+        f.write("%s = %s\n" % (k, " ".join("%.5f" % c for c in x) if hasattr(x, "__len__") else "%.5f" % x))
+
+# ---------------------------------------------------------------- atomic swap
+
+
+def swap(new, old):
+    if not os.path.exists(old):
+        return os.rename(new, old)
+    if ctypes.CDLL(None, use_errno=True).renameat2(-100, new.encode(), -100, old.encode(), 2):  # RENAME_EXCHANGE
+        raise OSError(ctypes.get_errno(), "renameat2")
+    shutil.rmtree(new)
+
+
+tris = sum(len(protos[pi]["ix"]) // 3 * len(r if r is not None else [0]) for pi, r in place)
+ninst = sum(len(r) for _, r in place if r is not None)
+report = dict(triangles=int(tris), instances=int(ninst), protos=len(protos), chunks=len(cells), materials=len(MATS),
+              binds=len(bind_list), hidden=len(hide), shade=len(shade), texture_mb=round(sum(tex_bytes.values()) / 1e6, 1),
+              sky_mb=round(sky_bytes / 1e6, 1), scene_mb=round(os.path.getsize(os.path.join(tmp, "scene.bin")) / 1e6, 1),
+              water_y=water_y, sky_scale=sky_scale, brick_masks=mask_report)
+json.dump(report, open(os.path.join(cache, "report.json"), "w"), indent=1)
+swap(tmp, out)
+print("export:", json.dumps({k: v for k, v in report.items() if k != "brick_masks"}))
