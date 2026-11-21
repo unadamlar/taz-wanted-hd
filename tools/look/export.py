@@ -31,6 +31,9 @@ tmp = out + ".tmp%d" % os.getpid()
 if args.rebake:
     shutil.rmtree(cache, ignore_errors=True)
 os.makedirs(cache, exist_ok=True)
+for stale in os.listdir(base):
+    if stale.startswith(os.path.basename(out) + ".tmp"):
+        shutil.rmtree(os.path.join(base, stale))
 os.makedirs(os.path.join(tmp, "tex"))
 kit.USE_ASSETS = True
 sc = bpy.context.scene
@@ -55,6 +58,7 @@ TILES = {
 }
 TRIPLANAR, TWO_SIDED, WIND = 1, 2, 4
 OPAQUE, CARD, GRASS, WATER = 0, 1, 2, 3
+# foliage tints stand in for the kit's small emission term, which has no slot here
 MATS = {  # name: albedo, has normal, kind, flags, tile (game units, 0 = mesh UVs), tint, rough, normal strength, alpha cut
     "dirt": ("dirt", True, OPAQUE, 0, TILES["dirt"][1] * K, (1, 1, 1), 0.88, 1.0, 0),
     "lawn": ("lawn", True, OPAQUE, 0, TILES["lawn"][1] * K, (1, 1, 1), 0.92, 1.0, 0),
@@ -67,10 +71,10 @@ MATS = {  # name: albedo, has normal, kind, flags, tile (game units, 0 = mesh UV
     "water_bed": ("dirt", True, OPAQUE, 0, TILES["dirt"][1] * K, (0.42, 0.55, 0.56), 0.9, 0.6, 0),
     "water": ("", True, WATER, 0, 2.5 * SC * K, kit.srgb("#2aa6c8"), 0.03, 0.5, 0),
     "foam": ("foam", False, CARD, TWO_SIDED, 0.0, (1, 1, 1), 0.5, 0, 0.5),
-    "leaves": ("leaves", False, CARD, TWO_SIDED | WIND, 0.0, (1, 1, 1), 0.75, 0, 0.5),
-    "ivy": ("ivy", False, CARD, TWO_SIDED | WIND, 0.0, (1, 1, 1), 0.6, 0, 0.5),
-    "leaf_core": ("", False, OPAQUE, 0, 0.0, (1, 1, 1), 0.75, 0, 0),
-    "grass": ("", False, GRASS, TWO_SIDED | WIND, 0.0, (1, 1, 1), 0.7, 0, 0),
+    "leaves": ("leaves", False, CARD, TWO_SIDED | WIND, 0.0, (1.08, 1.08, 1.08), 0.75, 0, 0.5),
+    "ivy": ("ivy", False, CARD, TWO_SIDED | WIND, 0.0, (1.08, 1.08, 1.08), 0.6, 0, 0.5),
+    "leaf_core": ("", False, OPAQUE, 0, 0.0, (1.08, 1.08, 1.08), 0.75, 0, 0),
+    "grass": ("", False, GRASS, TWO_SIDED | WIND, 0.0, (1.05, 1.05, 1.05), 0.7, 0, 0),
     "flat": ("", False, OPAQUE, TWO_SIDED, 0.0, (1, 1, 1), 0.7, 0, 0),
     "flat_wind": ("", False, OPAQUE, TWO_SIDED | WIND, 0.0, (1, 1, 1), 0.7, 0, 0),
 }
@@ -257,9 +261,9 @@ def corner_colors(o, co, grass_rank):
         me.attributes["kit_ao"].data.foreach_get("value", ao)
         vi = np.empty(nl, np.int32); me.loops.foreach_get("vertex_index", vi)
         ao = ao[vi][:, None]
-        base = np.array(kit.srgb("#58a52e"))[None]
+        inner = np.array(kit.srgb("#1f4a14")) / np.array(kit.srgb("#58a52e"))  # cards' albedo already holds the leaf green
         wob = np.array([1 + 0.25 * mnoise.noise(Vector(p) * 0.6 / SC) for p in co[vi][::4]], np.float32).repeat(4)[:nl][:, None]
-        return (base * ao + np.array(kit.srgb("#1f4a14"))[None] * (1 - ao)) * wob
+        return np.clip((ao + inner[None] * (1 - ao)) * wob, 0, 1)
     return np.ones((nl, 3), np.float32)
 
 
@@ -318,6 +322,8 @@ def tris_of(o, world):
     pos = (co[vi] @ M[:3, :3].T + M[:3, 3]) * K
     N = np.linalg.inv(M[:3, :3]).T
     nor = cn @ N.T
+    if o.name.startswith("kit_v_grass"):  # the kit's mostly-up shading normal: a lawn lights as one soft surface
+        nor = nor / np.maximum(np.linalg.norm(nor, axis=1, keepdims=True), 1e-9) * 0.35 + [0, 1, 0]
     nor /= np.maximum(np.linalg.norm(nor, axis=1, keepdims=True), 1e-9)
     ids = np.array([MAT_ID[format_mat(m.name)] for m in me.materials], np.int32)[mi] if me.materials else np.zeros(n, np.int32)
     if "kit_gdir" in me.attributes:  # fences: planks' UVs run along the grain, one repeat per wood tile
@@ -375,7 +381,6 @@ for o in props:
 
 # game water faces (their texture is hidden below): same positions, drawn with the water material
 water = []
-hub_roles = {}
 for o in bpy.data.objects:
     if o.type != "MESH" or not any(s.material and s.material.name.startswith("kit_water_clear") for s in o.material_slots):
         continue
@@ -400,6 +405,57 @@ if water:
     water_y = float(np.median(wp[:, 1]))
 else:
     water_y = 0.0
+
+# The dressing hides a fence texture only near kit fences, but the game can only hide a whole texture:
+# faces that stayed visible are redrawn from the look data with the same HD texture.
+HIDDEN_ROLES = ("hide", "fence_rail", "fence_post", "fence_cap", "tree", "water", "sky")
+kept = collections.defaultdict(list)
+for coll in zoohub.GAME_COLLS:
+    for o in (bpy.data.collections[coll].objects if coll in bpy.data.collections else []):
+        if o.type != "MESH" or o.hide_render:
+            continue
+        for si, slot in enumerate(o.material_slots):
+            m = slot.material
+            if m and m.name.startswith(("lit:", "lit+:")) and zoohub.role_of(m.name.split(":", 1)[1]) in HIDDEN_ROLES:
+                kept[zoohub.base_name(m.name.split(":", 1)[1])].append((o, si, m))
+for label, users in sorted(kept.items()):
+    corners = []
+    for o, si, _ in users:
+        me = o.data
+        me.calc_loop_triangles()
+        mi = np.empty(len(me.loop_triangles), np.int32); me.loop_triangles.foreach_get("material_index", mi)
+        lt = np.empty(len(mi) * 3, np.int32); me.loop_triangles.foreach_get("loops", lt)
+        lt = lt.reshape(-1, 3)[mi == si].ravel()
+        vi = np.empty(len(me.loops), np.int32); me.loops.foreach_get("vertex_index", vi)
+        co = np.empty(len(me.vertices) * 3, np.float32); me.vertices.foreach_get("co", co)
+        cn = np.empty(len(me.loops) * 3, np.float32); me.corner_normals.foreach_get("vector", cn)
+        uv = np.empty(len(me.loops) * 2, np.float32); me.uv_layers["UVMap"].data.foreach_get("uv", uv)
+        vc = np.empty(len(me.loops) * 4, np.float32); me.color_attributes["kit_vcol"].data.foreach_get("color", vc)
+        M = np.array(S @ o.matrix_world, np.float32)
+        P = (co.reshape(-1, 3)[vi[lt]] @ M[:3, :3].T + M[:3, 3]) * K
+        N = cn.reshape(-1, 3)[lt] @ np.linalg.inv(M[:3, :3])
+        N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-9)
+        U = uv.reshape(-1, 2)[lt] * [1, -1] + [0, 1]
+        corners.append((P, N, np.minimum(vc.reshape(-1, 4)[lt, :3] * 2, 1), U))  # world draws are modulate 2x
+    P, N, C, U = (np.concatenate(x) for x in zip(*corners))
+    if not len(P):
+        continue
+    img = next(n.image for n in users[0][2].node_tree.nodes if n.type == "TEX_IMAGE" and n.image)
+    w, h = img.size
+    px = np.empty(w * h * 4, np.float32)
+    img.pixels.foreach_get(px)
+    rgba = px.reshape(h, w, 4)[::-1].copy()
+    card = bool((rgba[..., 3] < 0.5).any())
+    if card:
+        rgba[..., :3] = dds.bleed(rgba[..., :3], rgba[..., 3])
+    name = "game_" + label.rsplit("/", 1)[1][:26]
+    put_tex(name, dds.mips(rgba, cut=0.5 if card else None), b"DXT5" if card else b"DXT1")
+    MATS[name] = (name, False, CARD if card else OPAQUE, TWO_SIDED, 0.0, (1, 1, 1), 0.7, 0, 0.5 if card else 0)
+    MAT_ID[name] = len(MAT_ID)
+    _, u = np.unique(np.round(P.reshape(-1, 9), 1), axis=0, return_index=True)  # hero and sweep captures repeat draws
+    k = (np.sort(u)[:, None] * 3 + [0, 1, 2]).ravel()
+    place.append((add_proto(name, P[k], N[k], C[k], U[k], np.full(len(k), MAT_ID[name])), None))
+    print("export: kept %s, %d triangles" % (name, len(k) // 3))
 
 # chunks: instance centre -> grid cell; each cell lists (proto, matrices), shuffled for thinning
 cells = collections.defaultdict(lambda: collections.defaultdict(list))
@@ -475,7 +531,7 @@ for line in list(open(os.path.join(ext, "textures", "index.tsv")))[1:]:
     h = fp[f]
     if "shadowsub" in label:
         shade.add(h)
-    elif role in ("hide", "fence_rail", "fence_post", "fence_cap", "tree", "water", "sky"):
+    elif role in HIDDEN_ROLES:
         hide.add(h)
     elif h in binds:
         continue
