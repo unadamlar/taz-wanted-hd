@@ -709,12 +709,11 @@ void look_merge_begin(IDirect3DDevice8 *dev, IDirect3DVertexBuffer8 *vb, IDirect
     IDirect3DDevice8_SetIndices(dev, ib, 0);
 }
 
-void look_merge_texture(IDirect3DDevice8 *dev, IDirect3DBaseTexture8 *tex, UINT64 hash, const DWORD *rs, const DWORD *ids, int n)
+void look_merge_texture(IDirect3DDevice8 *dev, IDirect3DBaseTexture8 *tex, UINT64 hash)
 {
     int is_ground = 0;
     for (UINT i = 0; level >= 3 && dirt && i < nground; i++) is_ground |= ground[i] == hash;
     textures_bind_own(dev, 0, textures_effective(tex));
-    for (int i = 0; i < n; i++) IDirect3DDevice8_SetRenderState(dev, ids[i], rs[i]);
     IDirect3DDevice8_SetPixelShader(dev, debug ? ps_debug[debug - 8] : is_ground ? ps_ground : ps);
 }
 

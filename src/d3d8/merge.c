@@ -15,9 +15,12 @@
 #define SLOTS (1 << 17)
 #define MAX_PIECES (SLOTS / 2)
 #define NSTATE 9
+#define NSAMPLER 4 // the game picks wrap or clamp per draw, even for one texture
+#define NKEY (NSTATE + NSAMPLER)
 
 static const DWORD tracked[NSTATE] = { D3DRS_ZENABLE, D3DRS_ZWRITEENABLE, D3DRS_ZFUNC, D3DRS_CULLMODE, D3DRS_ALPHATESTENABLE,
                                        D3DRS_ALPHAREF, D3DRS_ALPHAFUNC, D3DRS_FOGENABLE, D3DRS_ZBIAS };
+static const DWORD samplers[NSAMPLER] = { D3DTSS_ADDRESSU, D3DTSS_ADDRESSV, D3DTSS_MAGFILTER, D3DTSS_MINFILTER };
 
 struct piece { IDirect3DVertexBuffer8 *vb; IDirect3DBaseTexture8 *tex; UINT start, count, type, first, tris, rs_id, batch; DWORD frame; };
 struct batch { IDirect3DBaseTexture8 *tex; UINT64 hash; UINT p0, n, issued, rs_id; };
@@ -28,7 +31,7 @@ static struct batch *batches;
 static BYTE *verts;
 static UINT *idx;
 static UINT npieces, nbatches, nverts, nidx, room_v, room_i, uploaded, gpu_v, gpu_i, issued, last_new;
-static DWORD (*rs_sets)[NSTATE];
+static DWORD (*rs_sets)[NKEY];
 static UINT nrs;
 static DWORD frame = 1;
 static IDirect3DVertexBuffer8 *vb_gpu;
@@ -40,7 +43,7 @@ static DWORD cur_blend, cur_op0, cur_arg1, cur_op1, cur_tt;
 static IDirect3DDevice8 *device;
 static IDirect3DVertexBuffer8 *cur_vb;
 static UINT cur_stride;
-static DWORD cur_shader, cur_rs[NSTATE];
+static DWORD cur_shader, cur_rs[NKEY];
 static UINT cur_rs_id;
 
 static IDirect3DVertexBuffer8 *banned[32], *sources[64];
@@ -66,6 +69,8 @@ void merge_stage_state(DWORD stage, DWORD type, DWORD value)
     if (stage == 0 && ((type == D3DTSS_COLOROP && value != cur_op0) || (type == D3DTSS_COLORARG1 && value != cur_arg1)
                        || (type == D3DTSS_TEXTURETRANSFORMFLAGS && value != cur_tt))) dirty = 1;
     if (stage == 1 && type == D3DTSS_COLOROP && value != cur_op1) dirty = 1;
+    for (int i = 0; !stage && i < NSAMPLER; i++)
+        if (samplers[i] == type && cur_rs[NSTATE + i] != value) dirty = 1;
 }
 
 void merge_reset(void)
@@ -103,6 +108,7 @@ static void refresh(IDirect3DDevice8 *dev)
     IDirect3DDevice8_GetTextureStageState(dev, 1, D3DTSS_COLOROP, &cur_op1);
     IDirect3DDevice8_GetTextureStageState(dev, 0, D3DTSS_TEXTURETRANSFORMFLAGS, &cur_tt);
     for (int i = 0; i < NSTATE; i++) IDirect3DDevice8_GetRenderState(dev, tracked[i], &cur_rs[i]);
+    for (int i = 0; i < NSAMPLER; i++) IDirect3DDevice8_GetTextureStageState(dev, 0, samplers[i], &cur_rs[NSTATE + i]);
     ok_state = !cur_blend && cur_op0 == D3DTOP_MODULATE2X && cur_arg1 == D3DTA_TEXTURE && cur_op1 == D3DTOP_DISABLE && !cur_tt && cur_rs[0] && cur_rs[1];
     cur_rs_id = (UINT)-1;
 }
@@ -112,7 +118,7 @@ static UINT rs_id(void)
     if (cur_rs_id != (UINT)-1) return cur_rs_id;
     for (UINT i = 0; i < nrs; i++)
         if (!memcmp(rs_sets[i], cur_rs, sizeof cur_rs)) return cur_rs_id = i;
-    DWORD (*grown)[NSTATE] = realloc(rs_sets, (nrs + 1) * sizeof *rs_sets);
+    DWORD (*grown)[NKEY] = realloc(rs_sets, (nrs + 1) * sizeof *rs_sets);
     if (!grown) return 0;
     rs_sets = grown;
     memcpy(rs_sets[nrs], cur_rs, sizeof cur_rs);
@@ -211,10 +217,16 @@ void merge_flush(IDirect3DDevice8 *dev)
     if (!issued || flushing) return;
     flushing = 1;
     look_merge_begin(dev, vb_gpu, ib_gpu);
+    UINT applied = (UINT)-1;
     for (UINT b = 0; b < nbatches; b++) {
         struct batch *k = &batches[b];
         if (!k->issued) continue;
-        look_merge_texture(dev, k->tex, k->hash, rs_sets[k->rs_id], tracked, NSTATE);
+        look_merge_texture(dev, k->tex, k->hash);
+        if (k->rs_id != applied) {
+            const DWORD *set = rs_sets[applied = k->rs_id];
+            for (int i = 0; i < NSTATE; i++) IDirect3DDevice8_SetRenderState(dev, tracked[i], set[i]);
+            for (int i = 0; i < NSAMPLER; i++) IDirect3DDevice8_SetTextureStageState(dev, 0, samplers[i], set[NSTATE + i]);
+        }
         UINT end = k->p0 + k->n, first = 0, tris = 0;
         for (UINT i = k->p0; i <= end; i++) {
             const struct piece *p = i < end ? &pieces[i] : NULL;

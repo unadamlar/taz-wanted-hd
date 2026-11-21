@@ -87,7 +87,7 @@ void look_state_changed(void);
 void look_reset(IDirect3DDevice8 *dev);
 int look_hidden(UINT64 hash);
 void look_merge_begin(IDirect3DDevice8 *dev, IDirect3DVertexBuffer8 *vb, IDirect3DIndexBuffer8 *ib);
-void look_merge_texture(IDirect3DDevice8 *dev, IDirect3DBaseTexture8 *tex, UINT64 hash, const DWORD *rs, const DWORD *ids, int n);
+void look_merge_texture(IDirect3DDevice8 *dev, IDirect3DBaseTexture8 *tex, UINT64 hash);
 void look_merge_draw(IDirect3DDevice8 *dev, UINT nverts, UINT first, UINT tris);
 void look_merge_end(IDirect3DDevice8 *dev);
 void merge_install(IDirect3DDevice8 *dev);
