@@ -1,0 +1,71 @@
+# Look data, version 3
+
+Written by `tools/look/export.py`, read by `src/d3d8/look.c`. Installed per scene:
+
+```
+<game>/taz-hd/look/scene<NN>/
+  scene.bin   geometry, instances, materials, bindings to the game's textures
+  level.ini   lighting and grade; re-read when a taz-hd\look-reload file appears
+  sky.dds     cube map, A8R8G8B8 sRGB, 1024 per face, full mips
+  tex/*.dds   DXT1 (opaque) or DXT5 (alpha), full mips; normal maps are DXT5 with x in alpha, y in green
+```
+
+Everything is little-endian. Positions are in game space (y up, 250 units = 1 Blender unit).
+
+## scene.bin
+
+```
+char magic[4] = "TZLK"; u32 version = 3
+u32 nhide;  u64 hide[nhide]    game textures whose draws are dropped from level 1 up
+u32 nshade; u64 shade[nshade]  baked shadow decals, dropped once real shadows are on
+u32 nmat;   material mat[nmat]
+u32 nbind;  bind binds[nbind]
+u32 nproto; proto protos[nproto]
+u32 nchunk; chunk chunks[nchunk]
+```
+
+```
+material (128 bytes)
+  char name[32], albedo[32], normal[32]   texture names without .dds; empty = none
+  u16  kind    0 opaque, 1 card (alpha cut), 2 grass, 3 water
+  u16  flags   1 triplanar, 2 two-sided, 4 wind
+  f32  tile    game units per texture repeat; 0 = use the mesh UVs
+  f32  tint[3] linear multiplier
+  f32  rough
+  f32  normal_strength
+  f32  alpha_cut
+
+bind (24 bytes): how a game texture's world surface gets a material
+  u64 fingerprint
+  u32 material
+  u32 mask     0 whole surface
+               1 where the game texture is redder than green (painted dirt; grass paint stays)
+               2 where its brightness is above the threshold (brick faces, not mortar)
+  f32 lo, hi   smoothstep range for the mask
+
+proto
+  u32 nv, ni, nsub
+  vertex v[nv]      f32 pos[3], f32 normal[3], u32 color (BGRA, sRGB), f32 uv[2]   (36 bytes)
+  u32 index[ni]
+  sub s[nsub]       u32 material, first_index, index_count
+
+chunk
+  f32 lo[3], hi[3]  world bounds
+  u32 nruns
+  run               u32 proto, n; f32 rows[n][12]   3x4 instance matrices, shuffled so a prefix thins evenly
+```
+
+## level.ini
+
+One `[level]` section, floats, colours linear RGB as three numbers:
+
+```
+sun_dir, sun_color, sky_ambient, ground_ambient
+shadow_softness, ao_radius, ao_strength
+fog_color, fog_start, fog_end
+exposure, bloom_threshold, bloom_strength, saturation, contrast
+water_height, water_color, water_clarity
+grass_fade_start, grass_fade_end
+```
+
+Change this file together with both sides of the format.
