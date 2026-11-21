@@ -4,6 +4,8 @@
 
 IDirect3D8 *d3d8to9_create(void);
 struct IDirect3DDevice9 *d3d9_device(IDirect3DDevice8 *dev); // the real device under d3d8to9
+struct IDirect3DVertexBuffer9 *d3d9_vb(IDirect3DVertexBuffer8 *vb);
+struct IDirect3DIndexBuffer9 *d3d9_ib(IDirect3DIndexBuffer8 *ib);
 #define IS_VERTEX_SHADER(handle) ((handle) & 0x80000000) // otherwise an FVF code
 void log_line(const char *fmt, ...);
 void patch(void **slot, void *hook, void **orig);
@@ -84,8 +86,22 @@ int look_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start,
 void look_frame(IDirect3DDevice8 *dev);
 void look_present_ms(double ms);
 void look_state_changed(void);
+const D3DMATRIX *look_camera(D3DTRANSFORMSTATETYPE t, const D3DMATRIX *m, D3DMATRIX *tmp);
+int look_remaster_available(void);
+void look_set_remaster(int on);
+void look_before_clear(IDirect3DDevice8 *dev);
+void look_bb_restored(IDirect3DDevice8 *dev);
+int look_redirected(void);
+void look_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *fn);
+void look_shader_deleted(IDirect3DDevice8 *dev, DWORD h);
+int look_copying_shader(void);
+int look_char_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
+                   HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT), HRESULT *hr);
 void look_reset(IDirect3DDevice8 *dev);
 int look_hidden(UINT64 hash);
+UINT64 look_own_hash(IDirect3DDevice8 *dev, IDirect3DBaseTexture8 *t, UINT64 hash);
+int cutscene_playing(void);
+void look_texture_gone(IDirect3DBaseTexture8 *t);
 void look_merge_begin(IDirect3DDevice8 *dev, IDirect3DVertexBuffer8 *vb, IDirect3DIndexBuffer8 *ib);
 void look_merge_texture(IDirect3DDevice8 *dev, IDirect3DBaseTexture8 *tex, UINT64 hash);
 void look_merge_draw(IDirect3DDevice8 *dev, UINT nverts, UINT first, UINT tris);
@@ -99,6 +115,10 @@ void merge_device_reset(void);
 int merge_on_backbuffer(void);
 void merge_state_changed(void);
 void merge_stage_state(DWORD stage, DWORD type, DWORD value);
+int merge_is_2d(IDirect3DDevice8 *dev);
+int merge_ready(void);
+int merge_hub_draw(IDirect3DDevice8 *dev);
+void merge_each(IDirect3DDevice8 *dev, void (*batch)(IDirect3DDevice8 *, IDirect3DBaseTexture8 *, UINT, UINT, UINT));
 void merge_vb_created(IDirect3DVertexBuffer8 *vb);
 void merge_texture_gone(IDirect3DBaseTexture8 *t);
 extern int merge_stat_pieces, merge_stat_draws;

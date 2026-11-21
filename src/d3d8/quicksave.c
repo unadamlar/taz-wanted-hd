@@ -78,7 +78,7 @@ static void copy_all(int load)
 
 // A cutscene (level intro or outro) is on screen: one of the game's four cutscene slots is past loading.
 // Its sound and models stream in from other threads; a quickload during a boss outro froze the game.
-static int cutscene_playing(void)
+int cutscene_playing(void)
 {
     for (int i = 0; i < 4; i++) {
         BYTE *c = ((BYTE **)0x704d38)[i];

@@ -53,6 +53,8 @@ static void flush(void)
 static HRESULT WINAPI hook_CreateVertexShader(IDirect3DDevice8 *dev, CONST DWORD *decl, CONST DWORD *fn, DWORD *h, DWORD usage)
 {
     HRESULT hr = real_CreateVertexShader(dev, decl, fn, h, usage);
+    if (look_copying_shader()) return hr;
+    if (SUCCEEDED(hr) && decl && !memcmp(decl + 0, smooth_decl, 7 * sizeof *decl)) look_shader_created(dev, *h, fn);
     if (SUCCEEDED(hr) && decl && !memcmp(decl, smooth_decl, sizeof smooth_decl) && nshaders < 16) shaders[nshaders++] = *h, style_shader_created(*h, fn), mesh_shader_created(dev, *h, fn);
     return hr;
 }
@@ -62,6 +64,7 @@ static HRESULT WINAPI hook_DeleteVertexShader(IDirect3DDevice8 *dev, DWORD h)
 {
     for (int i = 0; i < nshaders; i++)
         if (shaders[i] == h) shaders[i--] = shaders[--nshaders];
+    look_shader_deleted(dev, h);
     style_shader_deleted(h);
     mesh_shader_deleted(dev, h);
     return real_DeleteVertexShader(dev, h);

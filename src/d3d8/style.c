@@ -411,6 +411,8 @@ HRESULT style_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UIN
 {
     int s = settings.taz_style;
     DWORD vs = 0;
+    HRESULT lit;
+    if (!(style_player && s > CURRENT && s < STYLES) && look_char_draw(dev, type, start, count, draw, &lit)) return lit;
     if (!style_player || s <= CURRENT || s >= STYLES || FAILED(IDirect3DDevice8_GetVertexShader(dev, &vs))
         || (vs != lit_shader && vs != outline_shader) || !ready(dev))
         return draw(dev, type, start, count);

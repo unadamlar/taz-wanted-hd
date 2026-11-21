@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "proxy.h"
+#include "hd.h"
 
 #define WORLD_FVF 0x152 // position, normal, colour, one uv
 #define STRIDE 36
@@ -46,7 +47,7 @@ static UINT cur_stride;
 static DWORD cur_shader, cur_rs[NKEY];
 static UINT cur_rs_id;
 
-static IDirect3DVertexBuffer8 *banned[32], *sources[64];
+static IDirect3DVertexBuffer8 *banned[32], *sources[64], *hub_vb; // hub_vb: the buffer holding most of the level's static world
 static UINT nbanned, nsources;
 
 int merge_stat_pieces, merge_stat_draws;
@@ -55,6 +56,7 @@ static HRESULT (WINAPI *real_SetRenderState)(IDirect3DDevice8 *, D3DRENDERSTATET
 static HRESULT (WINAPI *real_SetTransform)(IDirect3DDevice8 *, D3DTRANSFORMSTATETYPE, CONST D3DMATRIX *);
 static HRESULT (WINAPI *real_SetViewport)(IDirect3DDevice8 *, CONST D3DVIEWPORT8 *);
 static HRESULT (WINAPI *real_SetRenderTarget)(IDirect3DDevice8 *, IDirect3DSurface8 *, IDirect3DSurface8 *);
+static HRESULT (WINAPI *real_GetRenderTarget)(IDirect3DDevice8 *, IDirect3DSurface8 **);
 static HRESULT (WINAPI *real_SetVertexShader)(IDirect3DDevice8 *, DWORD);
 static HRESULT (WINAPI *real_SetStreamSource)(IDirect3DDevice8 *, UINT, IDirect3DVertexBuffer8 *, UINT);
 static HRESULT (WINAPI *real_Clear)(IDirect3DDevice8 *, DWORD, CONST D3DRECT *, DWORD, D3DCOLOR, float, DWORD);
@@ -77,6 +79,7 @@ void merge_reset(void)
 {
     if (slots) memset(slots, 0, SLOTS * sizeof *slots);
     npieces = nbatches = nverts = nidx = uploaded = issued = nrs = nsources = 0;
+    hub_vb = NULL;
     dirty = 1;
 }
 
@@ -208,6 +211,10 @@ static int upload(IDirect3DDevice8 *dev)
     memcpy(p, idx, nidx * 4);
     IDirect3DIndexBuffer8_Unlock(ib_gpu);
     uploaded = npieces;
+    UINT best = 0, count[64] = { 0 };
+    for (UINT i = 0; i < npieces; i++)
+        for (UINT k = 0; k < nsources; k++)
+            if (pieces[i].vb == sources[k] && ++count[k] > best) best = count[k], hub_vb = sources[k];
     log_line("merge: %u pieces, %u textures runs, %u vertices, %u triangles", npieces, nbatches, nverts, nidx / 3);
     return 1;
 }
@@ -273,9 +280,37 @@ int merge_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start
         return 1;
     }
     merge_flush(dev);
-    UINT64 hash = textures_bound_hash(0);
+    UINT64 hash = look_own_hash(dev, tex, textures_bound_hash(0));
     if (hash && !look_hidden(hash)) add_piece(h, cur_vb, tex, hash, type, start, count, rs);
     return 0;
+}
+
+// The draw about to happen is the level's own static world, not a cutscene's prop sharing its textures.
+int merge_hub_draw(IDirect3DDevice8 *dev)
+{
+    if (dirty) refresh(dev);
+    return hub_vb && cur_vb == hub_vb && world_id;
+}
+
+int merge_ready(void) { return npieces && uploaded == npieces; }
+
+int merge_is_2d(IDirect3DDevice8 *dev)
+{
+    if (dirty) refresh(dev);
+    return !cur_rs[0] || cur_rs[2] == D3DCMP_ALWAYS;
+}
+
+// Every uploaded run with its texture, for the depth and shadow passes. Binds the merged buffers.
+void merge_each(IDirect3DDevice8 *dev, void (*batch)(IDirect3DDevice8 *, IDirect3DBaseTexture8 *, UINT, UINT, UINT))
+{
+    if (!uploaded || !vb_gpu || !ib_gpu) return;
+    hd_merge_buffers(d3d9_device(dev), d3d9_vb(vb_gpu), d3d9_ib(ib_gpu));
+    for (UINT b = 0; b < nbatches; b++) {
+        const struct batch *k = &batches[b];
+        UINT end = k->p0 + k->n < uploaded ? k->p0 + k->n : uploaded, tris = 0;
+        for (UINT i = k->p0; i < end; i++) tris += pieces[i].tris;
+        if (tris) batch(dev, k->tex, nverts, pieces[k->p0].first, tris);
+    }
 }
 
 // At Present: the frame's last flush, and the merged buffers once new pieces have stopped appearing.
@@ -288,6 +323,7 @@ void merge_frame(IDirect3DDevice8 *dev)
 
 void merge_texture_gone(IDirect3DBaseTexture8 *t)
 {
+    look_texture_gone(t);
     for (UINT b = 0; b < nbatches; b++)
         if (batches[b].tex == t) { merge_flush(device), merge_reset(); return; }
 }
@@ -320,10 +356,11 @@ static HRESULT WINAPI hook_SetRenderState(IDirect3DDevice8 *dev, D3DRENDERSTATET
 
 static HRESULT WINAPI hook_SetTransform(IDirect3DDevice8 *dev, D3DTRANSFORMSTATETYPE t, CONST D3DMATRIX *m)
 {
-    if (t == D3DTS_VIEW || t == D3DTS_PROJECTION) merge_flush(dev);
+    if (t == D3DTS_VIEW || t == D3DTS_PROJECTION) merge_flush(dev), hd_invalidate();
     if (t == D3DTS_WORLD)
         world_id = m->_11 == 1 && m->_22 == 1 && m->_33 == 1 && !m->_41 && !m->_42 && !m->_43 && !m->_12 && !m->_13 && !m->_21 && !m->_23 && !m->_31 && !m->_32;
-    return real_SetTransform(dev, t, m);
+    D3DMATRIX tmp;
+    return real_SetTransform(dev, t, look_camera(t, m, &tmp));
 }
 
 static HRESULT WINAPI hook_SetViewport(IDirect3DDevice8 *dev, CONST D3DVIEWPORT8 *v)
@@ -341,8 +378,16 @@ static HRESULT WINAPI hook_SetRenderTarget(IDirect3DDevice8 *dev, IDirect3DSurfa
         IDirect3DDevice8_GetBackBuffer(dev, 0, D3DBACKBUFFER_TYPE_MONO, &bb);
         on_bb = rt == bb;
         if (bb) IDirect3DSurface8_Release(bb);
+        if (on_bb) look_bb_restored(dev);
     }
     return hr;
+}
+
+// While the 3D pass is redirected the game must keep seeing the back buffer as its target.
+static HRESULT WINAPI hook_GetRenderTarget(IDirect3DDevice8 *dev, IDirect3DSurface8 **out)
+{
+    if (look_redirected() && out) return IDirect3DDevice8_GetBackBuffer(dev, 0, D3DBACKBUFFER_TYPE_MONO, out);
+    return real_GetRenderTarget(dev, out);
 }
 
 static HRESULT WINAPI hook_SetVertexShader(IDirect3DDevice8 *dev, DWORD h)
@@ -360,6 +405,7 @@ static HRESULT WINAPI hook_SetStreamSource(IDirect3DDevice8 *dev, UINT n, IDirec
 static HRESULT WINAPI hook_Clear(IDirect3DDevice8 *dev, DWORD n, CONST D3DRECT *r, DWORD flags, D3DCOLOR c, float z, DWORD s)
 {
     merge_flush(dev);
+    if (on_bb) look_before_clear(dev);
     return real_Clear(dev, n, r, flags, c, z, s);
 }
 
@@ -371,6 +417,7 @@ void merge_install(IDirect3DDevice8 *dev)
     patch((void **)&vt->SetTransform, hook_SetTransform, (void **)&real_SetTransform);
     patch((void **)&vt->SetViewport, hook_SetViewport, (void **)&real_SetViewport);
     patch((void **)&vt->SetRenderTarget, hook_SetRenderTarget, (void **)&real_SetRenderTarget);
+    patch((void **)&vt->GetRenderTarget, hook_GetRenderTarget, (void **)&real_GetRenderTarget);
     patch((void **)&vt->SetVertexShader, hook_SetVertexShader, (void **)&real_SetVertexShader);
     patch((void **)&vt->SetStreamSource, hook_SetStreamSource, (void **)&real_SetStreamSource);
     patch((void **)&vt->Clear, hook_Clear, (void **)&real_Clear);
