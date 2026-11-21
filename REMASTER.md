@@ -18,6 +18,12 @@ zoo hub). It is loose reference: do what looks best for this game, never chase a
   `extracted/look/render/`. It has not been given pass 3's art yet.
 - Levels: `look=0` off, `1` additions, `2` adds sun and shadows on the world, `3` adds dirt and a colour grade,
   `8`/`9` shadow-map debug views. Live: a `taz-hd\look` file holding N.
+- Step 1 is done (2026-11-21): the whole mod runs on Direct3D 9 through a built-in d3d8to9, and at look levels 2-3 the
+  hub's 5,353 static world pieces draw as 832 merged draws. Checked in game: `extracted/look/reports/step1/`.
+
+Measured on the desktop (RTX 4070, 2880x1800, 4x MSAA, vsync off, median of 3 runs of 600 frames, view A), D3D8 to
+D3D9: level 0 5.02 to 1.51 ms, level 1 8.94 to 4.08, level 2 18.29 to 5.83, level 3 18.37 to 5.98. Why level 0 gained
+3.3x was not investigated.
 
 Measured on the laptop (RTX 4060, 2880x1800, 4x MSAA, vsync off, mostly 2 runs): 210-240 fps at level 0, 105-130 at
 level 1 (GPU-bound on ~2M grass triangles), 46-55 at levels 2-3 (CPU-bound: ~35 D3D calls for each of ~7,500 tiny
@@ -43,6 +49,10 @@ Rerun commands: the `extracted/look/` renders come from
   github.com/crosire/d3d8to9, approved by the user), and draw the static world as merged buffers. D3D8 blocks
   real instancing, soft shadows, float targets for bloom and proper materials; a separate 64-bit renderer process
   is not worth it unless memory becomes the wall. Compress the HD textures to free address space.
+- d3d8to9 is compiled into our DLL under the existing hooks, so the mod's D3D8 code keeps working. Its shader path
+  through d3dx9_43.dll is replaced by direct bytecode conversion, since stock Windows doesn't ship that DLL.
+- The merge only takes opaque or alpha-tested static world draws. The game still decides each frame which pieces are
+  drawn, so a piece it stops issuing disappears as it would have.
 - Stay on D3D9 through step 5 (user, 2026-11-21). Newer APIs would add GPU-simulated grass, BC7, cheaper AO and ray
   tracing, but need a new renderer for everything the game draws. Revisit at step 6 from in-game results; if we jump,
   the candidate is Vulkan in a separate 64-bit process, which also removes the memory limit.
@@ -53,7 +63,7 @@ Rerun commands: the `extracted/look/` renders come from
 
 ## Roadmap
 
-1. Renderer: move to D3D9 and merge the static world in one go. Everything the mod already does must still work:
+1. (Done 2026-11-21) Renderer: move to D3D9 and merge the static world in one go. Everything the mod already does must still work:
    HD textures and models, Taz styles, MSAA, resolution change, F5/F9, F11, menus, map previews, paper books, video,
    screenshots, gamepad. Handle device reset for the new targets.
 2. Bring pass 3 in game: materials on ground, brick and cliffs, foliage cards, sky and clouds, water, soft shadows,
@@ -67,10 +77,13 @@ Rerun commands: the `extracted/look/` renders come from
 
 ## Known problems
 
-- Taz casts no shadow at levels 2-3; a fix and a state-caching build compile but were never run.
 - Grass blades shadow themselves into dark speckle. The grade tints the HUD. Pebbles render darker than in Blender.
-- Device reset isn't handled for the shadow textures. `qa/lookwalk.sh` was written but never run.
-- Instancing relies on DXVK's 256 vertex constants (real D3D8 hardware may only give 96): another reason for D3D9.
+- `qa/lookwalk.sh` was written but never run.
+- Instancing still goes through 256 vertex constants; move it to real D3D9 instancing.
+- Not tested on the D3D9 build: real Windows, Wine without DXVK, a physical gamepad, a real alt-tab, `config.exe`,
+  a full `tools/package.sh` run, a world piece first seen after the merge is built, a world buffer rewritten mid-scene.
+- At level 0, 3.9% of pixels differ from the D3D8 build by more than 16 levels, on thin edges and foliage. It looks
+  the same side by side; the cause is not isolated.
 - Pass 3: cliffs are rounded like stacked pancakes, the water bed barely reads, the elephant is plain, buildings are
   untouched, a green-and-white fragment sits in camera B's bottom-right corner.
 
