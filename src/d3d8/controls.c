@@ -4,8 +4,8 @@
 // had them do, so D moves instead of ranting and Space jumps instead of opening the map. Keys the
 // layout doesn't use keep their old jobs (C, F, R, X, V, E, T, arrows). Mouse look: around the
 // camera control (FUN_004e0f00) the mouse is added to the pad's camera stick for that call only, so
-// the game's own camera rules still apply, except that the camera doesn't trail Taz for a moment
-// after. The mouse is held (DirectInput exclusive, which hides it) only while that camera control
+// the game's own camera rules still apply, except that the camera stays where the mouse left it.
+// The mouse is held (DirectInput exclusive, which hides it) only while that camera control
 // runs, so menus get it back. Gamepad: see bind_gamepad.
 #include <math.h>
 #include <stdio.h>
@@ -75,6 +75,7 @@ static float tilt_step;         // tilt change this frame (radians)
 static BYTE *tilt_cam;          // camera whose tilt the mouse holds this frame
 static BYTE *mouse_cam;         // camera the mouse last turned...
 static DWORD mouse_time;        // ...and when (ms)
+static int mouse_led;           // that last turn came from the mouse, not the gamepad's stick
 static DWORD camera_frame, now; // frames: last camera control call, current
 static int held;                // mouse held exclusively
 static BYTE *p1_pad;            // player 1's pad as set up for the keyboard...
@@ -411,7 +412,7 @@ static void __cdecl camera_control(void **cc)
     // The gamepad's camera stick is made to work like the mouse: the view turns the way it is pushed
     // and the tilt stays where it was left (the game turns the other way and springs back).
     float dx = mouse ? MOUSE_DX : 0, dy = mouse ? MOUSE_DY : 0, sx = stick(pad[6]), sy = stick(pad[7]);
-    if (dx || dy || sx || sy) mouse_cam = cam, mouse_time = GetTickCount();
+    if (dx || dy || sx || sy) mouse_cam = cam, mouse_time = GetTickCount(), mouse_led = dx || dy;
     float sens = settings.mouse * 0.0003f, per_frame = TURN_RATE / FPS;
     float yaw = -dx * sens / per_frame; // in stick units: the game turns per_frame * stick
     float saved[8];
@@ -446,21 +447,33 @@ static void __cdecl camera_control(void **cc)
 }
 
 // The camera trails Taz on a leash (and in some states swings behind him), so running anywhere but
-// straight ahead turns it, fighting the mouse. For a while after mouse input it keeps the direction
-// it had around Taz, then gently hands back to the game. Taz's moves also set the tilt after the
-// camera control ran (level while he spins, steeper while he falls), so the mouse's tilt is put back.
+// straight ahead turns it, fighting the mouse. So it keeps the direction the mouse left it, except
+// for the game's deliberate swings behind Taz (flags 4, 0x40). After the gamepad's stick it keeps it
+// for a moment, then gently hands back to the game. Taz's moves also set the tilt after the camera
+// control ran (level while he spins, steeper while he falls), so the mouse's tilt is put back.
 // The game only moves the eye's destination for a tilt and eases the eye after it, which lags the
 // mouse, so the eye is tilted by the same step, as it is turned.
 static void __cdecl camera_update(BYTE *cam)
 {
     float *c = (float *)cam, before = heading(c + 8, c + 12), t = (GetTickCount() - mouse_time) / 1000.f;
-    float keep = cam != mouse_cam || (*(DWORD *)(cam + 0x74) & 0x1b00) != 0x1000 || *(void **)(cam + 0xac) ? 0
-               : t < 1.5f ? 1 : t < 3 ? (3 - t) / 1.5f : 0; // player camera, not scripted, look-around or catching up
+    DWORD flags = *(DWORD *)(cam + 0x74);
+    int hold = mouse_led && settings.wasd && settings.mouse && !(flags & 0x44);
+    int follow = cam == mouse_cam && (flags & 0x1b00) == 0x1000 && !*(void **)(cam + 0xac); // not scripted, look-around or catching up
+    float keep = !follow ? 0 : hold || t < 1.5f ? 1 : t < 3 ? (3 - t) / 1.5f : 0;
     int tilt = cam == tilt_cam && now - camera_frame <= 1 && !*(void **)(cam + 0xac);
     if (tilt) c[0x19] = TILT_REST - pitch * TILT_SWING, *(DWORD *)(cam + 0x74) |= 1;
     CAMERA_UPDATE(cam);
     if (tilt && tilt_step) lift(c, c + 12, tilt_step), tilt_step = 0;
     if (keep) spin(c + 8, c + 12, wrap(before - heading(c + 8, c + 12)) * keep);
+    // The eye trails Taz further than the point it looks at, which turned the view during sideways
+    // runs. Aim it along its destination, at a limited rate so a jump in heading can't snap the view.
+    // Against a wall the destination takes the eye's heading instead, or the two would pull apart.
+    BYTE *body = *(BYTE **)(cam + 0x278);
+    if (follow && FPS > 0) {
+        float err = wrap(heading(c + 8, c + 12) - heading(c, c + 4)), most = 4 / FPS;
+        if (body && body[0xf4] && fabsf(*(float *)(body + 0xdc)) < 0.7f) spin(c + 8, c + 12, -err);
+        else spin(c, c + 4, err > most ? most : err < -most ? -most : err);
+    }
 }
 
 // IDirectInputDevice8 vtable slots.
