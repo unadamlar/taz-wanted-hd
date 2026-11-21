@@ -53,6 +53,9 @@ Rerun commands: the `extracted/look/` renders come from
   through d3dx9_43.dll is replaced by direct bytecode conversion, since stock Windows doesn't ship that DLL.
 - The merge only takes opaque or alpha-tested static world draws. The game still decides each frame which pieces are
   drawn, so a piece it stops issuing disappears as it would have.
+- F11 cycles three looks (user, 2026-11-21): Remaster, HD (the `master` look: HD textures and models, no look
+  additions or post) and Original 2002. Swaps are instant, with nothing reloaded. Scenes without look data cycle HD
+  and Original only.
 - Stay on D3D9 through step 5 (user, 2026-11-21). Newer APIs would add GPU-simulated grass, BC7, cheaper AO and ray
   tracing, but need a new renderer for everything the game draws. Revisit at step 6 from in-game results; if we jump,
   the candidate is Vulkan in a separate 64-bit process, which also removes the memory limit.
