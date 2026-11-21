@@ -2,6 +2,7 @@
 
 HD remaster mod for the 2002 PC release of Taz: Wanted (Blitz Games, Babel engine, Direct3D 8, MSVC 6).
 Shape: a loader DLL and asset packs applied to the user's own copy; later an optional modern render mode by hooking Babel's PC render layer (`C:\Babel\PC\Src\bDisplay`, `bActor`).
+The modern-look remaster work lives on the `look-test` branch; its plan and state are in `REMASTER.md`.
 
 ## Local setup
 - Local paths live in `dev.env` (git-ignored; see README.md), which `tools/run-dev.sh` reads. Never put machine paths in tracked files.
