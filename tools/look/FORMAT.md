@@ -41,8 +41,9 @@ bind (24 bytes): how a game texture's world surface gets a material
   u32 mask     0 whole surface
                1 where the game texture is redder than green (painted dirt; grass paint stays)
                2 where its brightness is above the threshold (brick faces, not mortar)
+               3 where its lowest channel is above the threshold (pale trim painted on brick)
   f32 lo, hi   smoothstep range for the mask
-               x = r - g (mask 1) or 0.3r + 0.59g + 0.11b (mask 2), on the game texture's raw sRGB values
+               x = r - g (mask 1), 0.3r + 0.59g + 0.11b (mask 2) or min(r, g, b) (mask 3), on the game texture's raw sRGB values
                t = saturate((x - lo) / (hi - lo)); m = t * t * (3 - 2 * t). lo > hi inverts the mask.
                A fingerprint can have several binds: apply them in file order, each over the last.
                Where the masks leave a pixel uncovered, the game's texture shows.

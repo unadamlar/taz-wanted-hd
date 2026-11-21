@@ -23,10 +23,10 @@ def use_gpu(sc):
     print("bake: device", sc.cycles.device, [d.name for d in prefs.devices if d.use])
 
 
-def _plane(size, vertical):
+def _plane(size, vertical, z0=0.0):
     """Quad over [0, size]^2 in world space, with the attributes the kit's graphs read."""
-    co = [(0, 0, 0), (size, 0, 0), (size, 0, size), (0, 0, size)] if vertical else \
-         [(0, 0, 0), (size, 0, 0), (size, size, 0), (0, size, 0)]
+    co = [(0, 0, z0), (size, 0, z0), (size, 0, z0 + size), (0, 0, z0 + size)] if vertical else \
+         [(0, 0, z0), (size, 0, z0), (size, size, z0), (0, size, z0)]
     me = bpy.data.meshes.new("bake_plane")
     me.from_pydata(co, [], [(0, 1, 2, 3)])
     uv = me.uv_layers.new(name="UVMap")
@@ -73,7 +73,7 @@ def _seamless(a, n):
     return a[:n, :n]
 
 
-def bake_tile(cache, name, mat, tile, px, vertical=True, overlap=0.125, samples=8, seamless=True):
+def bake_tile(cache, name, mat, tile, px, vertical=True, overlap=0.125, samples=8, seamless=True, z0=0.0):
     """Albedo (sRGB) and tangent normal (0..1) of a material over a `tile`-sized square."""
     f = Path(cache) / (name + ".npz")
     if f.exists():
@@ -83,7 +83,7 @@ def bake_tile(cache, name, mat, tile, px, vertical=True, overlap=0.125, samples=
     sc.cycles.samples = samples
     ov = int(round(px * overlap)) if seamless else 0
     n = px + ov
-    ob = _plane(tile * n / px, vertical)
+    ob = _plane(tile * n / px, vertical, z0)
     alb, nor = _bake(ob, mat, n, "albedo"), _bake(ob, mat, n, "normal")
     bpy.data.objects.remove(ob)
     alb, nor = _seamless(alb, px), _seamless(nor, px)
@@ -96,37 +96,58 @@ def bake_tile(cache, name, mat, tile, px, vertical=True, overlap=0.125, samples=
     return alb, nor
 
 
+def _render_pano(sc, path, n, transparent):
+    r = sc.render
+    r.film_transparent = transparent
+    r.filepath = path
+    bpy.ops.render.render(write_still=True)
+    img = bpy.data.images.load(path)
+    px = np.empty(n * (n // 2) * 4, np.float32)
+    img.pixels.foreach_get(px)
+    bpy.data.images.remove(img)
+    Path(path).unlink()
+    return px.reshape(n // 2, n, 4)[::-1].copy()
+
+
 def bake_sky(cache, sc, eye, n=8192):
-    """Equirect render of what a camera sees beyond the level: world + far hill panels, scene-linear."""
+    """Equirect of what a camera sees beyond the level, scene-linear: the world, with the far hill panels over it.
+    The panels on the +y side carry the game's painted sun and are hidden in the dressing, so the -y hills are
+    mirrored across the x axis to close the ring; below the horizon is the hills' own ground colour."""
     f = Path(cache) / "sky.npz"
     if f.exists():
         return np.load(f)["sky"]
+    panels = [o for o in bpy.data.objects if o.type == "MESH" and
+              any(s.material and s.material.name.startswith("backdrop:") for s in o.material_slots)]
     for o in bpy.data.objects:
         if o.type == "MESH":
-            keep = any(s.material and s.material.name.startswith("backdrop:") for s in o.material_slots)
-            o.hide_render = not keep
+            o.hide_render = True
     cd = bpy.data.cameras.new("sky_cam")
     cd.type = "PANO"
     cd.panorama_type = "EQUIRECTANGULAR"
     cam = bpy.data.objects.new("sky_cam", cd)
     sc.collection.objects.link(cam)
     cam.location = eye
-    cam.rotation_euler = (math.pi / 2, 0, 0)
+    cam.rotation_euler = (math.pi / 2, 0, 0)  # image centre looks along +y
     sc.camera = cam
     r = sc.render
     r.resolution_x, r.resolution_y, r.resolution_percentage, r.pixel_aspect_x = n, n // 2, 100, 1.0
-    r.use_compositing, r.film_transparent = False, False
+    r.use_compositing = False
     sc.cycles.samples = 16
     r.image_settings.file_format = "OPEN_EXR"
+    r.image_settings.color_mode = "RGBA"
     r.image_settings.color_depth = "32"
-    r.filepath = str(Path(cache) / "sky_render.exr")
-    bpy.ops.render.render(write_still=True)
-    img = bpy.data.images.load(r.filepath)
-    px = np.empty(n * (n // 2) * 4, np.float32)
-    img.pixels.foreach_get(px)
-    sky = px.reshape(n // 2, n, 4)[::-1, :, :3].copy()
-    bpy.data.images.remove(img)
-    Path(r.filepath).unlink()
+    world = _render_pano(sc, str(Path(cache) / "sky_world.exr"), n, False)[..., :3]
+    for o in panels:
+        o.hide_render = False
+    hills = _render_pano(sc, str(Path(cache) / "sky_hills.exr"), n, True)
+    h, w = hills.shape[:2]
+    mid = np.arange(w // 4, 3 * w // 4)
+    hills[:, mid] = hills[:, (3 * w // 2 - 1 - mid) % w]
+    sky = world * (1 - hills[..., 3:]) + hills[..., :3]
+    below = h // 2 + max(2, h // 180)
+    band = hills[h // 2 + 1:below]
+    ground = np.median(band[band[..., 3] > 0.5][..., :3], axis=0)
+    sky[below:] = ground
     np.savez_compressed(f, sky=sky.astype(np.float16))
     return sky
 

@@ -135,9 +135,13 @@ def card_tile(name, mat, opacity, px=1024):
 
 
 t0 = time.time()
+tile_mean = {}
 for name, (graph, tile, px, vertical) in TILES.items():
-    alb, nor = bake.bake_tile(cache, name, graph(), tile, px, vertical)
+    # the cliff graph's strata depend on height: bake it where the rock actually stands
+    z0 = kit.world_bbox(bpy.data.objects["kit_cliff_mass"])[0].z if name == "cliff" else 0.0
+    alb, nor = bake.bake_tile(cache, name, graph(), tile, px, vertical, z0=z0)
     alb, nor = np.asarray(alb, np.float32), np.asarray(nor, np.float32)
+    tile_mean[name] = dds.to_linear(alb).reshape(-1, 3).mean(0)
     put_tex(name, dds.mips(np.dstack([alb, np.ones(alb.shape[:2])])), b"DXT1")
     put_normal(name + "_n", nor)
 for name, mat, folder in (("leaves", kit._cards_mat(SC), "leaves024"), ("ivy", kit._ivy_mat(), "ivy017")):
@@ -170,6 +174,7 @@ def game_rows(m):
     return r.ravel()
 
 
+MOSS = dds.to_linear(np.array([84, 112, 31]) / 255)  # the rock graph's moss, measured on the mass's top faces
 TIP_RAMP = [(0.2, kit.srgb("#3f8f22")), (0.45, kit.srgb("#62b02e")), (0.75, kit.srgb("#86c63a")), (0.97, kit.srgb("#b2c94c"))]
 
 
@@ -191,6 +196,11 @@ if grass_names:
         inst[grass_names[rank * len(grass_names) // len(order)]].append(mats[idx])
 
 
+def smooth(x, lo, hi):
+    t = np.clip((x - lo) / (hi - lo), 0, 1)
+    return t * t * (3 - 2 * t)
+
+
 def srgb8(c):
     return np.rint(dds.to_srgb(np.clip(c, 0, 1)) * 255).astype(np.uint32)
 
@@ -209,6 +219,8 @@ for n in grass_names:
     bmesh.ops.dissolve_verts(bm, verts=[bm.verts[7 * b + k] for b in range(len(bm.verts) // 7) for k in (2, 3)])
     bm.to_mesh(me)
     bm.free()
+
+
 
 # flat-coloured variants: albedo through Cycles into a corner colour attribute
 flat = [bpy.data.objects[n] for n in sorted(inst) if not n.startswith(("kit_v_grass", "kit_v_bush", "kit_v_vine"))]
@@ -251,6 +263,37 @@ def corner_colors(o, co, grass_rank):
     return np.ones((nl, 3), np.float32)
 
 
+_ico = bmesh.new()
+bmesh.ops.create_icosphere(_ico, subdivisions=2, radius=1)
+ICO_V = np.array([v.co for v in _ico.verts], np.float32)[:, [0, 2, 1]]  # Blender -> game axes, like every mesh here
+ICO_T = np.array([[l.vert.index for l in f.loops] for f in _ico.faces])
+_ico.free()
+
+
+def thin_cores(p, n, c, uv, m):
+    """Canopy clumps are icospheres (320 triangles each) under the leaf cards: rebuild them with 80."""
+    core = m == MAT_ID["leaf_core"]
+    if not core.any():
+        return p, n, c, uv, m
+    cp = p[core].reshape(-1, 960, 3)  # one clump per 320 corners-triples, as _canopy_mesh emits them
+    cen = cp.mean(1)
+    rad = np.linalg.norm(cp - cen[:, None], axis=2).mean(1)
+    cc = cen.mean(0)
+    R = np.linalg.norm(cp - cc, axis=2).max()
+    d = ICO_V[ICO_T.ravel()]
+    q = cen[:, None] + rad[:, None, None] * d
+    away = (q - cc) / np.maximum(np.linalg.norm(q - cc, axis=2, keepdims=True), 1e-6)
+    nn = 0.6 * d + 0.4 * away
+    nn /= np.linalg.norm(nn, axis=2, keepdims=True)
+    ao = np.clip(0.35 + 0.65 * (away[..., 1] * 0.5 + 0.5) * np.minimum(1, np.linalg.norm(q - cc, axis=2) / R), 0, 1)[..., None]
+    wob = np.array([1 + 0.25 * mnoise.noise(Vector(x) * 0.6 / (SC * K)) for x in cen], np.float32)[:, None, None]
+    col = (np.array(kit.srgb("#58a52e"))[None, None] * ao + np.array(kit.srgb("#1f4a14"))[None, None] * (1 - ao)) * wob
+    rest = ~core
+    return (np.concatenate([q.reshape(-1, 3), p[rest]]), np.concatenate([nn.reshape(-1, 3), n[rest]]),
+            np.concatenate([col.reshape(-1, 3), c[rest]]), np.concatenate([np.full((q.size // 3, 2), 0.5, np.float32), uv[rest]]),
+            np.concatenate([np.full(q.size // 3, MAT_ID["leaf_core"]), m[rest]]))
+
+
 def tris_of(o, world):
     """Corner arrays of an object in game space: (pos, normal, colour, uv, material id), three per triangle."""
     me = o.data
@@ -267,6 +310,10 @@ def tris_of(o, world):
         uv[:, 1] = 1 - uv[:, 1]  # Direct3D's v runs down from the image's top row
     rank = grass_names.index(o.name) if o.name in grass_names else 0
     col = corner_colors(o, co, rank)
+    if o.name.startswith("kit_cliff_mass"):  # the graphs' moss on upward faces, as a tint over the tile
+        key, amount = ("boulder", 0.5) if "rubble" in o.name else ("cliff", 1.0)
+        t = (smooth(cn[:, 2], 0.55, 0.8) * amount)[:, None]
+        col = col * (1 - t) + np.clip(MOSS / tile_mean[key], 0, 1)[None] * t
     M = np.array(S @ o.matrix_world if world else S, np.float32)
     pos = (co[vi] @ M[:3, :3].T + M[:3, 3]) * K
     N = np.linalg.inv(M[:3, :3]).T
@@ -280,7 +327,7 @@ def tris_of(o, world):
         side = np.cross(gd, nor)
         tile = TILES["wood"][1] * K
         uv = np.stack([(pos * gd).sum(1), (pos * side).sum(1)], 1) / tile
-    return pos[lt], nor[lt], col[lt], uv[lt], ids.repeat(3)
+    return thin_cores(pos[lt], nor[lt], col[lt], uv[lt], ids.repeat(3))
 
 
 def weld(p, n, c, uv, m):
@@ -392,11 +439,6 @@ def tex_pixels(file):
     return px.reshape(h, w, 4)[..., :3]
 
 
-def smooth(x, lo, hi):
-    t = np.clip((x - lo) / (hi - lo), 0, 1)
-    return t * t * (3 - 2 * t)
-
-
 def kit_trim_mask(srgb):
     """kit.light_mask_node on the texture as Blender sees it (linear)."""
     lin = dds.to_linear(srgb)
@@ -405,23 +447,22 @@ def kit_trim_mask(srgb):
     return smooth(lum, 0.55, 0.7) * (1 - smooth(sat, 0.25, 0.45))
 
 
-LUMA = np.array([0.3, 0.59, 0.11])
 mask_report = []
 
 
 def brick_binds(fprint, file):
     """Brick where the game paints brick, trim where the kit's pale-and-unsaturated test says so,
-    fitted to a plain brightness threshold on the raw texture."""
+    fitted to a threshold on the raw texture's lowest channel (pale colours have no low channel)."""
     px = tex_pixels(file)
     want = kit_trim_mask(px)
-    lum = px @ LUMA
+    low = px.min(2)
     if want.mean() < 0.01:
         return [(fprint, MAT_ID["brick"], 0, 0.0, 1.0)]
-    best = min(np.arange(0.3, 0.98, 0.02), key=lambda t: np.abs(smooth(lum, t - 0.05, t + 0.05) - want).mean())
-    err = float(np.abs(smooth(lum, best - 0.05, best + 0.05) - want).mean())
+    best = min(np.arange(0.3, 0.98, 0.02), key=lambda t: np.abs(smooth(low, t - 0.05, t + 0.05) - want).mean())
+    err = float(np.abs(smooth(low, best - 0.05, best + 0.05) - want).mean())
     mask_report.append((file, float(want.mean()), float(best), err))
-    return [(fprint, MAT_ID["brick"], 2, float(best + 0.05), float(best - 0.05)),
-            (fprint, MAT_ID["trim"], 2, float(best - 0.05), float(best + 0.05))]
+    return [(fprint, MAT_ID["brick"], 3, float(best + 0.05), float(best - 0.05)),
+            (fprint, MAT_ID["trim"], 3, float(best - 0.05), float(best + 0.05))]
 
 
 REDDER = (-0.14, -0.05)  # r - g on the raw texture; the kit's "green dominates" edge lands here
