@@ -43,6 +43,9 @@ Rerun commands: the `extracted/look/` renders come from
   github.com/crosire/d3d8to9, approved by the user), and draw the static world as merged buffers. D3D8 blocks
   real instancing, soft shadows, float targets for bloom and proper materials; a separate 64-bit renderer process
   is not worth it unless memory becomes the wall. Compress the HD textures to free address space.
+- Stay on D3D9 through step 5 (user, 2026-11-21). Newer APIs would add GPU-simulated grass, BC7, cheaper AO and ray
+  tracing, but need a new renderer for everything the game draws. Revisit at step 6 from in-game results; if we jump,
+  the candidate is Vulkan in a separate 64-bit process, which also removes the memory limit.
 - Frame rate is a later pass. Don't let it block the look, but don't build anything that can't be made fast.
 - Sun is per level and placed for looks; baked vertex shadows are dropped.
 - Never move a game surface. Walkable tops keep their height; replacements must contain the collision shape.
