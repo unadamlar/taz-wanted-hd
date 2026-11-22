@@ -394,7 +394,7 @@ void look_after_draw(IDirect3DDevice8 *dev)
 static int moving_bark(IDirect3DDevice8 *dev, UINT64 raw)
 {
     D3DMATRIX w;
-    return raw == 0x744855ebde27c1b5ULL && SUCCEEDED(IDirect3DDevice8_GetTransform(dev, D3DTS_WORLD, &w)) && (w._41 || w._42 || w._43);
+    return raw == 0x744855ebde27c1b5ULL && hd_hidden(raw) && SUCCEEDED(IDirect3DDevice8_GetTransform(dev, D3DTS_WORLD, &w)) && (w._41 || w._42 || w._43);
 }
 
 static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count)
