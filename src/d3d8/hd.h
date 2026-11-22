@@ -10,8 +10,8 @@ int hd_load(hd_dev d, int scene);       // 0: no data for this scene
 void hd_unload(void);
 int hd_loaded(void);
 void hd_reset(void);                    // before a device Reset
+int capture_tests(void);                // tests=1 in the ini
 int hd_lost(void);                      // since the last call, a Reset dropped the scene's data
-void hd_check_reload(void);
 int hd_hidden(unsigned long long hash); // a game texture whose world draws are dropped
 int hd_has_bind(unsigned long long hash);
 int hd_shade(unsigned long long hash);  // a baked shadow decal, dropped everywhere

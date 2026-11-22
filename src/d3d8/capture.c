@@ -18,6 +18,8 @@ static FILE *out;
 static void *seen[1024];
 static int nseen;
 
+int capture_tests(void) { return settings.tests; }
+
 // Between game frames (quicksave.c): FUN_004a9730 is the game's scene change, as the attract demo uses it.
 void capture_scene(void)
 {
@@ -46,8 +48,12 @@ void capture_scene(void)
     f = fopen("taz-hd\\scene", "r");
     if (!f) return;
     char word[8] = "";
-    int scene, ok = fscanf(f, "%d %7s", &scene, word) >= 1 && scene >= 0 && scene < 0x25 && SCENE >= 2; // in play, not menus
+    int scene, ok = fscanf(f, "%d %7s", &scene, word) >= 1 && scene >= 0 && scene < 0x25;
     fclose(f);
+    int boot = !strcmp(word, "boot"); // from the menus, into save slot One
+    if (boot && SCENE == 0) return; // too early: the scene change crashes during the logos
+    if (!boot && SCENE < 2) ok = 0;
+    if (boot) *(int *)0x6c8eec = 0;
     DeleteFileA("taz-hd\\scene"); // first: loading runs game frames, which come back here
     if (ok && !strcmp(word, "intro")) *(BYTE *)(0x6c9860 + *(int *)0x6c8eec * 0x13d4 + scene * 0xa8) &= ~1; // hub intro not seen yet
     if (ok) {

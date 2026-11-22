@@ -247,24 +247,50 @@ static void read_ini(void)
     norm3(lv.sun);
 }
 
-void hd_check_reload(void)
+// Test runs: taz-hd\\shaders\\NAME.cso overrides the built-in shader.
+static DWORD *shader_file(const char *name)
 {
-    if (GetFileAttributesA("taz-hd\\look-reload") == INVALID_FILE_ATTRIBUTES) return;
-    DeleteFileA("taz-hd\\look-reload");
-    if (scene_no >= 0) read_ini(), log_line("hd: level.ini reloaded");
+    char path[64];
+    snprintf(path, sizeof path, "taz-hd\\shaders\\%s.cso", name);
+    FILE *f = capture_tests() ? fopen(path, "rb") : NULL;
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    rewind(f);
+    DWORD *code = malloc(n);
+    if (code && fread(code, 1, n, f) != (size_t)n) free(code), code = NULL;
+    fclose(f);
+    return code;
 }
 
-static int make_shaders(hd_dev d)
+static int load_shaders(hd_dev d)
 {
-    if (v_world) return 1;
     int ok = 1;
-#define VS(var, code) ok &= SUCCEEDED(IDirect3DDevice9_CreateVertexShader(d, code, &var))
-#define PS(var, code) ok &= SUCCEEDED(IDirect3DDevice9_CreatePixelShader(d, code, &var))
+#define MAKE(kind, var, code) { IDirect3D##kind##Shader9 *s = NULL; DWORD *f = shader_file(#code); \
+    if (SUCCEEDED(IDirect3DDevice9_Create##kind##Shader(d, f ? f : code, &s))) { if (var) IDirect3D##kind##Shader9_Release(var); var = s; } else ok = 0; \
+    free(f); }
+#define VS(var, code) MAKE(Vertex, var, code)
+#define PS(var, code) MAKE(Pixel, var, code)
     VS(v_world, vs_world); VS(v_inst, vs_inst); VS(v_wind, vs_inst_wind); VS(v_grass, vs_grass);
     VS(v_world_z, vs_world_depth); VS(v_inst_z, vs_inst_depth); VS(v_grass_z, vs_grass_depth); VS(v_sky, vs_sky); VS(v_quad, vs_quad); VS(v_char_z, vs_char_depth);
     PS(p_depth, ps_depth); PS(p_world, ps_world); PS(p_mat, ps_world_mat); PS(p_mat2, ps_world_mat2); PS(p_tiled, ps_inst_tiled); PS(p_inst, ps_inst); PS(p_card, ps_card);
     PS(p_grass, ps_grass); PS(p_water, ps_water); PS(p_sky, ps_sky); PS(p_char, ps_char); PS(p_glow, ps_glow);
     PS(p_bright, ps_bright); PS(p_down, ps_down); PS(p_up, ps_up); PS(p_final, ps_final); PS(p_ao, ps_ao); PS(p_blur, ps_ao_blur);
+    return ok;
+}
+
+static void check_reload(hd_dev d)
+{
+    if (GetFileAttributesA("taz-hd\\look-reload") == INVALID_FILE_ATTRIBUTES) return;
+    DeleteFileA("taz-hd\\look-reload");
+    if (scene_no >= 0) read_ini(), log_line("hd: level.ini reloaded");
+    if (v_world) log_line("hd: shaders reloaded%s", load_shaders(d) ? "" : ", some FAILED");
+}
+
+static int make_shaders(hd_dev d)
+{
+    if (v_world) return 1;
+    int ok = load_shaders(d);
     static const D3DVERTEXELEMENT9 e_world[] = {
         { 0, 0, D3DDECLTYPE_FLOAT3, 0, D3DDECLUSAGE_POSITION, 0 }, { 0, 12, D3DDECLTYPE_FLOAT3, 0, D3DDECLUSAGE_NORMAL, 0 },
         { 0, 24, D3DDECLTYPE_D3DCOLOR, 0, D3DDECLUSAGE_COLOR, 0 }, { 0, 28, D3DDECLTYPE_FLOAT2, 0, D3DDECLUSAGE_TEXCOORD, 0 }, D3DDECL_END() };
@@ -1344,5 +1370,5 @@ void hd_frame_end(hd_dev d)
     if (redirected) hd_post(d);
     unbind_common(d);
     post_done = additions_done = prepass_done = sky_done = 0;
-    hd_check_reload();
+    check_reload(d);
 }
