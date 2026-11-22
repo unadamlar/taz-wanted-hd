@@ -13,21 +13,17 @@ zoo hub). It is loose reference: do what looks best for this game, never chase a
 
 - Blender look test, zoo hub, three art passes: `extracted/look/pass3/` is the current best
   (`final-B-pass2-vs-pass3.jpg`, `final-A-pass2-vs-pass3.jpg`, `final-C-strip.jpg`). The user likes the direction.
-- In-game prototype (`src/d3d8/look.c`, off unless `tests=1` and `look=N`): draws pass 2's grass, clutter, fences,
-  trees and cliff rocks inside the game's 3D pass, with sun shadow maps and tiling dirt. Screenshots:
-  `extracted/look/render/`. It has not been given pass 3's art yet.
-- Levels: `look=0` off, `1` additions, `2` adds sun and shadows on the world, `3` adds dirt and a colour grade,
-  `8`/`9` shadow-map debug views. Live: a `taz-hd\look` file holding N.
-- Step 1 is done (2026-11-21): the whole mod runs on Direct3D 9 through a built-in d3d8to9, and at look levels 2-3 the
-  hub's 5,353 static world pieces draw as 832 merged draws. Checked in game: `extracted/look/reports/step1/`.
+- In game (`src/d3d8/look.c`, `hd.c`, off unless `tests=1` and `look=N`): `look=0` is off and any other value is the
+  Remaster look. Live: a `taz-hd\look` file holding N. F11 cycles Remaster, HD and Original 2002.
+- Step 1 is done (2026-11-21): the whole mod runs on Direct3D 9 through a built-in d3d8to9, and the hub's 5,353 static
+  world pieces draw as 832 merged draws. Checked in game: `extracted/look/reports/step1/`.
+- Step 2 is done (2026-11-22): the zoo hub draws pass 3's materials, foliage, grass, sky, water, soft shadows, AO, bloom
+  and tone mapping in game, with the HUD ungraded. `master`'s camera, level ending and grass fixes are merged in.
+  Checked in game: `extracted/look/reports/step2.md`.
 
-Measured on the desktop (RTX 4070, 2880x1800, 4x MSAA, vsync off, median of 3 runs of 600 frames, view A), D3D8 to
-D3D9: level 0 5.02 to 1.51 ms, level 1 8.94 to 4.08, level 2 18.29 to 5.83, level 3 18.37 to 5.98. Why level 0 gained
-3.3x was not investigated.
-
-Measured on the laptop (RTX 4060, 2880x1800, 4x MSAA, vsync off, mostly 2 runs): 210-240 fps at level 0, 105-130 at
-level 1 (GPU-bound on ~2M grass triangles), 46-55 at levels 2-3 (CPU-bound: ~35 D3D calls for each of ~7,500 tiny
-world draws). The additions cost ~25 MB of address space, with ~2.6 GB free.
+Measured on the desktop (RTX 4070, 2880x1800, 4x MSAA, vsync off, 3 runs of 600 frames, view A): Remaster 6.17-6.36 ms
+per frame, HD 1.58-1.66, Original 1.52-1.54. Address space free: 1,849 MB at HD, 1,772 MB at Remaster, largest hole
+1,315 MB.
 
 ## How the pieces fit
 
@@ -40,8 +36,10 @@ world draws). The additions cost ~25 MB of address space, with ~2.6 GB free.
 
 Rerun commands: the `extracted/look/` renders come from
 `blender -b --factory-startup --python-exit-code 1 -P tools/look/zoohub.py -- game|lit|dressed --camera ABC`, then
-`python3 tools/look/zoohub.py compose pass3`. In-game: `qa/lookhero.sh`, then
-`qa/lookmeasure.sh extracted/look/render "0 1 2 3" 3`. `blender` here means `~/.local/share/devtools/blender/blender`.
+`python3 tools/look/zoohub.py compose pass3`. Look data: `blender -b extracted/look/pass3/zoohub-dressed.blend
+--factory-startup --python-exit-code 1 -P tools/look/export.py -- --scene 3`. Shaders: `src/d3d8/shaders/build.sh`
+regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender` here means
+`~/.local/share/devtools/blender/blender`.
 
 ## Decisions
 
@@ -59,6 +57,10 @@ Rerun commands: the `extracted/look/` renders come from
 - Stay on D3D9 through step 5 (user, 2026-11-21). Newer APIs would add GPU-simulated grass, BC7, cheaper AO and ray
   tracing, but need a new renderer for everything the game draws. Revisit at step 6 from in-game results; if we jump,
   the candidate is Vulkan in a separate 64-bit process, which also removes the memory limit.
+- Step 2 grade, judged in game against pass 3: the art's saturation x1.17, contrast x1.26, bloom x0.3; character albedo
+  x0.7 and partly desaturated. Levels 1-3 and the debug views are deleted, so there is one Remaster path.
+- Two upscaled game textures (`game_metaledges`, `game_tazcage3`) sit in the look data's `tex/`. Treat that folder as
+  game-derived in any packaging.
 - Frame rate is a later pass. Don't let it block the look, but don't build anything that can't be made fast.
 - Sun is per level and placed for looks; baked vertex shadows are dropped.
 - Never move a game surface. Walkable tops keep their height; replacements must contain the collision shape.
@@ -69,7 +71,7 @@ Rerun commands: the `extracted/look/` renders come from
 1. (Done 2026-11-21) Renderer: move to D3D9 and merge the static world in one go. Everything the mod already does must still work:
    HD textures and models, Taz styles, MSAA, resolution change, F5/F9, F11, menus, map previews, paper books, video,
    screenshots, gamepad. Handle device reset for the new targets.
-2. Bring pass 3 in game: materials on ground, brick and cliffs, foliage cards, sky and clouds, water, soft shadows,
+2. (Done 2026-11-22) Bring pass 3 in game: materials on ground, brick and cliffs, foliage cards, sky and clouds, water, soft shadows,
    AO, bloom, tone mapping, character lighting that fits the world (Taz's outline look clashes with it now), a grade
    that leaves the HUD alone, and grass that fades instead of popping.
 3. Walk the whole zoo hub and fix what shows in motion: popping, sorting against particles and blended draws, feet in
@@ -80,9 +82,13 @@ Rerun commands: the `extracted/look/` renders come from
 
 ## Known problems
 
-- Grass blades shadow themselves into dark speckle. The grade tints the HUD. Pebbles render darker than in Blender.
+- Once, after running at the fence near Tutorial 3, the whole 3D view turned yellow for at least 2 s with a bright beam
+  on screen. The same walk did not repeat it. Cause unknown.
+- Against pass 3: Taz's fur is more maroon, the dirt redder, the water darker without white glints, and torches and
+  sparkles glow too much. The three non-Current Taz styles look redder and ignore the level's sun and shadows.
+- Not tested at the Remaster look: videos, paper books, map previews, wind, grass fading in motion, card edges up close.
+- Looningdale's level ending still shows 0.9 s of black, on plain `master` too (measured 0.87 s there, 0.92 s here).
 - `qa/lookwalk.sh` was written but never run.
-- Instancing still goes through 256 vertex constants; move it to real D3D9 instancing.
 - Not tested on the D3D9 build: real Windows, Wine without DXVK, a physical gamepad, a real alt-tab, `config.exe`,
   a full `tools/package.sh` run, a world piece first seen after the merge is built, a world buffer rewritten mid-scene.
 - At level 0, 3.9% of pixels differ from the D3D8 build by more than 16 levels, on thin edges and foliage. It looks
