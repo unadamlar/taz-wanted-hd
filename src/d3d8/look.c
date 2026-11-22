@@ -397,6 +397,13 @@ static int moving_bark(IDirect3DDevice8 *dev, UINT64 raw)
     return raw == 0x744855ebde27c1b5ULL && hd_hidden(raw) && SUCCEEDED(IDirect3DDevice8_GetTransform(dev, D3DTS_WORLD, &w)) && (w._41 || w._42 || w._43);
 }
 
+// A placed object the look replaced: only its draws go, the same texture elsewhere stays.
+static int swapped_object(IDirect3DDevice8 *dev, UINT64 raw)
+{
+    D3DMATRIX w;
+    return hd_swapped(raw, NULL) && SUCCEEDED(IDirect3DDevice8_GetTransform(dev, D3DTS_WORLD, &w)) && hd_swapped(raw, &w._41);
+}
+
 static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count)
 {
     struct IDirect3DDevice9 *d = d3d9_device(dev);
@@ -445,7 +452,7 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     }
     if ((shader & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW) return 0;
     UINT64 raw = textures_bound_hash(0);
-    if (raw && hd_shade(raw)) return 1;
+    if (raw && (hd_shade(raw) || swapped_object(dev, raw))) return 1;
     UINT64 h = look_own_hash(dev, textures_bound(0), raw);
     int bark = moving_bark(dev, raw);
     if (h && hd_hidden(h) && !bark) return 1;

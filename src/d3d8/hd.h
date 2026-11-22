@@ -49,6 +49,7 @@ void hd_world_begin(hd_dev d, const float *world);  // saves state, sets shaders
 void hd_world_material(hd_dev d, unsigned long long hash);
 void hd_world_end(hd_dev d);
 void hd_world_quick(hd_dev d, const float *world, unsigned long long hash); // one draw: no state save
+int hd_swapped(unsigned long long h, const float *at); // at NULL: on any replaced object
 void hd_world_float(hd_dev d, float y); // after hd_world_quick: nothing below y
 void hd_world_quick_end(hd_dev d);
 void hd_merge_buffers(hd_dev d, struct IDirect3DVertexBuffer9 *v, struct IDirect3DIndexBuffer9 *i);

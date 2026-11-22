@@ -2600,8 +2600,8 @@ def world_bbox(ob):
     return lo, hi
 
 
-def tree_from_bbox(lo, hi, scale=1.0, **kw):
-    c = (lo + hi) / 2
+def tree_from_bbox(lo, hi, scale=1.0, at=None, **kw):
+    c = (lo + hi) / 2 if at is None else at
     H = hi.z - lo.z
     R0 = max(hi.x - lo.x, hi.y - lo.y) * 0.5
     R = min(R0 * 0.72, 0.36 * H)  # sensible canopy, leaving a visible trunk

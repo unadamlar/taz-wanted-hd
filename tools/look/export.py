@@ -90,6 +90,8 @@ for name, (tint, rough) in LEVEL.get("flats", {}).items():
     MATS[name] = ("", False, OPAQUE, 0, 1000.0, tint, rough, 0, 0)
 if "skin" in LEVEL:  # wrinkled hide for untextured characters, mapped on their bind pose
     MATS["skin"] = ("skin", False, OPAQUE, 0, LEVEL["skin"]["tile"], (1, 1, 1), 0.6, 0, LEVEL["skin"]["grain"])
+for name, tint in LEVEL.get("tints", {}).items():
+    MATS[name] = (*MATS[name][:5], tint, *MATS[name][6:])
 if "materials" in LEVEL:  # a level loads only what it uses
     MATS["paint"] = ("", False, OPAQUE, 0, 1000.0, (0.86, 0.88, 0.92), 0.6, 0, 0)  # road markings, kept white
     MATS = {n: m for n, m in MATS.items() if n in LEVEL["materials"]}
@@ -595,7 +597,7 @@ fp = {}
 for line in open(os.path.join(ext, "textures", "fingerprints.tsv")):
     h, f = line.rstrip("\n").split("\t")[:2]
     fp.setdefault(f, int(h, 16))
-hide, shade, binds, glows = set(), set(), {}, {}
+hide, shade, binds, glows, hash_of = set(), set(), {}, {}, {}
 
 
 def tex_pixels(file):
@@ -640,7 +642,7 @@ for line in list(open(os.path.join(ext, "textures", "index.tsv")))[1:]:
         continue
     label = pak + "/" + os.path.splitext(name)[0]
     role = dress.role_of(label)
-    h = fp[f]
+    h = hash_of[label] = fp[f]
     for pat, power, span in LEVEL.get("glow", ()):
         if fnmatch.fnmatch(label, pat):
             glows[h] = (power, *(span or (0.0, 1.0)), 2 if span else 0)
@@ -664,6 +666,10 @@ for line in list(open(os.path.join(ext, "textures", "index.tsv")))[1:]:
     elif role == "brick":
         binds[h] = brick_binds(h, f)
 bind_list = [b for h in sorted(binds) for b in binds[h]]
+swaps = sorted({(hash_of[n], *(np.array((S @ o.matrix_world).translation) * K))
+                for o in bpy.data.objects if o.get("kit_replaced") for s in o.material_slots if s.material
+                for n in [dress.base_name(s.material.name.split(":", 1)[-1])]
+                if any(fnmatch.fnmatch(n, p) for p in LEVEL["trees"])})
 
 
 
@@ -760,9 +766,10 @@ with open(os.path.join(tmp, "scene.bin"), "wb") as f:
         for pi, rows in sorted(runs.items()):
             f.write(struct.pack("<II", pi, len(rows)))
             f.write(np.stack(rows).astype("<f4").tobytes())
-    if lights or glows:  # optional sections, absent for a level without local lights
+    if lights or glows or swaps:  # optional sections, absent for a level without local lights
         f.write(struct.pack("<I", len(lights)) + b"".join(struct.pack("<8f", *l) for l in lights))
         f.write(struct.pack("<I", len(glows)) + b"".join(struct.pack("<Q3fI", h, *glows[h]) for h in sorted(glows)))
+        f.write(struct.pack("<I", len(swaps)) + b"".join(struct.pack("<Q4f", *s_, 2.0) for s_ in swaps))
 
 # ---------------------------------------------------------------- level.ini
 sun, grade, sk = LV["sun"], LV["grade"], LV["sky"]

@@ -111,7 +111,9 @@ LEVELS = {
                    flats={"steel": ((0.20, 0.17, 0.15), 0.4)}, wire="zoohub/textures/barbed_wire"),
     "cityhub": dict(scene=8, pak="cityhub", blend="city/cityhub.blend", out="city/pass1", rules=CITY_RULES, hand=CITY_HAND,
                     look=CITY_LOOK, hdri=None, hdri_rotation=0.0, hub=(-66.0, -50.0, 72.0, 82.0), sky_panels=True, clutter=False,
-                    materials=("lawn", "asphalt", "paving", "paint", "grass", "flat", "flat_wind"),
+                    materials=("lawn", "asphalt", "paving", "paint", "grass", "flat", "flat_wind", "bark", "leaf_core", "leaves"),
+                    trees=("cityhub/textures/tazwood02a", "cityhub/textures/tazfern05*"),
+                    tints={"leaves": (2.0, 2.4, 1.6), "leaf_core": (2.0, 2.4, 1.6), "bark": (2.4, 1.8, 1.5)},  # readable under moonlight
                     tiles={"asphalt": dict(period=4.0, px=2048, sat=0.75, val=1.2, tint=(0.82, 0.86, 0.95), rough=0.75),
                            "paving": dict(period=4.5, px=2048, sat=0.55, val=1.35, tint=(0.95, 0.96, 1.0), rough=0.82)},
                     binds={"ground": (("paving", 1, -0.14, -0.05),),
