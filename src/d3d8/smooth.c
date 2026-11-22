@@ -54,7 +54,7 @@ static HRESULT WINAPI hook_CreateVertexShader(IDirect3DDevice8 *dev, CONST DWORD
 {
     HRESULT hr = real_CreateVertexShader(dev, decl, fn, h, usage);
     if (look_copying_shader()) return hr;
-    if (SUCCEEDED(hr) && decl && !memcmp(decl + 0, smooth_decl, 7 * sizeof *decl)) look_shader_created(dev, *h, fn);
+    if (SUCCEEDED(hr) && decl && !memcmp(decl + 0, smooth_decl, 7 * sizeof *decl)) look_shader_created(dev, *h, decl, fn);
     if (SUCCEEDED(hr) && decl && !memcmp(decl, smooth_decl, sizeof smooth_decl) && nshaders < 16) shaders[nshaders++] = *h, style_shader_created(*h, fn), mesh_shader_created(dev, *h, fn);
     return hr;
 }

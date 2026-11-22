@@ -153,12 +153,12 @@ static struct { DWORD game, lit; int outline, bones; } chars[NCHAR];
 static int ncopying;
 int look_copying_shader(void) { return ncopying; }
 
-void look_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *fn)
+void look_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *decl, const DWORD *fn)
 {
     static const DWORD ramp[] = { MOV, 0xe0020001, 0xa0ff0030 };             // mov oT1.y, c48.w
     static const DWORD push[] = { MAD, 0x80070000, 0x80e40002, 0xa0ff0031 }; // mad r0.xyz, r2, c49.w, r0
-    DWORD out[1200], decl[16];
-    int n = 0, lit = 0, outline = 0, k = 0;
+    DWORD out[1200];
+    int n = 0, lit = 0, outline = 0;
     int skin = 0, pos = 0, nor = 2;
     for (; n < 1024 && fn[n] != 0xffff; n++) {
         out[n] = fn[n];
@@ -194,14 +194,6 @@ void look_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *fn)
     out[n++] = MOV, out[n++] = D(oT(4), 7), out[n++] = S(REG(RT_INPUT, 0));   // bind pose, for the fur
     out[n++] = MOV, out[n++] = D(oT(5), 7), out[n++] = S(REG(RT_INPUT, 3));
     out[n] = 0xffff;
-    DWORD size = 0;
-    if (FAILED(IDirect3DDevice8_GetVertexShaderDeclaration(dev, h, NULL, &size)) || size > sizeof decl
-        || FAILED(IDirect3DDevice8_GetVertexShaderDeclaration(dev, h, decl, &size))) {
-        extern const DWORD smooth_decl[8];
-        memcpy(decl, smooth_decl, sizeof smooth_decl);
-        for (k = 0; k < 7 && decl[k] != 0xffffffff; k++) {}
-        if (fn[0] && k == 7) decl[7] = 0xffffffff;
-    }
     ncopying++;
     if (FAILED(IDirect3DDevice8_CreateVertexShader(dev, decl, out, &chars[slot].lit, 0))) chars[slot].lit = 0, log_line("look: no lit copy of shader %#lx", h);
     ncopying--;
@@ -391,6 +383,40 @@ void look_after_draw(IDirect3DDevice8 *dev)
     if (glowing) hd_glow_end(d3d9_device(dev), glowing), glowing = 0;
 }
 
+// A game draw with a solid replacement: drawn at the game's own transform, so it follows whatever the game does.
+static int solid_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count)
+{
+    DWORD fvf;
+    IDirect3DVertexBuffer8 *vb = NULL;
+    UINT stride = 0, n = type == D3DPT_TRIANGLESTRIP ? count + 2 : type == D3DPT_TRIANGLELIST ? count * 3 : 0;
+    BYTE *v;
+    if (api || !n || !hd_solid_texture(textures_bound_hash(0))) return 0;
+    IDirect3DDevice8_GetVertexShader(dev, &fvf);
+    if (fvf != 0x152 || FAILED(IDirect3DDevice8_GetStreamSource(dev, 0, &vb, &stride)) || !vb) return 0;
+    UINT64 key = 0xcbf29ce484222325ULL;
+    int ok = stride == 36 && SUCCEEDED(IDirect3DVertexBuffer8_Lock(vb, start * 36, n * 36, &v, D3DLOCK_READONLY));
+    if (ok) {
+        for (UINT i = 0; i < n * 36; i += 36) {
+            for (int b = 0; b < 12; b++) key = (key ^ v[i + b]) * 0x100000001b3ULL;
+            for (int b = 28; b < 36; b++) key = (key ^ v[i + b]) * 0x100000001b3ULL;
+        }
+        IDirect3DVertexBuffer8_Unlock(vb);
+    }
+    IDirect3DVertexBuffer8_Release(vb);
+    int proto = ok ? hd_solid_proto(key) : -1;
+    if (proto < 0) return 0;
+    float w[4][4], rows[3][4];
+    IDirect3DDevice8_GetTransform(dev, D3DTS_WORLD, (D3DMATRIX *)w);
+    for (int i = 0; i < 3; i++)
+        for (int j = 0; j < 4; j++) rows[i][j] = w[j][i];
+    if (!hd_solid_claim(proto, rows[0])) return 1;
+    merge_flush(dev);
+    if (hd_prepass_needed()) prepass(dev);
+    hd_solid_draw(d3d9_device(dev), proto, rows[0]);
+    merge_state_changed();
+    return 1;
+}
+
 // The floating logs share the replaced trees' bark, but only they draw it through a world matrix.
 static int moving_bark(IDirect3DDevice8 *dev, UINT64 raw)
 {
@@ -425,6 +451,7 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     hd_redirect(d);
     if (!hd_redirected()) return 0;
     hd_sky(d);
+    if (solid_draw(dev, api, type, start, count)) return 1;
     if (loaded_scene != PLANET_LOOK && merge_draw(dev, api, type, start, count)) return 1; // a few hundred draws: nothing to merge
     DWORD shader, zwrite, blend, fog, src, dst, op;
     IDirect3DDevice8_GetRenderState(dev, D3DRS_ALPHABLENDENABLE, &blend);
