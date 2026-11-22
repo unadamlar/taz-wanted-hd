@@ -8,8 +8,8 @@ CASES = {1: "LT", 2: "TR", 3: "LR", 4: "RB", 5: "LTRB", 6: "TB", 7: "LB", 8: "BL
          13: "RT", 14: "TL"}
 
 
-def capture(paths, wanted):
-    """World draws of the captures using the wanted textures, or sharing a placed object's transform with one."""
+def capture(paths, wanted, whole=()):
+    """World draws of the captures using the wanted textures, plus all that share a placed transform with a `whole` one."""
     found = []
     for path in paths:
         b = open(path, "rb").read()
@@ -17,15 +17,16 @@ def capture(paths, wanted):
         o, frame = 12 + 4 * nrs + 4 * ntss, []
         while o < len(b):
             if struct.unpack_from("<I", b, o)[0] == ord("F"):
-                found += _keep(frame, wanted)
+                found += _keep(frame, wanted, whole)
                 frame, o = [], o + 12
                 continue
             _, _, api, kind, count, shader, stride, nv, nidx = struct.unpack_from("<9I", b, o)
             q = o + 64 + 320 + 24 + 4 * nrs + 12 * ntss + (1536 if shader & 0x80000000 else 0)
-            if not api and shader == 0x152 and stride == 36 and kind in (4, 5):
-                frame.append((struct.unpack_from("<Q", b, o + 48)[0], struct.unpack_from("<16f", b, o + 64), kind, count, b[q:q + nv * 36]))
+            tex = struct.unpack_from("<Q", b, o + 48)[0]
+            if not api and shader == 0x152 and stride == 36 and kind in (4, 5) and (whole or tex in wanted):
+                frame.append((tex, struct.unpack_from("<16f", b, o + 64), kind, count, b[q:q + nv * 36]))
             o = q + nv * stride + 4 * nidx
-        found += _keep(frame, wanted)
+        found += _keep(frame, wanted, whole)
     return found
 
 
@@ -33,9 +34,9 @@ def _identity(w):
     return all(abs(w[i] - (i % 5 == 0)) < 1e-6 for i in range(16))
 
 
-def _keep(frame, wanted):
-    placed = {tuple(np.round(w, 3)) for h, w, *_ in frame if h in wanted and not _identity(w)}
-    return [d for d in frame if d[0] and (d[0] in wanted or tuple(np.round(d[1], 3)) in placed)]
+def _keep(frame, wanted, whole):
+    placed = {tuple(np.round(w, 3)) for h, w, *_ in frame if h in whole and not _identity(w)}
+    return [d for d in frame if d[0] and (d[0] in wanted or (placed and tuple(np.round(d[1], 3)) in placed))]
 
 
 def key_of(verts):
@@ -158,16 +159,19 @@ def plate(alpha, size, depth, tol=1.0, min_area=8.0):
     return np.concatenate([x for x, _ in parts]), np.concatenate([x for _, x in parts])
 
 
-def link(alpha, size, sides=7, steps=22):
+def link(alpha, size):
     """One round chain link with the painted link's outline: corners (u, v, side offset) and normals, as plate()."""
     h, w = alpha.shape
     row, col = alpha[h // 2] > 0.5, alpha[:, w // 2] > 0.5
     xs, ys = np.nonzero(row)[0], np.nonzero(col)[0]
-    bar = np.argmin(row[xs[0]:]) * size[0] / w
-    r = bar / 2
-    ax = (xs[-1] - xs[0] + 1) * size[0] / w / 2 - r
-    ay = (ys[-1] - ys[0] + 1) * size[1] / h / 2 - r
-    ctr = np.array([(xs[0] + xs[-1] + 1) / 2 * size[0] / w, (ys[0] + ys[-1] + 1) / 2 * size[1] / h])
+    r = np.argmin(row[xs[0]:]) * size[0] / w / 2
+    return tube_link(size, ((xs[0] + xs[-1] + 1) / 2 / w, (ys[0] + ys[-1] + 1) / 2 / h),
+                     (xs[-1] - xs[0] + 1) * size[0] / w / 2 - r, (ys[-1] - ys[0] + 1) * size[1] / h / 2 - r, r)
+
+
+def tube_link(size, centre, ax, ay, r, sides=7, steps=22):
+    """A stadium-shaped tube centred at (u, v), half width ax and half length ay: corners and normals, as plate()."""
+    ctr = np.array(centre) * size
     straight = max(ay - ax, 0)
     t = (np.arange(steps) + 0.5) / steps * 2 * np.pi
     rad = np.stack([np.cos(t), np.sin(t)], 1)
@@ -180,6 +184,23 @@ def link(alpha, size, sides=7, steps=22):
     p = np.stack([ring[a, b] for a, b in tri], 2).reshape(-1, 3)
     n = np.stack([spoke[a, b] for a, b in tri], 2).reshape(-1, 3)
     return p / [size[0], size[1], 1], n
+
+
+def chain_on_cards(pos, uv, col):
+    """Two crossed cards painted with a repeating chain, as real links turning 90 degrees from one card to the other."""
+    parts = []
+    for c, t in enumerate(sorted(islands(pos), key=lambda t: t[0])):
+        e1, e2 = uv[t[0], 1] - uv[t[0], 0], uv[t[0], 2] - uv[t[0], 0]
+        d1, d2 = pos[t[0], 1] - pos[t[0], 0], pos[t[0], 2] - pos[t[0], 0]
+        det = e1[0] * e2[1] - e1[1] * e2[0]
+        size = (np.linalg.norm((d1 * e2[1] - d2 * e1[1]) / det), np.linalg.norm((d2 * e1[0] - d1 * e2[0]) / det))
+        r = size[0] * 0.085
+        ay, ax = size[1] / 4 + r, size[0] * 0.27
+        tiles = int(round(uv[t][..., 1].max()))
+        for v in (np.arange(tiles) + 0.5 if c == 0 else np.arange(1, tiles)):
+            P, N = tube_link(size, (0.5, v), ax, ay, r, sides=6, steps=16)
+            parts.append(on_card(P, N, pos[t], uv[t], col[t], size))
+    return [np.concatenate(x) for x in zip(*parts)]
 
 
 def on_card(P, N, pos, uv, col, size):

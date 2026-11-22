@@ -391,13 +391,13 @@ void look_after_draw(IDirect3DDevice8 *dev)
 }
 
 // A game draw with a solid replacement: drawn at the game's own transform, so it follows whatever the game does.
-static int swap_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count)
+static int solid_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count)
 {
     DWORD fvf;
     IDirect3DVertexBuffer8 *vb = NULL;
     UINT stride = 0, n = type == D3DPT_TRIANGLESTRIP ? count + 2 : type == D3DPT_TRIANGLELIST ? count * 3 : 0;
     BYTE *v;
-    if (api || !n || !hd_swap_texture(textures_bound_hash(0))) return 0;
+    if (api || !n || !hd_solid_texture(textures_bound_hash(0))) return 0;
     IDirect3DDevice8_GetVertexShader(dev, &fvf);
     if (fvf != 0x152 || FAILED(IDirect3DDevice8_GetStreamSource(dev, 0, &vb, &stride)) || !vb) return 0;
     UINT64 key = 0xcbf29ce484222325ULL;
@@ -410,18 +410,32 @@ static int swap_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT
         IDirect3DVertexBuffer8_Unlock(vb);
     }
     IDirect3DVertexBuffer8_Release(vb);
-    int proto = ok ? hd_swap_proto(key) : -1;
+    int proto = ok ? hd_solid_proto(key) : -1;
     if (proto < 0) return 0;
     float w[4][4], rows[3][4];
     IDirect3DDevice8_GetTransform(dev, D3DTS_WORLD, (D3DMATRIX *)w);
     for (int i = 0; i < 3; i++)
         for (int j = 0; j < 4; j++) rows[i][j] = w[j][i];
-    if (!hd_swap_claim(proto, rows[0])) return 1;
+    if (!hd_solid_claim(proto, rows[0])) return 1;
     merge_flush(dev);
     if (hd_prepass_needed()) prepass(dev);
-    hd_swap_draw(d3d9_device(dev), proto, rows[0]);
+    hd_solid_draw(d3d9_device(dev), proto, rows[0]);
     merge_state_changed();
     return 1;
+}
+
+// The floating logs share the replaced trees' bark, but only they draw it through a world matrix.
+static int moving_bark(IDirect3DDevice8 *dev, UINT64 raw)
+{
+    D3DMATRIX w;
+    return raw == 0x744855ebde27c1b5ULL && hd_hidden(raw) && SUCCEEDED(IDirect3DDevice8_GetTransform(dev, D3DTS_WORLD, &w)) && (w._41 || w._42 || w._43);
+}
+
+// A placed object the look replaced: only its draws go, the same texture elsewhere stays.
+static int swapped_object(IDirect3DDevice8 *dev, UINT64 raw)
+{
+    D3DMATRIX w;
+    return hd_swapped(raw, NULL) && SUCCEEDED(IDirect3DDevice8_GetTransform(dev, D3DTS_WORLD, &w)) && hd_swapped(raw, &w._41);
 }
 
 static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count)
@@ -444,7 +458,7 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     hd_redirect(d);
     if (!hd_redirected()) return 0;
     hd_sky(d);
-    if (swap_draw(dev, api, type, start, count)) return 1;
+    if (solid_draw(dev, api, type, start, count)) return 1;
     if (merge_draw(dev, api, type, start, count)) return 1;
     DWORD shader, zwrite, blend, fog, src, dst, op;
     IDirect3DDevice8_GetRenderState(dev, D3DRS_ALPHABLENDENABLE, &blend);
@@ -473,9 +487,10 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     }
     if ((shader & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW) return 0;
     UINT64 raw = textures_bound_hash(0);
-    if (raw && hd_shade(raw)) return 1;
+    if (raw && (hd_shade(raw) || swapped_object(dev, raw))) return 1;
     UINT64 h = look_own_hash(dev, textures_bound(0), raw);
-    if (h && hd_hidden(h)) return 1;
+    int bark = moving_bark(dev, raw);
+    if (h && hd_hidden(h) && !bark) return 1;
     IDirect3DDevice8_GetRenderState(dev, D3DRS_ZWRITEENABLE, &zwrite);
     IDirect3DDevice8_GetRenderState(dev, D3DRS_FOGENABLE, &fog);
     if (!zwrite && !fog && !blend && hd_hidden(raw)) return 1; // its sky, also a cutscene pack's copy of it
@@ -492,6 +507,7 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     for (int i = 0; i < 3; i++)
         for (int j = 0; j < 4; j++) rows[i][j] = w[j][i];
     hd_world_quick(d, rows[0], h);
+    if (bark) hd_world_float(d, -4055.5f); // the pond's surface
     draw_real(dev, type, start, count);
     hd_world_quick_end(d);
     IDirect3DDevice8_SetVertexShader(dev, shader);

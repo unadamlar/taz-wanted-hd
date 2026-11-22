@@ -16,6 +16,7 @@ a = argparse.ArgumentParser()
 a.add_argument("--level", default="zoohub")
 a.add_argument("--runtime", default=None, help="output folder (default extracted/look/runtime)")
 a.add_argument("--rebake", action="store_true")
+a.add_argument("--cpu", action="store_true", help="bake on the CPU, for when the GPU is busy")
 args = a.parse_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else [])
 LEVEL = dress.select(args.level)
 args.scene = LEVEL["scene"]
@@ -28,7 +29,7 @@ SC = dress.SCALE
 root = next(p for p in [os.path.join(here, *([".."] * n)) for n in range(1, 7)] if os.path.isdir(os.path.join(p, "extracted", "textures")))
 ext = os.path.join(root, "extracted")
 base = args.runtime or os.path.join(ext, "look", "runtime")
-cache = os.path.join(ext, "look", "runtime", ".bake" if args.level == "zoohub" else ".bake-" + args.level)
+cache = os.path.join(base, ".bake" if args.level == "zoohub" else ".bake-" + args.level)
 out = os.path.join(base, "scene%02d" % args.scene)
 tmp = out + ".tmp%d" % os.getpid()
 if args.rebake:
@@ -45,6 +46,8 @@ for img in bpy.data.images:  # blends saved on another machine keep that machine
         img.filepath = os.path.join(os.path.dirname(kit.ASSET_LIB), img.filepath.split("/personal-games/", 1)[1])
         img.reload()
 bake.use_gpu(sc)
+if args.cpu:
+    sc.cycles.device = "CPU"
 LV = LEVEL["look"]
 
 # ---------------------------------------------------------------- materials
@@ -90,6 +93,8 @@ for name, (tint, rough) in LEVEL.get("flats", {}).items():
     MATS[name] = ("", False, OPAQUE, 0, 1000.0, tint, rough, 0, 0)
 if "skin" in LEVEL:  # wrinkled hide for untextured characters, mapped on their bind pose
     MATS["skin"] = ("skin", False, OPAQUE, 0, LEVEL["skin"]["tile"], (1, 1, 1), 0.6, 0, LEVEL["skin"]["grain"])
+for name, tint in LEVEL.get("tints", {}).items():
+    MATS[name] = (*MATS[name][:5], tint, *MATS[name][6:])
 if "materials" in LEVEL:  # a level loads only what it uses
     MATS["paint"] = ("", False, OPAQUE, 0, 1000.0, (0.86, 0.88, 0.92), 0.6, 0, 0)  # road markings, kept white
     MATS = {n: m for n, m in MATS.items() if n in LEVEL["materials"]}
@@ -278,6 +283,11 @@ for o in flat:
 bpy.context.view_layer.update()
 bpy.context.view_layer.objects.active = flat[0]
 bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, target="VERTEX_COLORS")
+for o in flat:
+    baked = np.empty(len(o.data.loops) * 4, np.float32)
+    o.data.color_attributes["look_bake"].data.foreach_get("color", baked)
+    if not baked.reshape(-1, 4)[:, :3].any():
+        raise RuntimeError("bake came out black (GPU out of memory? try --cpu): " + o.name)
 
 
 def corner_colors(o, co, grass_rank):
@@ -430,6 +440,8 @@ for o in bpy.data.objects:
     co = np.empty(len(me.vertices) * 3, np.float32); me.vertices.foreach_get("co", co)
     M = np.array(S @ o.matrix_world, np.float32)
     w = (co.reshape(-1, 3)[tv.reshape(-1, 3)[slot_water[mi]].ravel()] @ M[:3, :3].T + M[:3, 3]) * K
+    if "@placed" in o.name and np.ptp(w[:, 1]) > 10:  # a floating log's wet underside, not a water surface
+        continue
     water.append(w)
 if water:
     wp = np.concatenate(water)
@@ -619,10 +631,11 @@ def place_static(name, p, n, uv, c, mat):
     print("export: %s, %d triangles" % (name, len(p) // 3))
 
 
+captures = [os.path.join(ext, "look", f) for f in LEVEL.get("captures", ("world-hero.bin", "world-sweep.bin"))]
 if "chain" in LEVEL or "grill" in LEVEL:
     want = {tex_hash[LEVEL[k]]: k for k in ("chain", "grill") if k in LEVEL}
     cards = {h: {} for h in want}
-    for d in solid.capture([os.path.join(ext, "look", f) for f in ("world-hero.bin", "world-sweep.bin")], set(want)):
+    for d in solid.capture(captures, set(want)):
         if d[0] in want and all(abs(d[1][i] - (i % 5 == 0)) < 1e-6 for i in range(16)):
             cards[d[0]][solid.key_of(d[4])] = solid.triangles(d[2], d[3], d[4])
     for h, kind in want.items():
@@ -636,38 +649,46 @@ if "chain" in LEVEL or "grill" in LEVEL:
         parts = [solid.on_card(P, N, pos, uv, np.ones_like(col) if kind == "chain" else col, size) for pos, uv, col in cards[h].values()]
         place_static(kind, *(np.concatenate(x) for x in zip(*parts)), mat)
 
-# Things the game may move: models in their own space, drawn at the game's transform in place of its draws (hd_swap_draw).
-swaps = {}
-if "swap" in LEVEL:
-    cfg = LEVEL["swap"]
+# Things the game may move: models in their own space, drawn at the game's transform in place of its draws (hd_solid_draw).
+solids = {}
+if "solids" in LEVEL:
+    cfg = LEVEL["solids"]
     card_h, labels = {tex_hash[l] for l in cfg["cards"]}, collections.defaultdict(list)
     for l, h in tex_hash.items():
         labels[h].append(l)
     known = {dress.base_name(m.name.split(":", 1)[1]) for m in bpy.data.materials if m.name.startswith(("lit:", "lit+:"))}
-    found = solid.models(solid.capture([os.path.join(ext, "look", f) for f in ("world-hero.bin", "world-sweep.bin")],
-                                       card_h | {tex_hash[l] for l in cfg["soft"]}), card_h)
+    soft_h = {tex_hash[l] for l in cfg["soft"]}
+    found = solid.models(solid.capture(captures, card_h | soft_h, soft_h), card_h)
     label_of = lambda h: next(l for l in labels[h] if l in known)
     solid_tex = {h: game_rgba(label_of(h))[..., 3].mean() > 0.98 for h in {d[0] for ds in found.values() for d in ds}}
     for keys, ds in sorted(found.items(), key=lambda kv: -len(kv[0])):  # a sweep frame can hold part of a model
         ds = [d for d in ds if d[0] in card_h or solid_tex[d[0]]]  # see-through parts stay the game's own draws
-        if {solid.key_of(d[4]) for d in ds} <= swaps.keys():
+        if {solid.key_of(d[4]) for d in ds} <= solids.keys():
             continue
         T = [solid.triangles(d[2], d[3], d[4]) for d in ds]
         if all(d[0] in card_h for d in ds):
             pos, uv, col = (np.concatenate(x) for x in zip(*T))
-            size = tuple(np.ptp(pos.reshape(-1, 3), axis=0)[[0, 1]]) if np.ptp(pos[..., 2]) < 1 else (560.0, 1128.0)
-            P, N = solid.plate(game_rgba(label_of(ds[0][0]))[..., 3], size, 5.0, tol=1.2, min_area=25.0)
-            p, n, u, _ = (np.concatenate(x) for x in zip(*(solid.on_card(P, N, pos[t], uv[t], col[t], size) for t in solid.islands(pos))))
-            m = np.full(len(p), MAT_ID["iron"])
+            spec = cfg["cards"][label_of(ds[0][0])]
+            if spec.get("links"):
+                p, n, u, c = solid.chain_on_cards(pos, uv, col)
+            else:
+                # the same thickness in the world, whatever scale the game places this model at
+                P, N = solid.plate(game_rgba(label_of(ds[0][0]))[..., 3], spec["size"], spec["depth"] / np.linalg.norm(ds[0][1][:3]),
+                                   tol=spec["tol"], min_area=spec["area"])
+                p, n, u, c = (np.concatenate(x) for x in zip(*(solid.on_card(P, N, pos[t], uv[t], col[t], spec["size"]) for t in solid.islands(pos))))
+            if spec.get("lift"):  # a night level bakes its light into these: keep the hue, the moon does the shading
+                c = c / np.maximum(c.max(1, keepdims=True), 1e-3)
+            vc = dds.to_linear(c) if spec.get("mat") is None else np.ones_like(p)
+            m = np.full(len(p), solid_mat(label_of(ds[0][0])) if spec.get("mat") is None else MAT_ID[spec["mat"]])
         else:
             mats = [solid_mat(label_of(d[0])) for d in ds]
             tex = np.concatenate([np.full(len(t[0]), i) for i, t in enumerate(T)])
             p, n, u, mi = solid.rounded(np.concatenate([t[0] for t in T]), np.concatenate([t[1] for t in T]), tex)
-            m = np.array(mats)[mi]
-        pi = add_proto("swap%d" % len(protos), p.astype(np.float32), n.astype(np.float32), np.ones_like(p, np.float32), u.astype(np.float32), m)
+            m, vc = np.array(mats)[mi], np.ones_like(p)
+        pi = add_proto("solid%d" % len(protos), p.astype(np.float32), n.astype(np.float32), vc.astype(np.float32), u.astype(np.float32), m)
         print("export: replaces %d game draws, %s: %d triangles" % (len(ds), sorted({labels[d[0]][0].rsplit("/", 1)[1] for d in ds}), len(p) // 3))
         for d in ds:
-            swaps.setdefault(solid.key_of(d[4]), (d[0], pi))
+            solids.setdefault(solid.key_of(d[4]), (d[0], pi))
 
 # chunks: instance centre -> grid cell; each cell lists (proto, matrices), shuffled for thinning
 cells = collections.defaultdict(lambda: collections.defaultdict(list))
@@ -691,7 +712,7 @@ for cell in cells.values():
         rng.shuffle(runs)
 
 # ---------------------------------------------------------------- game textures -> materials, from RULES
-hide, shade, binds, glows = set(), set(), {}, {}
+hide, shade, binds, glows, hash_of = set(), set(), {}, {}, {}
 
 
 def tex_pixels(file):
@@ -736,7 +757,7 @@ for line in list(open(os.path.join(ext, "textures", "index.tsv")))[1:]:
         continue
     label = pak + "/" + os.path.splitext(name)[0]
     role = dress.role_of(label)
-    h = fp[f]
+    h = hash_of[label] = fp[f]
     for pat, power, span in LEVEL.get("glow", ()):
         if fnmatch.fnmatch(label, pat):
             glows[h] = (power, *(span or (0.0, 1.0)), 2 if span else 0)
@@ -760,6 +781,10 @@ for line in list(open(os.path.join(ext, "textures", "index.tsv")))[1:]:
     elif role == "brick":
         binds[h] = brick_binds(h, f)
 bind_list = [b for h in sorted(binds) for b in binds[h]]
+swaps = sorted({(hash_of[n], *(np.array((S @ o.matrix_world).translation) * K))
+                for o in bpy.data.objects if o.get("kit_replaced") for s in o.material_slots if s.material
+                for n in [dress.base_name(s.material.name.split(":", 1)[-1])]
+                if any(fnmatch.fnmatch(n, p) for p in LEVEL["trees"])})
 
 
 
@@ -805,6 +830,7 @@ def level_lights(cfg):
             q = np.average(p[ix], 0, weights=w[ix])
             out.append(((q[0], q[2] + cfg["pool_height"], q[1]), cfg["pool_radius"], colour * cfg["pool_power"], cfg["pool_cone"]))
     print("export: %d lamps, %d baked pools" % (len(lamps), len(out) - len(lamps)))
+    out += [((x, z, y), r, np.array(kit.srgb(c)) * p, -0.2) for x, y, z, r, c, p in cfg.get("extra", ())]
     return [(*(np.array(p) * K), r * K, *c, cone) for p, r, c, cone in out[:64]]
 
 
@@ -856,11 +882,12 @@ with open(os.path.join(tmp, "scene.bin"), "wb") as f:
         for pi, rows in sorted(runs.items()):
             f.write(struct.pack("<II", pi, len(rows)))
             f.write(np.stack(rows).astype("<f4").tobytes())
-    if lights or glows or swaps:  # optional sections, absent for a level without local lights
+    if lights or glows or swaps or solids:  # optional sections, absent for a level without local lights
         f.write(struct.pack("<I", len(lights)) + b"".join(struct.pack("<8f", *l) for l in lights))
         f.write(struct.pack("<I", len(glows)) + b"".join(struct.pack("<Q3fI", h, *glows[h]) for h in sorted(glows)))
-    if swaps:
-        f.write(struct.pack("<I", len(swaps)) + b"".join(struct.pack("<QQI", k, *swaps[k]) for k in sorted(swaps)))
+        f.write(struct.pack("<I", len(swaps)) + b"".join(struct.pack("<Q4f", *s_, 2.0) for s_ in swaps))
+    if solids:
+        f.write(struct.pack("<I", len(solids)) + b"".join(struct.pack("<QQI", k, *solids[k]) for k in sorted(solids)))
 
 # ---------------------------------------------------------------- level.ini
 sun, grade, sk = LV["sun"], LV["grade"], LV["sky"]
@@ -872,7 +899,7 @@ vals = [
     ("sun_color", np.array(kit.srgb(sun["sun_color"])) * sun["sun_strength"] / math.pi),
     ("sky_ambient", amb), ("ground_ambient", amb * np.array((0.55, 0.47, 0.38))),
     ("shadow_softness", math.tan(math.radians(1.0))), ("ao_radius", 2.5 * SC * K), ("ao_strength", 1.0),
-    ("fog_color", kit.srgb("#b8d6f2")), ("fog_start", fog_start),
+    ("fog_color", kit.srgb(LEVEL.get("fog_color", "#b8d6f2"))), ("fog_start", fog_start),
     ("fog_end", fog_start + grade["fog_depth"] * SC * K / grade["fog"]),  # Blender's fog tops out at this 7%
     ("exposure", 2 ** grade["exposure"]), ("bloom_threshold", 0.9), ("bloom_strength", grade["bloom"]),
     ("saturation", grade["saturation"]), ("contrast", 1.15),

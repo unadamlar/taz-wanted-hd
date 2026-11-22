@@ -3,7 +3,6 @@ tiles, and the world (with the far hill panels) into a sky panorama. Results are
 import bpy, math
 import numpy as np
 from pathlib import Path
-from mathutils import Vector
 import kit, dds
 
 
@@ -56,6 +55,8 @@ def _bake(ob, mat, n, kind):
         bpy.ops.object.bake(type="NORMAL", normal_space="TANGENT", margin=0, use_clear=True)
     px = np.empty(n * n * 4, np.float32)
     img.pixels.foreach_get(px)
+    if kind == "albedo" and not px.reshape(-1, 4)[:, :3].any():
+        raise RuntimeError("bake came out black (GPU out of memory? try --cpu): " + mat.name)
     mat.node_tree.nodes.remove(node)
     bpy.data.images.remove(img)
     return px.reshape(n, n, 4)[::-1, :, :3].copy()  # top row first
@@ -126,9 +127,7 @@ def bake_sky(cache, sc, eye, n=8192, panels=False):
     cd.panorama_type = "EQUIRECTANGULAR"
     cam = bpy.data.objects.new("sky_cam", cd)
     sc.collection.objects.link(cam)
-    # a painted sky is seen from the middle of its box, as the game draws it around the camera
-    cam.location = (sum((Vector(c) for o in panels_ob for c in [o.matrix_world @ Vector(b) for b in o.bound_box]), Vector()) / (8 * len(panels_ob))
-                    if panels and panels_ob else eye)
+    cam.location = eye  # the game's sky box follows the camera sideways but not up, so street level sees its skyline high
     cam.rotation_euler = (math.pi / 2, 0, 0)  # image centre looks along +y
     sc.camera = cam
     r = sc.render

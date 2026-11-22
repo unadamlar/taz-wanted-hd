@@ -53,9 +53,10 @@ static struct bind *binds; static UINT nbinds;
 static UINT64 *hides; static UINT nhides, nshades; // the last nshades are baked shadow decals
 static struct light *lights; static UINT nlights;
 static struct file_glow *glows; static UINT nglows;
-static struct swap { UINT64 key, tex; UINT proto; } *swaps; static UINT nswaps;
-static UINT64 swap_tex[16]; static UINT nswap_tex;
-static struct { UINT proto; float world[12]; } swapped[64]; static UINT nswapped; // already drawn this frame
+static struct { UINT64 hash; float p[3], r; } *swaps; static UINT nswaps;
+static struct solid { UINT64 key, tex; UINT proto; } *solids; static UINT nsolids;
+static UINT64 solid_tex[16]; static UINT nsolid_tex;
+static struct { UINT proto; float world[12]; } solid_done[128]; static UINT ndone; // already drawn this frame
 static IDirect3DTexture9 *light_tex;
 static int skin_mat = -1;
 static float light_grid[4];
@@ -72,7 +73,7 @@ static struct { char name[32]; IDirect3DTexture9 *t; } texs[MAX_TEX];
 static UINT ntexs;
 
 // Shaders, vertex declarations
-static IDirect3DVertexShader9 *v_world, *v_inst, *v_water, *v_wind, *v_grass, *v_world_z, *v_inst_z, *v_grass_z, *v_sky, *v_quad, *v_char_z;
+static IDirect3DVertexShader9 *v_world, *v_inst, *v_water, *v_world_float, *v_wind, *v_grass, *v_world_z, *v_inst_z, *v_grass_z, *v_sky, *v_quad, *v_char_z;
 static IDirect3DPixelShader9 *p_depth, *p_world, *p_mat, *p_mat2, *p_tiled, *p_inst, *p_card, *p_grass, *p_water, *p_sky, *p_char, *p_glow;
 static IDirect3DPixelShader9 *p_bright, *p_down, *p_up, *p_final, *p_ao, *p_blur;
 static IDirect3DVertexDeclaration9 *d_world, *d_inst, *d_quad, *d_char;
@@ -275,7 +276,7 @@ static int load_shaders(hd_dev d)
     free(f); }
 #define VS(var, code) MAKE(Vertex, var, code)
 #define PS(var, code) MAKE(Pixel, var, code)
-    VS(v_world, vs_world); VS(v_inst, vs_inst); VS(v_water, vs_water); VS(v_wind, vs_inst_wind); VS(v_grass, vs_grass);
+    VS(v_world, vs_world); VS(v_inst, vs_inst); VS(v_water, vs_water); VS(v_world_float, vs_world_float); VS(v_wind, vs_inst_wind); VS(v_grass, vs_grass);
     VS(v_world_z, vs_world_depth); VS(v_inst_z, vs_inst_depth); VS(v_grass_z, vs_grass_depth); VS(v_sky, vs_sky); VS(v_quad, vs_quad); VS(v_char_z, vs_char_depth);
     PS(p_depth, ps_depth); PS(p_world, ps_world); PS(p_mat, ps_world_mat); PS(p_mat2, ps_world_mat2); PS(p_tiled, ps_inst_tiled); PS(p_inst, ps_inst); PS(p_card, ps_card);
     PS(p_grass, ps_grass); PS(p_water, ps_water); PS(p_sky, ps_sky); PS(p_char, ps_char); PS(p_glow, ps_glow);
@@ -498,15 +499,20 @@ int hd_load(hd_dev d, int scene)
         glows = malloc((nglows + 1) * sizeof *glows);
         memcpy(glows, p, nglows * sizeof *glows), p += nglows * sizeof *glows;
         build_lights(d);
+        if (p + 4 <= file + n) {
+            nswaps = U();
+            swaps = malloc((nswaps + 1) * sizeof *swaps);
+            memcpy(swaps, p, nswaps * sizeof *swaps), p += nswaps * sizeof *swaps;
+        }
     }
     if (p + 4 <= file + n) { // optional, sorted by key: game draws replaced by a prototype at the game's transform
-        nswaps = U();
-        swaps = malloc((nswaps + 1) * sizeof *swaps);
-        for (UINT i = 0; i < nswaps; i++, p += 20) {
-            memcpy(&swaps[i].key, p, 8), memcpy(&swaps[i].tex, p + 8, 8), memcpy(&swaps[i].proto, p + 16, 4);
+        nsolids = U();
+        solids = malloc((nsolids + 1) * sizeof *solids);
+        for (UINT i = 0; i < nsolids; i++, p += 20) {
+            memcpy(&solids[i].key, p, 8), memcpy(&solids[i].tex, p + 8, 8), memcpy(&solids[i].proto, p + 16, 4);
             UINT k = 0;
-            while (k < nswap_tex && swap_tex[k] != swaps[i].tex) k++;
-            if (k == nswap_tex && k < 16) swap_tex[nswap_tex++] = swaps[i].tex;
+            while (k < nsolid_tex && solid_tex[k] != solids[i].tex) k++;
+            if (k == nsolid_tex && k < 16) solid_tex[nsolid_tex++] = solids[i].tex;
         }
     }
     snprintf(path, sizeof path, "taz-hd\\look\\scene%02d\\sky.dds", scene);
@@ -534,7 +540,8 @@ void hd_unload(void)
     if (light_tex) IDirect3DTexture9_Release(light_tex), light_tex = NULL;
     skin_mat = -1;
     free(lights), free(glows), lights = NULL, glows = NULL, nlights = nglows = 0, light_grid[3] = 0;
-    free(swaps), swaps = NULL, nswaps = nswap_tex = nswapped = 0;
+    free(swaps), swaps = NULL, nswaps = 0;
+    free(solids), solids = NULL, nsolids = nsolid_tex = ndone = 0;
     free(mats), free(binds), free(hides), free(protos), free(subs), free(runs), free(chunks), free(vis);
     mats = NULL, binds = NULL, hides = NULL, protos = NULL, subs = NULL, runs = NULL, chunks = NULL, vis = NULL;
     nmats = nbinds = nhides = nshades = nprotos = nchunks = 0;
@@ -547,6 +554,14 @@ int hd_hidden(unsigned long long h)
 {
     for (UINT i = 0; i < nhides - nshades; i++)
         if (hides[i] == h) return 1;
+    return 0;
+}
+
+int hd_swapped(unsigned long long h, const float *at)
+{
+    for (UINT i = 0; i < nswaps; i++)
+        if (swaps[i].hash == h && (!at || (fabsf(at[0] - swaps[i].p[0]) < swaps[i].r && fabsf(at[1] - swaps[i].p[1]) < swaps[i].r && fabsf(at[2] - swaps[i].p[2]) < swaps[i].r)))
+            return 1;
     return 0;
 }
 
@@ -1284,40 +1299,47 @@ void hd_world_quick(hd_dev d, const float *world, unsigned long long hash)
     hd_world_material(d, hash);
 }
 
+void hd_world_float(hd_dev d, float y)
+{
+    float c[4] = { y, 0, 0, 0 };
+    IDirect3DDevice9_SetVertexShaderConstantF(d, 16, c, 1);
+    IDirect3DDevice9_SetVertexShader(d, v_world_float);
+}
+
 void hd_world_quick_end(hd_dev d)
 {
     IDirect3DDevice9_SetPixelShader(d, NULL);
 }
 
-int hd_swap_texture(unsigned long long h)
+int hd_solid_texture(unsigned long long h)
 {
-    for (UINT i = 0; i < nswap_tex; i++)
-        if (swap_tex[i] == h) return 1;
+    for (UINT i = 0; i < nsolid_tex; i++)
+        if (solid_tex[i] == h) return 1;
     return 0;
 }
 
-int hd_swap_proto(unsigned long long key)
+int hd_solid_proto(unsigned long long key)
 {
-    UINT lo = 0, hi = nswaps;
+    UINT lo = 0, hi = nsolids;
     while (lo < hi) {
         UINT mid = (lo + hi) / 2;
-        if (swaps[mid].key == key) return swaps[mid].proto < nprotos ? (int)swaps[mid].proto : -1;
-        if (swaps[mid].key < key) lo = mid + 1;
+        if (solids[mid].key == key) return solids[mid].proto < nprotos ? (int)solids[mid].proto : -1;
+        if (solids[mid].key < key) lo = mid + 1;
         else hi = mid;
     }
     return -1;
 }
 
 // A model is several game draws: the first one seen at a transform draws it all.
-int hd_swap_claim(int proto, const float *world)
+int hd_solid_claim(int proto, const float *world)
 {
-    for (UINT i = 0; i < nswapped; i++)
-        if (swapped[i].proto == (UINT)proto && !memcmp(swapped[i].world, world, 48)) return 0;
-    if (nswapped < 64) swapped[nswapped].proto = proto, memcpy(swapped[nswapped++].world, world, 48);
+    for (UINT i = 0; i < ndone; i++)
+        if (solid_done[i].proto == (UINT)proto && !memcmp(solid_done[i].world, world, 48)) return 0;
+    if (ndone < 128) solid_done[ndone].proto = proto, memcpy(solid_done[ndone++].world, world, 48);
     return 1;
 }
 
-void hd_swap_draw(hd_dev d, int proto, const float *world)
+void hd_solid_draw(hd_dev d, int proto, const float *world)
 {
     static const float no_fade[4] = { 0, 0, 0, 0 };
     const struct proto *q = &protos[proto];
@@ -1449,6 +1471,6 @@ void hd_frame_end(hd_dev d)
     if (redirected) hd_post(d);
     unbind_common(d);
     post_done = additions_done = prepass_done = sky_done = 0;
-    nswapped = 0;
+    ndone = 0;
     check_reload(d);
 }

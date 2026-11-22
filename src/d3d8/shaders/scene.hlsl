@@ -62,11 +62,16 @@ float4 clip_of(float3 w)
     return float4(dot(VP[0], q), dot(VP[1], q), dot(VP[2], q), dot(VP[3], q));
 }
 
+float4 WATERLINE : register(c16);
+
 V2P vs_world(WorldIn i)
 {
     V2P o;
     float4 q = float4(i.p.xyz, 1);
     float3 w = float3(dot(WORLD[0], q), dot(WORLD[1], q), dot(WORLD[2], q));
+#ifdef AT_WATERLINE
+    w.y = max(w.y, WATERLINE.x);  // drawn after the water, so what floats below it would show through
+#endif
     o.n = float3(dot(WORLD[0].xyz, i.n), dot(WORLD[1].xyz, i.n), dot(WORLD[2].xyz, i.n));
     o.p = clip_of(w);
     o.wp = float4(w, o.p.w);
@@ -455,7 +460,7 @@ float4 ps_char(CharIn i) : COLOR
     float2 uvs = float2(i.bp.z / 36, (i.bp.y + i.bp.x / 2) / 40) / size, uvf = i.bp.xy / float2(36, 40) / size;
     float tuft = lerp(tex2D(FUR, uvs).r, tex2D(FUR, uvf).r, side);
     float hide = CHARK.w > 0 ? saturate((0.75 - col.r) * 8) : 1;  // the body is 0.5 grey, the tusks white and smooth
-    albedo *= 1 + (tuft - 0.5) * 3.5 * CHAR_STYLE.z * hide;
+    albedo *= 1 + (tuft - 0.5) * (CHARK.w > 0 ? 3.5 : 1.4) * CHAR_STYLE.z * hide;
     float3 n = normalize(i.n), v = normalize(EYE.xyz - i.w);
     if (CHARK.w > 0) {  // its creases catch the light
         float3 dx = ddx(i.w), dy = ddy(i.w), r1 = cross(dy, n), r2 = cross(n, dx);
