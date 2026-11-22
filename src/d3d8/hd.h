@@ -60,6 +60,8 @@ void hd_merge_buffers(hd_dev d, struct IDirect3DVertexBuffer9 *v, struct IDirect
 void hd_merge_draw(hd_dev d, unsigned nverts, unsigned first, unsigned tris);
 void hd_invalidate(void);                 // the game changed the camera or wrote our constants
 void hd_set_origin(float x, float y, float z); // shifts the additions of the next hd_load
+int hd_space_begin(hd_dev d, unsigned long long hash); // 1: draw the game's panel now, then call hd_space_end
+void hd_space_end(hd_dev d);
 void hd_sky(hd_dev d);                  // once per frame, before the game's first 3D draw
 void hd_additions(hd_dev d);            // additions and water, once per frame after the first world flush
 int hd_additions_done(void);

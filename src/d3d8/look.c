@@ -490,6 +490,12 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     if (hd_prepass_needed()) prepass(dev);
     if (blend && !hd_additions_done()) hd_additions(d), merge_state_changed();
     if (api != 0 || shader != 0x152) return 0;
+    if (loaded_scene == PLANET_LOOK && hd_space_begin(d, raw)) { // a redrawn backdrop panel, still at the game's slow turn
+        draw_real(dev, type, start, count);
+        hd_space_end(d);
+        merge_state_changed();
+        return 1;
+    }
     if (loaded_scene == PLANET_LOOK && !zwrite && !fog) { // Planet X's painted space: unlit, lifted so the tone curve keeps it
         if (blend || op != D3DTOP_MODULATE2X) return 0;
         IDirect3DDevice8_SetTextureStageState(dev, 0, D3DTSS_COLOROP, D3DTOP_MODULATE4X);

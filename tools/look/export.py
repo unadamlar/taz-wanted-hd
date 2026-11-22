@@ -3,14 +3,14 @@
 #          -P tools/look/export.py -- --level zoohub|cityhub [--rebake]
 # Writes extracted/look/runtime/scene<NN>/ atomically. Bakes are cached in extracted/look/runtime/.bake/.
 # Game space is worldview.py's inverse: Blender (x, y, z) * 250 -> game (x, z, y).
-import argparse, collections, ctypes, fnmatch, json, math, os, random, shutil, struct, sys, time
+import argparse, collections, ctypes, fnmatch, hashlib, json, math, os, random, shutil, struct, sys, time
 import bmesh, bpy
 import numpy as np
 from mathutils import Matrix, Vector, noise as mnoise
 
 here = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, here)
-import bake, dds, dress, kit, solid
+import bake, dds, dress, kit, space, solid
 
 a = argparse.ArgumentParser()
 a.add_argument("--level", default="zoohub")
@@ -99,7 +99,7 @@ if "dome" in LEVEL:
     MATS["glass"] = ("", False, GLASS, TWO_SIDED, 0.0, (1, 1, 1), 0.05, 0, 0)
     MATS["caster"] = ("", False, CASTER, TWO_SIDED, 0.0, (1, 1, 1), 1.0, 0, 0)
     MATS["dome_steel"] = ("", False, GLASS, TWO_SIDED, 0.0, (0.34, 0.37, 0.42), 0.28, 1, 0)
-    LEVEL["materials"] += ("glass", "dome_steel", "caster")
+    LEVEL["materials"] += ("glass", "dome_steel", "caster", "hull")
 if "materials" in LEVEL:  # a level loads only what it uses
     MATS["paint"] = ("", False, OPAQUE, 0, 1000.0, (0.86, 0.88, 0.92), 0.6, 0, 0)  # road markings, kept white
     MATS = {n: m for n, m in MATS.items() if n in LEVEL["materials"]}
@@ -578,13 +578,16 @@ def barbed_wire(o):
     return solid_proto("barbed_wire", parts, "steel")
 
 
-def solid_proto(name, parts, mat):
+def solid_proto(name, parts, mat, colour=None):
     """A proto from (triangle positions, normals) parts, wound the way game space culls."""
     p, n = (np.concatenate(x).astype(np.float32) for x in zip(*parts))
     flip = (np.cross(p[:, 1] - p[:, 0], p[:, 2] - p[:, 0]) * n.mean(1)).sum(1) > 0
     p[flip], n[flip] = p[flip][:, [0, 2, 1]], n[flip][:, [0, 2, 1]]
+    c = np.ones_like(p) if colour is None else np.array(colour, np.float32)
+    if colour is not None:
+        c[flip] = c[flip][:, [0, 2, 1]]
     p, n = p.reshape(-1, 3), n.reshape(-1, 3)
-    return add_proto(name, p, n, np.ones_like(p), np.zeros((len(p), 2), np.float32), np.full(len(p), MAT_ID[mat]))
+    return add_proto(name, p, n, c.reshape(-1, 3), np.zeros((len(p), 2), np.float32), np.full(len(p), MAT_ID[mat]))
 
 
 def game_faces(wanted):
@@ -604,30 +607,92 @@ def game_faces(wanted):
     return list(faces.values())
 
 
+def revolve(c, ax, e1, e2, r, h, nr, nh, segments, colour=None):
+    """A smooth surface of revolution from a profile: triangle corners (positions, normals, colours)."""
+    th = np.linspace(0, 2 * np.pi, segments + 1)
+    d = np.cos(th)[:, None] * e1 + np.sin(th)[:, None] * e2
+    P = c + r[:, None, None] * d + h[:, None, None] * ax
+    N = nr[:, None, None] * d + nh[:, None, None] * ax
+    C = np.ones((len(r), segments + 1, 3)) if colour is None else np.broadcast_to(colour[:, None], (len(r), segments + 1, 3))
+    I, J = np.mgrid[:len(r) - 1, :segments]
+    corners = ((I, J), (I + 1, J), (I + 1, J + 1), (I, J), (I + 1, J + 1), (I, J + 1))
+    return [np.stack([A[i, j] for i, j in corners], 2).reshape(-1, 3, 3) for A in (P, N, C)]
+
+
+def bent_tube(path, up, radius, sides=8):
+    """Round bar along a curve; `up` is the surface normal at each point."""
+    t = np.gradient(path, axis=0)
+    t /= np.linalg.norm(t, axis=1, keepdims=True)
+    side = np.cross(t, up)
+    side /= np.linalg.norm(side, axis=1, keepdims=True)
+    top = np.cross(side, t)
+    a = np.linspace(0, 2 * np.pi, sides + 1)[:-1]
+    spoke = np.cos(a)[None, :, None] * side[:, None] + np.sin(a)[None, :, None] * top[:, None]
+    ring = path[:, None] + radius * spoke
+    I, J = np.mgrid[:len(path) - 1, :sides]
+    K_ = (J + 1) % sides
+    corners = ((I, J), (I + 1, J), (I + 1, K_), (I, J), (I + 1, K_), (I, K_))
+    return [np.stack([A[i, j] for i, j in corners], 2).reshape(-1, 3, 3) for A in (ring, spoke)]
+
+
 def dome_protos():
-    """Glass panes on the game's dome faces, round bars along its panel edges (each pane's UV square; diagonals skipped)."""
-    faces = game_faces(lambda label: dress.role_of(label) == LEVEL["dome"] and label.endswith("spacestation"))
-    panes, bars, nodes = [], {}, {}
-    for c, uv in faces:
-        n = np.cross(c[1] - c[0], c[2] - c[0])
-        n /= np.linalg.norm(n)
-        panes.append((c[None], np.tile(n, (1, 3, 1))))
-        for i in range(3):
-            j = (i + 1) % 3
-            if uv[i][0] == uv[j][0] or uv[i][1] == uv[j][1]:
-                a, b = sorted((tuple(np.round(c[i], 1)), tuple(np.round(c[j], 1))))
-                bars[(a, b)] = (c[i], c[j])
-                nodes[a], nodes[b] = np.array(a), np.array(b)
-    parts = []
-    for a, b in bars.values():
-        axis = (b - a) / np.linalg.norm(b - a)
-        side = np.cross(axis, (0.3, 1, 0.2)); side /= np.linalg.norm(side)
-        parts.append(wire_tube(np.array([a, b]), side, np.cross(side, axis), 8.0, 8))
-    ball = ICO_V[ICO_T.ravel()].reshape(-1, 3, 3)
-    parts += [(q + ball * 10.0, ball) for q in nodes.values()]
-    LEVEL["glass_centre"] = tuple(np.mean(list(nodes.values()), 0))
-    print("export: dome, %d panes, %d bars, %d joints" % (len(panes), len(bars), len(nodes)))
-    return solid_proto("dome_glass", panes, "glass"), solid_proto("dome_frame", parts, "dome_steel")
+    """A round glass dome on the game's rim, curved steel ribs and rings where its panel edges ran, and a smooth hull ring
+    laid just over the game's faceted one, which stays there underneath (its collision is untouched)."""
+    V = np.unique(np.round(np.concatenate([c for c, _ in game_faces(lambda label: dress.role_of(label) == LEVEL["dome"] and label.endswith("spacestation"))]), 1), axis=0)
+    rim = V[V[:, 1] < V[:, 1].min() + 150]
+    c = rim.mean(0)
+    ax = np.linalg.svd(rim - c)[2][2]
+    ax = ax * np.sign(ax[1])
+    e1 = np.cross(ax, (0, 0, 1.0)); e1 /= np.linalg.norm(e1)
+    e2 = np.cross(ax, e1)
+    H = (V - c) @ ax
+    R = np.linalg.norm(V - c - H[:, None] * ax, axis=1)
+    # a superellipse on the rim plane: walls that rise straight from the hull into a round top, containing every game vertex
+    power, b = 2.6, H.max() + 5
+    wide = (R > 500) & (H > 0)
+    a = (R[wide] / (1 - (H[wide] / b) ** power) ** (1 / power)).max() + 2
+    q = np.linspace(0, np.arccos((R[H > 900].min() * 0.92 / a) ** (power / 2)), 44) ** 1.0
+    r_, h_ = np.r_[a, a * np.cos(q) ** (2 / power)], np.r_[-5.0, b * np.sin(q) ** (2 / power)]
+    nr, nh = (r_ / a) ** (power - 1) / a, (np.maximum(h_, 0) / b) ** (power - 1) / b
+    l = np.hypot(nr, nh)
+    nr, nh = nr / l, nh / l
+    P, N, _ = revolve(c, ax, e1, e2, r_, h_, nr, nh, 160)
+    glass = solid_proto("dome_glass", [(P, N)], "glass")
+
+    az = np.unique(np.round(np.arctan2((rim - c) @ e2, (rim - c) @ e1), 2))
+    frame = []
+    for th in az:  # ribs
+        d = np.cos(th) * e1 + np.sin(th) * e2
+        frame.append(bent_tube(c + r_[:, None] * d + h_[:, None] * ax, nr[:, None] * d + nh[:, None] * ax, 7.0))
+    levels_ = sorted({int(round(x / 40)) * 40 for x in H[(H > 100) & (H < 930)]})
+    th = np.linspace(0, 2 * np.pi, 161)
+    d = np.cos(th)[:, None] * e1 + np.sin(th)[:, None] * e2
+    for lv_h, rad in [(x, 6.5) for x in levels_] + [(4.0, 11.0), (h_[-1], 10.0)]:  # rings
+        k = np.argmin(np.abs(h_[1:] - lv_h)) + 1
+        frame.append(bent_tube(c + r_[k] * d + h_[k] * ax, nr[k] * d + nh[k] * ax, rad))
+    bars = solid_proto("dome_frame", frame, "dome_steel")
+
+    ri, ro = R[H < 40].mean() * np.cos(np.pi / 14) - 3.5, 1304.0  # inside the 14-sided wall's flats, outside its corners
+    top, wall = np.array((226, 227, 247)) / 255, np.array((168, 166, 241)) / 255
+    band, outer = np.array((190, 188, 244)) / 255, np.array((212, 211, 248)) / 255
+    arc = lambda r0, h1, q0, q1, rad, m: (r0 + rad * np.cos(np.linspace(q0, q1, m)), h1 + rad * np.sin(np.linspace(q0, q1, m)))
+    pr, ph, pc = [np.array([ri, ri])], [np.array([-250.0, -6.0])], [np.array([wall, wall])]
+    x, y = arc(ri + 11, -2.0, np.pi, np.pi / 2, 11.0, 7)
+    pr.append(x), ph.append(y), pc.append(np.linspace(wall, band, 7))
+    pr.append(np.array([ri + 30, ro - 30])), ph.append(np.array([9.0, 9.0])), pc.append(np.array([top, top]))
+    x, y = arc(ro - 21, -12.0, np.pi / 2, -0.46, 21.0, 9)
+    pr.append(x), ph.append(y), pc.append(np.linspace(top, outer, 9))
+    pr.append(np.array([ro - 104, 1148.0])), ph.append(np.array([-210.0, -292.0])), pc.append(np.array([band, wall]))
+    pr, ph, pc = np.concatenate(pr), np.concatenate(ph), dds.to_linear(np.concatenate(pc))
+    tr, th_ = np.gradient(pr), np.gradient(ph)
+    l = np.maximum(np.hypot(tr, th_), 1e-6)
+    P, N, C = revolve(c, ax, e1, e2, pr, ph, -th_ / l, tr / l, 160, pc)  # outward: from the inner wall up, over, and down the outside
+    hull = solid_proto("hull_ring", [(P, N)], "hull", C)
+
+    LEVEL["shadow_floor"] = float(c[1] - 252)
+    print("export: dome radius %.0f height %.0f, %d ribs, %d rings, glass %d, frame %d, hull %d triangles" % (
+        a, b, len(az), len(levels_) + 2, len(protos[glass]["ix"]) // 3, len(protos[bars]["ix"]) // 3, len(protos[hull]["ix"]) // 3))
+    return glass, bars, hull
 
 
 def caster_proto():
@@ -648,6 +713,21 @@ fp = {}
 for line in open(os.path.join(ext, "textures", "fingerprints.tsv")):
     h, f = line.rstrip("\n").split("\t")[:2]
     fp.setdefault(f, int(h, 16))
+for stem, planets in LEVEL.get("space", {}).items():  # the game's painted backdrop panels, redrawn (bound by look.c in their place)
+    file = "cityhub/textures/%s.png" % stem
+    name = "paint_%016x" % fp[file]
+    key = hashlib.sha1((repr(planets) + open(os.path.join(here, "space.py")).read()).encode()).hexdigest()[:12]
+    cached = os.path.join(cache, "%s-%s.dds" % (name, key))
+    if not os.path.exists(cached):
+        img = bpy.data.images.load(os.path.join(ext, "upscaled", file), check_existing=True)
+        img.colorspace_settings.name = "Non-Color"
+        px = np.empty(img.size[0] * img.size[1] * 4, np.float32)
+        img.pixels.foreach_get(px)
+        rgb = px.reshape(img.size[1], img.size[0], 4)[::-1, :, :3].copy()
+        out_rgb = space.panel(rgb, planets, 4096, seed=sorted(LEVEL["space"]).index(stem) * 40 + 3)
+        dds.write_dxt(cached, dds.mips(np.dstack([out_rgb, np.ones(out_rgb.shape[:2], np.float32)])), b"DXT1")
+    shutil.copy(cached, os.path.join(tmp, "tex", name + ".dds"))
+    tex_bytes[name] = os.path.getsize(cached)
 tex_hash = {}
 for line in list(open(os.path.join(ext, "textures", "index.tsv")))[1:]:
     pak, name, _, _, f = line.rstrip("\n").split("\t")
@@ -973,7 +1053,7 @@ vals = [
     ("saturation", grade["saturation"]), ("contrast", LEVEL.get("contrast", 1.15)),
     ("water_height", water_y), ("water_color", kit.srgb("#2aa6c8")), ("water_clarity", 0.72),
     ("grass_fade_start", 5000.0), ("grass_fade_end", 10000.0), ("sky_scale", sky_scale * LEVEL.get("sky_gain", 1.0)),
-] + [(k, LEVEL[k]) for k in ("unbake", "char_fill", "hold", "glass_centre") if k in LEVEL]
+] + [(k, LEVEL[k]) for k in ("unbake", "char_fill", "hold", "shadow_floor") if k in LEVEL]
 with open(os.path.join(tmp, "level.ini"), "w") as f:
     f.write("[level]\n")
     for k, x in vals:

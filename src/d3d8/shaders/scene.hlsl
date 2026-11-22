@@ -376,15 +376,26 @@ float dashes(float2 p, float t)
 }
 
 // Water on the game's own surface: depth colour over the bed, sky reflection, soft shore.
-// The dome: clear glass with a sheen at grazing angles and the sun's glint, or its steel frame (MAT.y 1). Like the game's,
-// only its far half shows, so the near bars never cross the view.
-float4 DOME : register(c29);
+// A redrawn backdrop panel: unlit, its painted colour held through the tone curve.
+float4 ps_space(float2 uv : TEXCOORD0) : COLOR
+{
+    float3 c = tex2D(BASE, uv).rgb;
+    float peak = max(c.r, max(c.g, c.b)), low = min(c.r, min(c.g, c.b));
+    // a saturated colour held near white comes out of the tone curve pink, so it stops a little lower
+    c *= min(1, (0.72 + 0.28 * low / max(peak, 0.01)) / max(peak, 0.01));
+    c = held(to_linear(c));
+    float l = dot(c, float3(0.2126, 0.7152, 0.0722));
+    return float4(to_gamma(max(l + (c - l) / 0.86, 0)), 1); // the curve's own desaturation, undone
+}
 
+// The dome: clear glass with a sheen at grazing angles and the sun's glint, or its steel frame (MAT.y 1). Like the game's,
+// what is right by the camera doesn't draw, so no bar crosses the view.
 float4 ps_glass(V2P i, float2 vpos : VPOS) : COLOR
 {
     float3 v = normalize(EYE.xyz - i.wp.xyz), n = normalize(i.n);
     if (dot(n, v) < 0) n = -n;
-    float far = saturate((0.12 - dot(normalize(i.wp.xyz - DOME.xyz), v)) / 0.25);
+    float far = saturate((distance(EYE.xyz, i.wp.xyz) - 520) / 360);
+    far *= far * (3 - 2 * far);
     if (MAT.y > 0.5) return float4(to_gamma(shade(TINT.rgb, n, i.wp.xyz, vpos, 1, 1 - MAT.z)) * far, far);
     float3 r = reflect(-v, n);
     float f = 0.03 + 0.5 * pow(1 - saturate(dot(n, v)), 4);

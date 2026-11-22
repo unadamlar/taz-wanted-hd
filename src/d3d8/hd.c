@@ -44,7 +44,7 @@ struct target { IDirect3DTexture9 *t; IDirect3DSurface9 *s; UINT w, h; };
 
 static struct level {
     float sun[3], sun_col[3], sky[3], ground[3], soft, ao_radius, ao_strength, fog[3], fog_start, fog_end;
-    float exposure, bloom_t, bloom_s, sat, contrast, water_h, water[3], clarity, fade0, fade1, sky_scale, unbake, char_fill[3], hold, glass_c[3];
+    float exposure, bloom_t, bloom_s, sat, contrast, water_h, water[3], clarity, fade0, fade1, sky_scale, unbake, char_fill[3], hold, shadow_y;
 } lv;
 
 static int scene_no = -1;
@@ -60,6 +60,7 @@ static struct { UINT proto; float world[12]; } solid_done[128]; static UINT ndon
 static IDirect3DTexture9 *light_tex;
 static int skin_mat = -1, has_glass;
 static float origin[3]; // where this load's additions are shifted to
+static struct { UINT64 hash; IDirect3DTexture9 *t; } paints[8]; static UINT npaints; // redrawn backdrop panels
 static float light_grid[4];
 static struct proto *protos; static UINT nprotos;
 static struct sub *subs;
@@ -75,7 +76,7 @@ static UINT ntexs;
 
 // Shaders, vertex declarations
 static IDirect3DVertexShader9 *v_world, *v_inst, *v_water, *v_world_float, *v_wind, *v_grass, *v_world_z, *v_inst_z, *v_grass_z, *v_sky, *v_quad, *v_char_z;
-static IDirect3DPixelShader9 *p_glass, *p_depth, *p_world, *p_mat, *p_mat2, *p_tiled, *p_inst, *p_card, *p_grass, *p_water, *p_sky, *p_char, *p_glow;
+static IDirect3DPixelShader9 *p_space, *p_glass, *p_depth, *p_world, *p_mat, *p_mat2, *p_tiled, *p_inst, *p_card, *p_grass, *p_water, *p_sky, *p_char, *p_glow;
 static IDirect3DPixelShader9 *p_bright, *p_down, *p_up, *p_final, *p_ao, *p_blur;
 static IDirect3DVertexDeclaration9 *d_world, *d_inst, *d_quad, *d_char;
 static int atoc;
@@ -234,7 +235,7 @@ static void read_ini(void)
         K("fog_color", fog, 3), K("fog_start", fog_start, 1), K("fog_end", fog_end, 1), K("exposure", exposure, 1),
         K("bloom_threshold", bloom_t, 1), K("bloom_strength", bloom_s, 1), K("saturation", sat, 1), K("contrast", contrast, 1),
         K("water_height", water_h, 1), K("water_color", water, 3), K("water_clarity", clarity, 1),
-        K("grass_fade_start", fade0, 1), K("grass_fade_end", fade1, 1), K("sky_scale", sky_scale, 1), K("unbake", unbake, 1), K("char_fill", char_fill, 3), K("hold", hold, 1), K("glass_centre", glass_c, 3),
+        K("grass_fade_start", fade0, 1), K("grass_fade_end", fade1, 1), K("sky_scale", sky_scale, 1), K("unbake", unbake, 1), K("char_fill", char_fill, 3), K("hold", hold, 1), K("shadow_floor", shadow_y, 1),
     };
     while (fgets(line, sizeof line, f)) {
         char *eq = strchr(line, '=');
@@ -280,7 +281,7 @@ static int load_shaders(hd_dev d)
     VS(v_world, vs_world); VS(v_inst, vs_inst); VS(v_water, vs_water); VS(v_world_float, vs_world_float); VS(v_wind, vs_inst_wind); VS(v_grass, vs_grass);
     VS(v_world_z, vs_world_depth); VS(v_inst_z, vs_inst_depth); VS(v_grass_z, vs_grass_depth); VS(v_sky, vs_sky); VS(v_quad, vs_quad); VS(v_char_z, vs_char_depth);
     PS(p_depth, ps_depth); PS(p_world, ps_world); PS(p_mat, ps_world_mat); PS(p_mat2, ps_world_mat2); PS(p_tiled, ps_inst_tiled); PS(p_inst, ps_inst); PS(p_card, ps_card);
-    PS(p_grass, ps_grass); PS(p_water, ps_water); PS(p_sky, ps_sky); PS(p_glass, ps_glass); PS(p_char, ps_char); PS(p_glow, ps_glow);
+    PS(p_grass, ps_grass); PS(p_water, ps_water); PS(p_sky, ps_sky); PS(p_glass, ps_glass); PS(p_space, ps_space); PS(p_char, ps_char); PS(p_glow, ps_glow);
     PS(p_bright, ps_bright); PS(p_down, ps_down); PS(p_up, ps_up); PS(p_final, ps_final); PS(p_ao, ps_ao); PS(p_blur, ps_ao_blur);
     return ok;
 }
@@ -524,6 +525,15 @@ int hd_load(hd_dev d, int scene)
     }
     snprintf(path, sizeof path, "taz-hd\\look\\scene%02d\\sky.dds", scene);
     sky_tex = load_cube(d, path);
+    snprintf(path, sizeof path, "taz-hd\\look\\scene%02d\\tex\\paint_*.dds", scene);
+    WIN32_FIND_DATAA found;
+    HANDLE list = FindFirstFileA(path, &found);
+    for (BOOL more = list != INVALID_HANDLE_VALUE; more && npaints < 8; more = FindNextFileA(list, &found)) {
+        char name[32];
+        snprintf(name, sizeof name, "%.*s", (int)strlen(found.cFileName) - 4, found.cFileName);
+        paints[npaints].hash = strtoull(name + 6, NULL, 16), paints[npaints++].t = named_tex(d, name);
+    }
+    if (list != INVALID_HANDLE_VALUE) FindClose(list);
     free(file);
     GlobalMemoryStatus(&ms);
     log_line("hd: scene %d: %u materials, %u binds, %u prototypes, %u chunks, %u instances, %u vertices, %u textures, sky %s, address space free %lu -> %lu MB",
@@ -545,7 +555,7 @@ void hd_unload(void)
     if (ib) IDirect3DIndexBuffer9_Release(ib), ib = NULL;
     if (sky_tex) IDirect3DCubeTexture9_Release(sky_tex), sky_tex = NULL;
     if (light_tex) IDirect3DTexture9_Release(light_tex), light_tex = NULL;
-    skin_mat = -1, has_glass = 0;
+    skin_mat = -1, has_glass = 0, npaints = 0;
     free(lights), free(glows), lights = NULL, glows = NULL, nlights = nglows = 0, light_grid[3] = 0;
     free(swaps), swaps = NULL, nswaps = 0;
     free(solids), solids = NULL, nsolids = nsolid_tex = ndone = 0;
@@ -835,7 +845,9 @@ static void bind_material(hd_dev d, const struct mat *m, int pass)
     IDirect3DDevice9_SetPixelShaderConstantF(d, 16, c[0], 3);
     IDirect3DDevice9_SetTexture(d, 0, m->albedo ? (IDirect3DBaseTexture9 *)m->albedo : (IDirect3DBaseTexture9 *)white);
     IDirect3DVertexShader9 *vs = m->kind == GRASS ? v_grass : m->flags & F_WIND ? v_wind : v_inst;
-    if (pass == PASS_GLASS) {
+    if (pass == PASS_GLASS) { // steel is solid: its own back and the bars behind it mustn't blend through
+        IDirect3DDevice9_SetRenderState(d, D3DRS_CULLMODE, m->nstrength > 0.5f ? D3DCULL_CW : D3DCULL_NONE);
+        IDirect3DDevice9_SetRenderState(d, D3DRS_ZWRITEENABLE, m->nstrength > 0.5f);
         IDirect3DDevice9_SetVertexShader(d, v_inst);
         IDirect3DDevice9_SetPixelShader(d, p_glass);
         return;
@@ -1039,6 +1051,24 @@ static void draw_near(hd_dev d)
     quick_ok = 0;
 }
 
+// A backdrop panel the look data redraws: its own texture, kept at its painted colour through the tone curve.
+int hd_space_begin(hd_dev d, unsigned long long hash)
+{
+    IDirect3DTexture9 *t = NULL;
+    for (UINT i = 0; i < npaints; i++)
+        if (paints[i].hash == hash) t = paints[i].t;
+    if (!t) return 0;
+    save_state(d);
+    float hold[4] = { 1, lv.exposure, lv.contrast * 1.26f, 0 };
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 28, hold, 1);
+    IDirect3DDevice9_SetTexture(d, 0, (IDirect3DBaseTexture9 *)t);
+    sampler(d, 0, D3DTEXF_ANISOTROPIC, D3DTEXF_LINEAR, D3DTADDRESS_CLAMP);
+    IDirect3DDevice9_SetPixelShader(d, p_space);
+    return 1;
+}
+
+void hd_space_end(hd_dev d) { restore_state(d); }
+
 // Over everything the 3D pass drew, so what is behind the glass stays sharp.
 static void draw_glass(hd_dev d)
 {
@@ -1054,8 +1084,6 @@ static void draw_glass(hd_dev d)
     IDirect3DDevice9_SetRenderState(d, D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
     vs_constants(d, clip_rows, NULL);
     ps_constants(d);
-    float c[4] = { lv.glass_c[0] + origin[0], lv.glass_c[1] + origin[1], lv.glass_c[2] + origin[2], 0 };
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 29, c, 1);
     draw_instances(d, PASS_GLASS);
     restore_state(d);
     quick_ok = 0;
@@ -1275,7 +1303,7 @@ void hd_world_material(hd_dev d, unsigned long long hash)
             emit[0] = glows[i].strength, emit[1] = glows[i].mask ? glows[i].lo : -1, emit[2] = glows[i].mask ? 1 / (fabsf(span) < 0.001f ? 0.001f : span) : 1;
         }
     IDirect3DDevice9_SetPixelShaderConstantF(d, 26, emit, 1);
-    float hold[4] = { lv.hold, lv.exposure, lv.contrast * 1.26f, lv.glass_c[1] + origin[1] - 815 };
+    float hold[4] = { lv.hold, lv.exposure, lv.contrast * 1.26f, lv.shadow_y + origin[1] };
     IDirect3DDevice9_SetPixelShaderConstantF(d, 28, hold, 1);
     for (UINT i = 0; i < nbinds && n < 2; i++)
         if (binds[i].hash == hash && (UINT)binds[i].mat < nmats) b[n++] = &binds[i];

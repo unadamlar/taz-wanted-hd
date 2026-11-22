@@ -132,6 +132,17 @@ PLANET_LOOK = dict(
     sky=dict(zenith="#070a24", horizon="#141a48", horizon_warm="#1c2258", sky_strength=1.0, cloud_white=0.2, ambient="#a29fb0"), cliff=dict(),
 )
 
+# Where the game paints its planets on the three space panels (1024 px): centre, radius, atmosphere. Read by space.py.
+_BLUE = (0.07, 0.32, 1.0)
+PLANET_SPACE = {
+    "space01": [dict(c=(666, 458), r=141, atm=_BLUE, reach=1.34, paint=1.42), dict(c=(778, 573), r=55, atm=_BLUE, reach=1.3, paint=1.26, freq=5),
+                dict(c=(444, 253), r=31, atm=_BLUE, reach=1.45, paint=1.42, freq=6)],
+    "space02": [dict(c=(221, 228), r=70, atm=(1, 0.08, 0.05), reach=1.22, paint=1.2), dict(c=(131, 306), r=26, paint=1.16, freq=7),
+                dict(c=(311, 203), r=9, atm=(0.05, 0.25, 1), reach=1.6, paint=1.5), dict(c=(608, 653), r=52, atm=(0.2, 1, 0.05), reach=1.32, paint=1.3),
+                dict(c=(682, 573), r=21, atm=(0.05, 0.5, 0.05), reach=1.3, paint=1.2)],
+    "space03": [dict(c=(577, 356), r=143, atm=_BLUE, reach=1.42, paint=1.42, gloss=0.3), dict(c=(790, 507), r=44, paint=1.12, freq=6)],
+}
+
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
@@ -163,5 +174,5 @@ LEVELS = {
                     hdri=None, hdri_rotation=0.0, hub=(11.2, -3.9, 21.8, 6.8), clutter=False, game_sky=True, clear_islands=True,
                     materials=tuple(PLANET_TILES) + ("lawn", "grass"), tiles=PLANET_TILES, detail=PLANET_DETAIL,
                     tints={"lawn": (0.16, 1.45, 0.4), "red_ground": (1.45, 1.2, 1.2)}, binds={"ground": (("lawn", 0, 0.0, 1.0), ("red_ground", 1, -0.14, -0.05))},
-                    grass_opts=dict(height=(0.09, 0.22), flowers=0.0, weeds=0.0), dome="dome", hold=1.0, contrast=1.0, bloom_threshold=25.0, char_fill=(0.16, 0.16, 0.22)),
+                    grass_opts=dict(height=(0.09, 0.22), flowers=0.0, weeds=0.0), dome="dome", space=PLANET_SPACE, flats={"hull": ((3.2, 3.2, 3.25), 0.42)}, hold=1.0, contrast=1.0, bloom_threshold=25.0, char_fill=(0.16, 0.16, 0.22)),
 }

@@ -91,6 +91,7 @@ Conventions:
   the image and v runs down, so on walls v = -y / tile keeps a texture upright. Mesh UVs are already in this convention.
 - Normal maps are tangent space with +x along +u and +y towards the top of the image (OpenGL style).
 - sky.dds is sampled with the game-space view direction as is.
+- `tex/paint_<fingerprint>.dds`, where present in Planet X's data, is drawn in place of that game backdrop panel at the game's transform, so it keeps moving.
 - sky.dds is optional: without it the game's own backdrop stays. `scene30` is Planet X, shared by the four hubs.
 - A material named `skin` is the hide of untextured characters: a raw grey tile on their bind pose, `tile` game units per
   repeat, `alpha_cut` its strength.
@@ -110,7 +111,7 @@ sky_scale
 unbake     optional. Above 0 the game's vertex colours are baked light (a night level): their tint is dropped
            and their brightness v becomes v^unbake
 char_fill  optional, three numbers: extra ambient on characters only, so they read away from a night level's lamps
-glass_centre  optional, three numbers: the dome's middle; only the glass material's far half draws
+shadow_floor  optional: the height below which `hold` surfaces take no sun shadow
 hold       optional. Above 0 game surfaces keep their painted colour through the tone curve; light only shades it
 ```
 
