@@ -402,19 +402,35 @@ def blender_main(argv):
             if "trees" in L and named(ob, L["trees"][:1]).any():  # leaves shared with potted plants count only on a tree
                 m = named(ob, L["trees"])
                 ob["kit_replaced"] = True
-                vs = {v for p, k in zip(ob.data.polygons, named(ob, L["trees"][:1])) if k for v in p.vertices}
-                pts = [ob.matrix_world @ ob.data.vertices[v].co for v in vs]
+            bark = m & named(ob, ("*/tazwood02a",))
+            for isl, _, _ in kit.islands(ob, bark) if bark.any() else ():
+                pts = [ob.matrix_world @ ob.data.vertices[v].co for p in isl for v in ob.data.polygons[p].vertices]
                 low = min(p.z for p in pts)
                 foot = [p for p in pts if p.z < low + 0.3]
-                feet.append(sum(foot, Vector()) / len(foot))
+                c = sum(foot, Vector()) / len(foot)
+                r = max(math.hypot(p.x - c.x, p.y - c.y) for p in foot)
+                tall = max(p.z for p in pts) - low > 2.5  # shorter islands are branches and the pond's logs
+                if tall and r > 0.3 and not any(math.hypot(c.x - q.x, c.y - q.y) < 0.2 for q, _ in feet):  # close: a repeated capture
+                    feet.append((c, r))
             if m.any():
                 boxes += [(lo, hi) for _, lo, hi in kit.islands(ob, m)]
                 hide_faces(ob, m)
-        trees = [bx for bx in kit.merge_boxes(boxes, pad=0.3) if bx[1].z - bx[0].z > 2.0]
+        # one tree per game trunk, on it: railings are built around the trunks
+        parts, rest = {}, []
+        for b in boxes:
+            c = (b[0] + b[1]) / 2
+            k = min(range(len(feet)), key=lambda j: math.hypot(feet[j][0].x - c.x, feet[j][0].y - c.y), default=None)
+            if k is not None and math.hypot(feet[k][0].x - c.x, feet[k][0].y - c.y) < 7:
+                parts.setdefault(k, []).append(b)
+            else:
+                rest.append(b)
+        planned = [((Vector(np.min([b[0] for b in bs], 0)), Vector(np.max([b[1] for b in bs], 0))), feet[k]) for k, bs in parts.items()]
+        planned += [(bx, None) for bx in kit.merge_boxes(rest, pad=0.3) if bx[1].z - bx[0].z > 2.0]
+        trees = [bx for bx, _ in planned]
         tri_props = 0
-        for i, (lo, hi) in enumerate(trees):
-            at = next((f for f in feet if lo.x <= f.x <= hi.x and lo.y <= f.y <= hi.y), None)
-            tr, can = kit.tree_from_bbox(lo, hi, SCALE, at=at, seed=i, name=f"kit_tree_{i:02d}", coll=props)
+        for i, ((lo, hi), foot) in enumerate(planned):
+            at, trunk_r = foot or (None, None)
+            tr, can = kit.tree_from_bbox(lo, hi, SCALE, at=at, trunk_r=trunk_r, seed=i, name=f"kit_tree_{i:02d}", coll=props)
             tri_props += kit.tri_count(tr) + kit.tri_count(can)
         stats["trees"] = len(trees)
 

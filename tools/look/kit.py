@@ -2472,7 +2472,7 @@ def boulder(center, size, scale=1.0, *, seed=0, name="kit_boulder", coll=None, s
     return ob
 
 
-def tree(base, height, canopy_radius, scale=1.0, *, seed=0, name="kit_tree", coll=None, clumps=14, cards_per_clump=110):
+def tree(base, height, canopy_radius, scale=1.0, *, seed=0, name="kit_tree", coll=None, clumps=14, cards_per_clump=110, trunk_r=None):
     """Stylized tree: tapered bent trunk with branches + clumpy rounded canopy of
     sphere clumps wrapped in alpha-tested leaf cards with clump-spherical normals."""
     rng = np.random.default_rng(seed)
@@ -2482,7 +2482,7 @@ def tree(base, height, canopy_radius, scale=1.0, *, seed=0, name="kit_tree", col
     # trunk
     bm = bmesh.new()
     rings, segs = 6, 8
-    r0 = max(0.09 * scale, R * 0.11)
+    r0 = trunk_r * 0.92 / 2.16 if trunk_r else max(0.09 * scale, R * 0.11)  # 2.16: the flare at its base
     lean = Vector((rng.normal(0, 0.06), rng.normal(0, 0.06), 0)) * H
     verts = []
     for i in range(rings + 1):
