@@ -22,24 +22,25 @@ zoo hub). It is loose reference: do what looks best for this game, never chase a
   Checked in game: `extracted/look/reports/step2.md`.
 - Step 3 is done (2026-11-22): 12 routes across the hub, with fixes for glows burning to white, shadows while walking,
   grass under the player, scenery at the camera, and the game's own screens. Report: `extracted/look/reports/step3.md`.
+- Step 4 is done (2026-11-22): the city hub (scene 8) is a moonlit night city through the same pipeline, with street
+  lamps, lit windows and signs. Report: `extracted/look/reports/step4.md`.
 
-Measured on the desktop (RTX 4070, 2880x1800, 4x MSAA, vsync off, 3 runs of 600 frames, view A): Remaster 6.17-6.36 ms
-per frame, HD 1.58-1.66, Original 1.52-1.54. Address space free: 1,849 MB at HD, 1,772 MB at Remaster, largest hole
-1,315 MB.
+Measured on the desktop (RTX 4070, 2880x1800, 4x MSAA, vsync off, 3 runs of 600 frames, fixed view). Zoo hub: Remaster
+6.57-6.76 ms per frame. City hub: Remaster 5.63-5.73, HD 1.56-1.67. Free address space reads about 3,500 MB in both hubs
+and held steady over five level changes. Earlier notes said 1,772 MB; the cause of the difference is not known, and test
+runs did not reproduce the 2 GB limit this game has without the large-address flag.
 
 ## How the pieces fit
 
 1. `taz-hd\world` trigger records the level (`capture.c`).
 2. `tools/worldview.py` rebuilds it in Blender. Check: it matched the game's frame to 0.18 px on average.
-3. `tools/look/zoohub.py` dresses it through `tools/look/kit.py`: a table of texture-name patterns -> roles, plus a
-   per-level `LEVEL` block (sun, grade, sky, cliff settings). Hand items are listed in `HAND`; keep them few, since
-   how this scales to 27 levels is the main question.
-4. `tools/look/export.py` writes the additions as `taz-hd\look-sceneNN.bin`; `look.c` draws them.
+3. `tools/look/dress.py` dresses it through `tools/look/kit.py`. Each level is a block in `tools/look/levels.py`: a table
+   of texture-name patterns -> roles, sun, grade, sky, and hand items. Keep those few, since how this scales to 27 levels
+   is the main question.
+4. `tools/look/export.py` writes the additions to `taz-hd\look\sceneNN\`; `look.c` draws them.
 
-Rerun commands: the `extracted/look/` renders come from
-`blender -b --factory-startup --python-exit-code 1 -P tools/look/zoohub.py -- game|lit|dressed --camera ABC`, then
-`python3 tools/look/zoohub.py compose pass3`. Look data: `blender -b extracted/look/pass3/zoohub-dressed.blend
---factory-startup --python-exit-code 1 -P tools/look/export.py -- --scene 3`. Shaders: `src/d3d8/shaders/build.sh`
+Rerun commands: see the usage lines at the top of `dress.py`. Look data: `blender -b extracted/look/pass3/zoohub-dressed.blend
+--factory-startup --python-exit-code 1 -P tools/look/export.py -- --level zoohub` (or `cityhub`). Shaders: `src/d3d8/shaders/build.sh`
 regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender` here means
 `~/.local/share/devtools/blender/blender`.
 
@@ -63,6 +64,13 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
   x0.7 and partly desaturated. Levels 1-3 and the debug views are deleted, so there is one Remaster path.
 - Two upscaled game textures (`game_metaledges`, `game_tazcage3`) sit in the look data's `tex/`. Treat that folder as
   game-derived in any packaging.
+- Second level is the city hub, not Grand Canyon: a night scene with lamps, pavement and buildings is the harder test of
+  what carries over.
+- Night levels keep the brightness of the game's baked vertex colours and drop their blue tint. Street lamps come from a
+  rule and the baked warm pools, at most 64 per level, looked up through a grid so cost doesn't grow with their number.
+- Hand work for the city: 14 texture rules, 12 glow rules, 3 material roles, 2 new CC0 texture sets, 1 hand exception,
+  about 25 tuned numbers, nothing placed by hand. Estimate, not measured: 1 to 2 hours of agent time per further level of
+  this size plus about 15 minutes of review, and 30 to 60 minutes more for a new surface type.
 - Frame rate is a later pass. Don't let it block the look, but don't build anything that can't be made fast.
 - Sun is per level and placed for looks; baked vertex shadows are dropped.
 - Never move a game surface. Walkable tops keep their height; replacements must contain the collision shape.
@@ -78,7 +86,7 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
    that leaves the HUD alone, and grass that fades instead of popping.
 3. (Done 2026-11-22) Walk the whole zoo hub and fix what shows in motion: popping, sorting against particles and blended draws, feet in
    grass, hidden pickups, the camera passing through trees and fences, level transitions, quickload.
-4. Second level (city hub, scene 8, or Grand Canyon, 16) to prove what carries over; measure hand work per level.
+4. (Done 2026-11-22) Second level (city hub, scene 8) to prove what carries over; measure hand work per level.
 5. More zoo hub art: sharper cliffs, buildings, the elephant, painted leftovers (zigzag moat bank, barbed wire).
 6. Later, with the user: optimization pass, whether to split into its own repo, rollout to all levels.
 
@@ -89,6 +97,9 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
 - The tutorial book's ribbon is pale and faint next to HD, and its yellow haze still covers part of the view up close.
 - Bright flat green ground shows around the book stands. Scenery right next to the camera dissolves in visible dots.
   The water has fewer white glints than pass 3.
+- City hub: the big yellow shop door glares, grass right beside a lamp looks like daylight, searchlight beams are flat
+  pale triangles, close-up walls are flat and very dark, bright painted green shows at lawn edges, and the painted
+  pavement lines don't follow the slab joints. The intro flyover ran without a crash but its frames were not reviewed.
 - Walking through a real level door is not tested: about 21 runs never got through one in this save. Level changes were
   tested through the game's scene change and a real level ending.
 - The walking-shadow fix is in but not measured. Jumping scenes with the test trigger during the boss intro closes the

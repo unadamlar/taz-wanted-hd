@@ -1,6 +1,6 @@
 # Blender: exports a dressed level as look data, format version 3 (see FORMAT.md).
 # usage: blender -b extracted/look/pass3/zoohub-dressed.blend --factory-startup --python-exit-code 1 \
-#          -P tools/look/export.py -- [--scene 3] [--rebake]
+#          -P tools/look/export.py -- --level zoohub|cityhub [--rebake]
 # Writes extracted/look/runtime/scene<NN>/ atomically. Bakes are cached in extracted/look/runtime/.bake/.
 # Game space is worldview.py's inverse: Blender (x, y, z) * 250 -> game (x, z, y).
 import argparse, collections, ctypes, fnmatch, json, math, os, random, shutil, struct, sys, time
