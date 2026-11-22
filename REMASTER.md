@@ -20,6 +20,8 @@ zoo hub). It is loose reference: do what looks best for this game, never chase a
 - Step 2 is done (2026-11-22): the zoo hub draws pass 3's materials, foliage, grass, sky, water, soft shadows, AO, bloom
   and tone mapping in game, with the HUD ungraded. `master`'s camera, level ending and grass fixes are merged in.
   Checked in game: `extracted/look/reports/step2.md`.
+- Step 3 is done (2026-11-22): 12 routes across the hub, with fixes for glows burning to white, shadows while walking,
+  grass under the player, scenery at the camera, and the game's own screens. Report: `extracted/look/reports/step3.md`.
 
 Measured on the desktop (RTX 4070, 2880x1800, 4x MSAA, vsync off, 3 runs of 600 frames, view A): Remaster 6.17-6.36 ms
 per frame, HD 1.58-1.66, Original 1.52-1.54. Address space free: 1,849 MB at HD, 1,772 MB at Remaster, largest hole
@@ -74,7 +76,7 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
 2. (Done 2026-11-22) Bring pass 3 in game: materials on ground, brick and cliffs, foliage cards, sky and clouds, water, soft shadows,
    AO, bloom, tone mapping, character lighting that fits the world (Taz's outline look clashes with it now), a grade
    that leaves the HUD alone, and grass that fades instead of popping.
-3. Walk the whole zoo hub and fix what shows in motion: popping, sorting against particles and blended draws, feet in
+3. (Done 2026-11-22) Walk the whole zoo hub and fix what shows in motion: popping, sorting against particles and blended draws, feet in
    grass, hidden pickups, the camera passing through trees and fences, level transitions, quickload.
 4. Second level (city hub, scene 8, or Grand Canyon, 16) to prove what carries over; measure hand work per level.
 5. More zoo hub art: sharper cliffs, buildings, the elephant, painted leftovers (zigzag moat bank, barbed wire).
@@ -82,13 +84,16 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
 
 ## Known problems
 
-- Once, after running at the fence near Tutorial 3, the whole 3D view turned yellow for at least 2 s with a bright beam
-  on screen. The same walk did not repeat it. Cause unknown.
-- Against pass 3: Taz's fur is more maroon, the dirt redder, the water darker without white glints, and torches and
-  sparkles glow too much. The three non-Current Taz styles look redder and ignore the level's sun and shadows.
-- Not tested at the Remaster look: videos, paper books, map previews, wind, grass fading in motion, card edges up close.
+- Taz looks flat from behind, which is how the player mostly sees him. The three non-Current Taz styles ignore the
+  level's sun and shadows.
+- The tutorial book's ribbon is pale and faint next to HD, and its yellow haze still covers part of the view up close.
+- Bright flat green ground shows around the book stands. Scenery right next to the camera dissolves in visible dots.
+  The water has fewer white glints than pass 3.
+- Walking through a real level door is not tested: about 21 runs never got through one in this save. Level changes were
+  tested through the game's scene change and a real level ending.
+- The walking-shadow fix is in but not measured. Jumping scenes with the test trigger during the boss intro closes the
+  game, with the look off too; plain `master` was not tried.
 - Looningdale's level ending still shows 0.9 s of black, on plain `master` too (measured 0.87 s there, 0.92 s here).
-- `qa/lookwalk.sh` was written but never run.
 - Not tested on the D3D9 build: real Windows, Wine without DXVK, a physical gamepad, a real alt-tab, `config.exe`,
   a full `tools/package.sh` run, a world piece first seen after the merge is built, a world buffer rewritten mid-scene.
 - At level 0, 3.9% of pixels differ from the D3D8 build by more than 16 levels, on thin edges and foliage. It looks
