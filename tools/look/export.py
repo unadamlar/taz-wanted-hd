@@ -28,7 +28,7 @@ SC = dress.SCALE
 root = next(p for p in [os.path.join(here, *([".."] * n)) for n in range(1, 7)] if os.path.isdir(os.path.join(p, "extracted", "textures")))
 ext = os.path.join(root, "extracted")
 base = args.runtime or os.path.join(ext, "look", "runtime")
-cache = os.path.join(ext, "look", "runtime", ".bake" if args.level == "zoohub" else ".bake-" + args.level)
+cache = os.path.join(ext, "look", LEVEL.get("bake_in", "runtime"), ".bake" if args.level == "zoohub" else ".bake-" + args.level)
 out = os.path.join(base, "scene%02d" % args.scene)
 tmp = out + ".tmp%d" % os.getpid()
 if args.rebake:
@@ -276,8 +276,9 @@ for o in flat:
         sc.collection.objects.link(o)
     o.hide_set(False); o.hide_render = False; o.select_set(True)
 bpy.context.view_layer.update()
-bpy.context.view_layer.objects.active = flat[0]
-bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, target="VERTEX_COLORS")
+if flat:
+    bpy.context.view_layer.objects.active = flat[0]
+    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, target="VERTEX_COLORS")
 
 
 def corner_colors(o, co, grass_rank):
@@ -715,11 +716,13 @@ def level_lights(cfg):
 lights = level_lights(LEVEL["lamps"]) if "lamps" in LEVEL else []
 
 # ---------------------------------------------------------------- sky
-eye = bpy.data.objects["hero camera"].matrix_world.translation.copy() if "hero camera" in bpy.data.objects else Vector()
-sky = np.asarray(bake.bake_sky(cache, sc, eye, panels=LEVEL.get("sky_panels", False)), np.float32)
-sky_scale = max(1.0, float(np.quantile(sky, 0.9999)))
-faces = [np.asarray(dds.to_srgb(f / sky_scale), np.float32) for f in bake.cube_faces(sky, 1024)]
-sky_bytes = dds.write_cube(os.path.join(tmp, "sky.dds"), faces)
+sky_scale, sky_bytes = 1.0, 0
+if not LEVEL.get("game_sky"):  # otherwise the game's own painted backdrop stays
+    eye = bpy.data.objects["hero camera"].matrix_world.translation.copy() if "hero camera" in bpy.data.objects else Vector()
+    sky = np.asarray(bake.bake_sky(cache, sc, eye, panels=LEVEL.get("sky_panels", False)), np.float32)
+    sky_scale = max(1.0, float(np.quantile(sky, 0.9999)))
+    faces = [np.asarray(dds.to_srgb(f / sky_scale), np.float32) for f in bake.cube_faces(sky, 1024)]
+    sky_bytes = dds.write_cube(os.path.join(tmp, "sky.dds"), faces)
 
 # ---------------------------------------------------------------- scene.bin
 
@@ -777,7 +780,7 @@ vals = [
     ("fog_color", kit.srgb("#b8d6f2")), ("fog_start", fog_start),
     ("fog_end", fog_start + grade["fog_depth"] * SC * K / grade["fog"]),  # Blender's fog tops out at this 7%
     ("exposure", 2 ** grade["exposure"]), ("bloom_threshold", 0.9), ("bloom_strength", grade["bloom"]),
-    ("saturation", grade["saturation"]), ("contrast", 1.15),
+    ("saturation", grade["saturation"]), ("contrast", grade.get("contrast", 1.15)),
     ("water_height", water_y), ("water_color", kit.srgb("#2aa6c8")), ("water_clarity", 0.72),
     ("grass_fade_start", 5000.0), ("grass_fade_end", 10000.0), ("sky_scale", sky_scale * LEVEL.get("sky_gain", 1.0)),
 ] + [(k, LEVEL[k]) for k in ("unbake", "char_fill") if k in LEVEL]

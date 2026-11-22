@@ -86,6 +86,8 @@ def bake_tile(cache, name, mat, tile, px, vertical=True, overlap=0.125, samples=
     ob = _plane(tile * n / px, vertical, z0)
     alb, nor = _bake(ob, mat, n, "albedo"), _bake(ob, mat, n, "normal")
     bpy.data.objects.remove(ob)
+    if not alb.max():
+        raise RuntimeError("black bake: " + name)  # Cycles can come back empty, and a black tile ships silently
     alb, nor = _seamless(alb, px), _seamless(nor, px)
     alb = dds.to_srgb(alb).astype(np.float32)
     v = nor * 2 - 1

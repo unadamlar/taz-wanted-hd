@@ -103,6 +103,29 @@ CITY_GLOW = [  # texture pattern, strength, brightness range that glows (None = 
     ("cityhub/textures/gladiatoons.gif", 1.1, None), ("cityhub/textures/marvinwash.gif", 1.1, None),
 ]
 
+# ---- Planet X, where the doors between hubs lead: one small model far below all four hubs' levels. Doors, signs and
+# the flag keep their paint; only the rock, turf and station get relief.
+PLANET_RULES = [("resTex/shadowsub", "hide")]
+PLANET_DETAIL = [
+    ("tazhub/textures/planetxgrass", "d_turf"), ("tazhub/textures/planetx*", "d_rock"),
+    ("tazhub/textures/spacestation", "d_metal"), ("tazhub/extras/snowbeam*", "d_metal"), ("tazhub/extras/aquasandcas2", "d_metal"),
+    ("tazhub/extras/metaledges", "d_metal"), ("tazhub/textures/chrome", "d_metal"), ("tazhub/textures/safarigrill01", "d_metal"),
+]
+PLANET_TILES = {
+    "d_rock": dict(set="rock061", period=2.4, px=1024, detail=0.6, triplanar=True, rough=0.8, normal=0.9),
+    "d_turf": dict(set="rocky_trail", period=1.6, px=1024, detail=0.3, rough=0.9, normal=0.5),
+    "d_metal": dict(set="asphalt", period=1.2, px=1024, detail=0.1, triplanar=True, rough=0.32, normal=0.2),
+}
+PLANET_GLOW = [  # the doors stand all around the planet, so some always face away from the sun: their paint must still read
+    ("*hubxdoor", 0.4, None), ("tazhub/textures/planetflag", 0.45, None), ("tazhub/textures/cross", 0.45, None),
+    ("tazhub/extras/tazcagelock*", 0.3, None),
+]
+PLANET_LOOK = dict(
+    sun=dict(sun_azimuth=215.0, sun_elevation=48.0, sun_strength=2.26, sun_color="#fff1e0"),
+    grade=dict(exposure=0.454, contrast=1.0, look="AgX - Punchy", saturation=1.3, bloom=0.5, fog=0.01, fog_start=400.0, fog_depth=400.0, ambient_strength=1.0),
+    sky=dict(ambient="#a29fb0"), cliff=dict(),
+)
+
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
@@ -118,4 +141,8 @@ LEVELS = {
                            "lawn": (("lawn", 0, 0.0, 1.0),),
                            "road": (("asphalt", 3, 0.42, 0.56), ("paint", 3, 0.86, 0.93))},
                     glow=CITY_GLOW, lamps=CITY_LAMPS, unbake=0.5, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
+    "planetx": dict(scene=30, pak=("tazhub", "cityhub"),  # the city has its own copies of three door paintings
+                    blend="planet/planetx.blend", out="planet/pass1", rules=PLANET_RULES, hand={},
+                    look=PLANET_LOOK, hdri=None, hdri_rotation=0.0, game_sky=True, bake_in="planet", materials=tuple(PLANET_TILES),
+                    tiles=PLANET_TILES, detail=PLANET_DETAIL, glow=PLANET_GLOW, char_fill=(0.16, 0.16, 0.22)),
 }

@@ -80,6 +80,7 @@ Conventions:
   the image and v runs down, so on walls v = -y / tile keeps a texture upright. Mesh UVs are already in this convention.
 - Normal maps are tangent space with +x along +u and +y towards the top of the image (OpenGL style).
 - sky.dds is sampled with the game-space view direction as is.
+- sky.dds is optional: without it the game's own backdrop stays. `scene30` is Planet X, shared by the four hubs.
 - A material named `skin` is the hide of untextured characters: a raw grey tile on their bind pose, `tile` game units per
   repeat, `alpha_cut` its strength.
 

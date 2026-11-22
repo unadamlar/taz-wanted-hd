@@ -24,6 +24,7 @@ struct rec { IDirect3DVertexBuffer8 *vb; DWORD shader; UINT stride, start, count
 static IDirect3DBaseTexture8 *own_tex[NOWN];
 static UINT nown;
 static int level, loaded_scene = -1;
+#define PLANET_LOOK 30 // an unused scene number: Planet X's own look data
 static struct rec *recs; static UINT nrecs, cap_recs;     // this frame's character draws, for their sun map
 static HRESULT (WINAPI *draw_real)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT);
 static struct { int frames, want; double look_ms, frame_ms, present_ms; UINT world, game, pieces, merged; LARGE_INTEGER last; } m;
@@ -417,7 +418,7 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     hd_redirect(d);
     if (!hd_redirected()) return 0;
     hd_sky(d);
-    if (merge_draw(dev, api, type, start, count)) return 1;
+    if (loaded_scene != PLANET_LOOK && merge_draw(dev, api, type, start, count)) return 1; // a few hundred draws: nothing to merge
     DWORD shader, zwrite, blend, fog, src, dst, op;
     IDirect3DDevice8_GetRenderState(dev, D3DRS_ALPHABLENDENABLE, &blend);
     IDirect3DDevice8_GetRenderState(dev, D3DRS_SRCBLEND, &src);
@@ -455,6 +456,13 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     if (hd_prepass_needed()) prepass(dev);
     if (blend && !hd_additions_done()) hd_additions(d), merge_state_changed();
     if (api != 0 || shader != 0x152) return 0;
+    if (loaded_scene == PLANET_LOOK && !zwrite && !fog) { // Planet X's painted space: unlit, lifted so the tone curve keeps it
+        if (blend || op != D3DTOP_MODULATE2X) return 0;
+        IDirect3DDevice8_SetTextureStageState(dev, 0, D3DTSS_COLOROP, D3DTOP_MODULATE4X);
+        draw_real(dev, type, start, count);
+        IDirect3DDevice8_SetTextureStageState(dev, 0, D3DTSS_COLOROP, op);
+        return 1;
+    }
     DWORD op0 = op, a1, op1, tt;
     IDirect3DDevice8_GetTextureStageState(dev, 0, D3DTSS_COLORARG1, &a1);
     IDirect3DDevice8_GetTextureStageState(dev, 1, D3DTSS_COLOROP, &op1);
@@ -516,6 +524,13 @@ void look_merge_end(IDirect3DDevice8 *dev)
     merge_state_changed();
 }
 
+// The doors between hubs lead to Planet X, the same model placed far below each of the four hubs' levels.
+static int look_scene(int scene)
+{
+    float eye_y = -(real_view._41 * real_view._21 + real_view._42 * real_view._22 + real_view._43 * real_view._23);
+    return (scene == 3 || scene == 8 || scene == 13 || scene == 18) && eye_y < -60000 ? PLANET_LOOK : scene;
+}
+
 // At Present: level and data, the characters' sun map, measurements.
 void look_frame(IDirect3DDevice8 *dev)
 {
@@ -539,7 +554,7 @@ void look_frame(IDirect3DDevice8 *dev)
     }
     double t0 = now_ms();
     merge_frame(dev);
-    int scene = settings.exe_known ? SCENE : -1;
+    int scene = settings.exe_known ? look_scene(SCENE) : -1;
     struct IDirect3DDevice9 *d = d3d9_device(dev);
     if (level) read_camera(), hd_frame_end(d);
     if (hd_loaded() && (scene != loaded_scene || !level)) hd_unload(), merge_reset(), loaded_scene = -1, nown = 0;
