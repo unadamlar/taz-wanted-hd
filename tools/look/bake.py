@@ -55,6 +55,8 @@ def _bake(ob, mat, n, kind):
         bpy.ops.object.bake(type="NORMAL", normal_space="TANGENT", margin=0, use_clear=True)
     px = np.empty(n * n * 4, np.float32)
     img.pixels.foreach_get(px)
+    if kind == "albedo" and not px.reshape(-1, 4)[:, :3].any():
+        raise RuntimeError("bake came out black (GPU out of memory? try --cpu): " + mat.name)
     mat.node_tree.nodes.remove(node)
     bpy.data.images.remove(img)
     return px.reshape(n, n, 4)[::-1, :, :3].copy()  # top row first

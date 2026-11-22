@@ -16,6 +16,7 @@ a = argparse.ArgumentParser()
 a.add_argument("--level", default="zoohub")
 a.add_argument("--runtime", default=None, help="output folder (default extracted/look/runtime)")
 a.add_argument("--rebake", action="store_true")
+a.add_argument("--cpu", action="store_true", help="bake on the CPU, for when the GPU is busy")
 args = a.parse_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else [])
 LEVEL = dress.select(args.level)
 args.scene = LEVEL["scene"]
@@ -28,7 +29,7 @@ SC = dress.SCALE
 root = next(p for p in [os.path.join(here, *([".."] * n)) for n in range(1, 7)] if os.path.isdir(os.path.join(p, "extracted", "textures")))
 ext = os.path.join(root, "extracted")
 base = args.runtime or os.path.join(ext, "look", "runtime")
-cache = os.path.join(ext, "look", "runtime", ".bake" if args.level == "zoohub" else ".bake-" + args.level)
+cache = os.path.join(base, ".bake" if args.level == "zoohub" else ".bake-" + args.level)
 out = os.path.join(base, "scene%02d" % args.scene)
 tmp = out + ".tmp%d" % os.getpid()
 if args.rebake:
@@ -45,6 +46,8 @@ for img in bpy.data.images:  # blends saved on another machine keep that machine
         img.filepath = os.path.join(os.path.dirname(kit.ASSET_LIB), img.filepath.split("/personal-games/", 1)[1])
         img.reload()
 bake.use_gpu(sc)
+if args.cpu:
+    sc.cycles.device = "CPU"
 LV = LEVEL["look"]
 
 # ---------------------------------------------------------------- materials
@@ -280,6 +283,11 @@ for o in flat:
 bpy.context.view_layer.update()
 bpy.context.view_layer.objects.active = flat[0]
 bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, target="VERTEX_COLORS")
+for o in flat:
+    baked = np.empty(len(o.data.loops) * 4, np.float32)
+    o.data.color_attributes["look_bake"].data.foreach_get("color", baked)
+    if not baked.reshape(-1, 4)[:, :3].any():
+        raise RuntimeError("bake came out black (GPU out of memory? try --cpu): " + o.name)
 
 
 def corner_colors(o, co, grass_rank):
