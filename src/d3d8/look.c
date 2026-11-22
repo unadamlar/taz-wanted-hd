@@ -378,7 +378,7 @@ const D3DMATRIX *look_camera(D3DTRANSFORMSTATETYPE t, const D3DMATRIX *m, D3DMAT
     return m;
 }
 
-static int glowing;
+static int glowing, backdrop;
 
 void look_after_draw(IDirect3DDevice8 *dev)
 {
@@ -390,15 +390,21 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     struct IDirect3DDevice9 *d = d3d9_device(dev);
     if (!merge_on_backbuffer() || hd_post_done()) return 0;
     if (merge_is_2d(dev)) { // the HUD and menus: finish the 3D picture under them
-        if (!hd_redirected()) return 0;  // no 3D yet: a paused frame's sky, or a frame that is all 2D
+        if (!hd_redirected()) { // no 3D yet: a paused frame's sky, or a screen the game composes itself (a paper book)
+            UINT64 h2 = textures_bound_hash(0);
+            backdrop |= h2 && !hd_hidden(h2);
+            return 0;
+        }
         merge_flush(dev);
         if (!hd_additions_done()) hd_additions(d);
         hd_post(d);
         merge_state_changed();
         return 0;
     }
+    if (backdrop) return 0;   // tone mapping would paint over the 2D already on the back buffer
     hd_redirect(d);
     if (!hd_redirected()) return 0;
+    hd_sky(d);
     if (merge_draw(dev, api, type, start, count)) return 1;
     DWORD shader, zwrite, blend, fog, src, dst, op;
     IDirect3DDevice8_GetRenderState(dev, D3DRS_ALPHABLENDENABLE, &blend);
@@ -429,7 +435,7 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     if (h && hd_hidden(h)) return 1;
     IDirect3DDevice8_GetRenderState(dev, D3DRS_ZWRITEENABLE, &zwrite);
     IDirect3DDevice8_GetRenderState(dev, D3DRS_FOGENABLE, &fog);
-    if (!zwrite && !fog && !blend && !hd_additions_done()) return 1; // the game's sky: ours replaces it
+    if (!zwrite && !fog && !blend && hd_hidden(raw)) return 1; // its sky, also a cutscene pack's copy of it
     if (hd_prepass_needed()) prepass(dev);
     if (blend && !hd_additions_done()) hd_additions(d), merge_state_changed();
     if (api != 0 || shader != 0x152) return 0;
@@ -543,7 +549,7 @@ void look_frame(IDirect3DDevice8 *dev)
             m.last.QuadPart = 0;
         }
     }
-    stat_world = stat_game = merge_stat_pieces = merge_stat_draws = 0;
+    stat_world = stat_game = merge_stat_pieces = merge_stat_draws = backdrop = 0;
 }
 
 void look_present_ms(double ms)

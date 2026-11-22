@@ -53,7 +53,8 @@ void hd_world_quick_end(hd_dev d);
 void hd_merge_buffers(hd_dev d, struct IDirect3DVertexBuffer9 *v, struct IDirect3DIndexBuffer9 *i);
 void hd_merge_draw(hd_dev d, unsigned nverts, unsigned first, unsigned tris);
 void hd_invalidate(void);                 // the game changed the camera or wrote our constants
-void hd_additions(hd_dev d);            // additions and sky, once per frame after the first world flush
+void hd_sky(hd_dev d);                  // once per frame, before the game's first 3D draw
+void hd_additions(hd_dev d);            // additions and water, once per frame after the first world flush
 int hd_additions_done(void);
 
 // One additive game sprite, blended so it can't burn out.

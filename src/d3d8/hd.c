@@ -79,7 +79,7 @@ static DWORD tq;
 static int broken;
 
 static float shadow_hw, player[4]; // position and 1 / radius of the grass pressed under his feet
-static int redirected, post_done, additions_done, prepass_done, shadow_built, cmap_used;
+static int sky_done, redirected, post_done, additions_done, prepass_done, shadow_built, cmap_used;
 static float view[4][4], proj[4][4], clip_rows[4][4], srows[3][4], crows[3][4], cclip[4][4], eye[3], now_s;
 static IDirect3DSurface9 *saved_rt, *saved_ds;
 static D3DVIEWPORT9 saved_vp;
@@ -772,21 +772,30 @@ static void plain_states(hd_dev d)
     IDirect3DDevice9_SetRenderState(d, D3DRS_SLOPESCALEDEPTHBIAS, 0);
 }
 
-static void draw_sky(hd_dev d)
+// First thing in the 3D pass, so whatever backdrop the game itself draws (a paper book's stars) lands over it.
+void hd_sky(hd_dev d)
 {
-    if (!sky_tex) return;
+    if (sky_done || !sky_tex || scene_no < 0) return;
+    sky_done = 1;
+    hd_camera(d);
+    save_state(d);
+    plain_states(d);
+    ps_constants(d);
     float p00 = proj[0][0] ? proj[0][0] : 1, p11 = proj[1][1] ? proj[1][1] : 1, ray[3][4];
     for (int i = 0; i < 3; i++) ray[i][0] = view[i][0] / p00, ray[i][1] = view[i][1] / p11, ray[i][2] = view[i][2], ray[i][3] = 0;
     IDirect3DDevice9_SetVertexShaderConstantF(d, 4, ray[0], 3);
+    IDirect3DDevice9_SetTexture(d, SMP_SKY, (IDirect3DBaseTexture9 *)sky_tex);
+    sampler(d, SMP_SKY, D3DTEXF_LINEAR, D3DTEXF_LINEAR, D3DTADDRESS_CLAMP);
     IDirect3DDevice9_SetVertexDeclaration(d, d_quad);
     IDirect3DDevice9_SetVertexShader(d, v_sky);
     IDirect3DDevice9_SetPixelShader(d, p_sky);
-    IDirect3DDevice9_SetRenderState(d, D3DRS_ZENABLE, TRUE);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_ZENABLE, FALSE);
     IDirect3DDevice9_SetRenderState(d, D3DRS_ZWRITEENABLE, FALSE);
-    IDirect3DDevice9_SetRenderState(d, D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
     IDirect3DDevice9_SetRenderState(d, D3DRS_CULLMODE, D3DCULL_NONE);
     float q[4][6] = { { -1, 1, 0, 1, 0, 0 }, { 1, 1, 0, 1, 1, 0 }, { -1, -1, 0, 1, 0, 1 }, { 1, -1, 0, 1, 1, 1 } };
     IDirect3DDevice9_DrawPrimitiveUP(d, D3DPT_TRIANGLESTRIP, 2, q, 24);
+    IDirect3DDevice9_SetTexture(d, SMP_SKY, NULL);
+    restore_state(d);
 }
 
 // Water protos, blended over the bed the depth pass saw.
@@ -845,7 +854,6 @@ void hd_additions(hd_dev d)
     cull(clip_rows, eye, lv.fade1);
     draw_instances(d, PASS_COLOUR);
     IDirect3DDevice9_SetRenderState(d, D3DRS_ALPHATESTENABLE, FALSE);
-    draw_sky(d);
     draw_water(d);
     restore_state(d);
     quick_ok = 0;
@@ -1204,6 +1212,6 @@ void hd_frame_end(hd_dev d)
 {
     if (redirected) hd_post(d);
     unbind_common(d);
-    post_done = additions_done = prepass_done = 0;
+    post_done = additions_done = prepass_done = sky_done = 0;
     hd_check_reload();
 }
