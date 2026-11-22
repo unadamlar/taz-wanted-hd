@@ -751,6 +751,7 @@ static void after_draw(IDirect3DDevice8 *dev, int mask, struct saved *saved)
     int mask = before_draw(dev, saved);             \
     record;                                         \
     HRESULT hr = look_draw(dev, api, t, start, count) ? D3D_OK : call; \
+    look_after_draw(dev);                           \
     if (mask) after_draw(dev, mask, saved);         \
     return hr
 

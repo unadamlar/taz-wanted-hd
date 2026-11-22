@@ -378,6 +378,13 @@ const D3DMATRIX *look_camera(D3DTRANSFORMSTATETYPE t, const D3DMATRIX *m, D3DMAT
     return m;
 }
 
+static int glowing;
+
+void look_after_draw(IDirect3DDevice8 *dev)
+{
+    if (glowing) glowing = 0, hd_glow_end(d3d9_device(dev));
+}
+
 static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count)
 {
     struct IDirect3DDevice9 *d = d3d9_device(dev);
@@ -393,7 +400,20 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     hd_redirect(d);
     if (!hd_redirected()) return 0;
     if (merge_draw(dev, api, type, start, count)) return 1;
-    DWORD shader, zwrite, blend, fog;
+    DWORD shader, zwrite, blend, fog, src, dst, op;
+    IDirect3DDevice8_GetRenderState(dev, D3DRS_ALPHABLENDENABLE, &blend);
+    IDirect3DDevice8_GetRenderState(dev, D3DRS_SRCBLEND, &src);
+    IDirect3DDevice8_GetRenderState(dev, D3DRS_DESTBLEND, &dst);
+    IDirect3DDevice8_GetTextureStageState(dev, 0, D3DTSS_COLOROP, &op);
+    if (blend && src == D3DBLEND_SRCALPHA && dst == D3DBLEND_ONE && textures_bound(0) && (op == D3DTOP_MODULATE || op == D3DTOP_MODULATE2X)) {
+        if (!hd_additions_done()) { // sprites go over the finished world
+            if (hd_prepass_needed()) prepass(dev);
+            hd_additions(d), merge_state_changed();
+        }
+        hd_glow_begin(d, op == D3DTOP_MODULATE2X ? 2 : 1);
+        glowing = 1;
+        return 0;
+    }
     IDirect3DDevice8_GetVertexShader(dev, &shader);
     if (IS_VERTEX_SHADER(shader)) {
         hd_invalidate();
@@ -408,14 +428,12 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     UINT64 h = look_own_hash(dev, textures_bound(0), raw);
     if (h && hd_hidden(h)) return 1;
     IDirect3DDevice8_GetRenderState(dev, D3DRS_ZWRITEENABLE, &zwrite);
-    IDirect3DDevice8_GetRenderState(dev, D3DRS_ALPHABLENDENABLE, &blend);
     IDirect3DDevice8_GetRenderState(dev, D3DRS_FOGENABLE, &fog);
     if (!zwrite && !fog && !blend && !hd_additions_done()) return 1; // the game's sky: ours replaces it
     if (hd_prepass_needed()) prepass(dev);
     if (blend && !hd_additions_done()) hd_additions(d), merge_state_changed();
     if (api != 0 || shader != 0x152) return 0;
-    DWORD op0, a1, op1, tt;
-    IDirect3DDevice8_GetTextureStageState(dev, 0, D3DTSS_COLOROP, &op0);
+    DWORD op0 = op, a1, op1, tt;
     IDirect3DDevice8_GetTextureStageState(dev, 0, D3DTSS_COLORARG1, &a1);
     IDirect3DDevice8_GetTextureStageState(dev, 1, D3DTSS_COLOROP, &op1);
     IDirect3DDevice8_GetTextureStageState(dev, 0, D3DTSS_TEXTURETRANSFORMFLAGS, &tt);

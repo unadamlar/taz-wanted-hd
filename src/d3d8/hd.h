@@ -56,6 +56,10 @@ void hd_invalidate(void);                 // the game changed the camera or wrot
 void hd_additions(hd_dev d);            // additions and sky, once per frame after the first world flush
 int hd_additions_done(void);
 
+// One additive game sprite, blended so it can't burn out.
+void hd_glow_begin(hd_dev d, float scale);
+void hd_glow_end(hd_dev d);
+
 // Characters: pixel shader and constants around one draw.
 void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_colour, float scale);
 void hd_char_end(hd_dev d);

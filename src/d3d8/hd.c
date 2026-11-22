@@ -62,7 +62,7 @@ static UINT ntexs;
 
 // Shaders, vertex declarations
 static IDirect3DVertexShader9 *v_world, *v_inst, *v_wind, *v_grass, *v_world_z, *v_inst_z, *v_grass_z, *v_sky, *v_quad, *v_char_z;
-static IDirect3DPixelShader9 *p_depth, *p_world, *p_mat, *p_mat2, *p_tiled, *p_inst, *p_card, *p_grass, *p_water, *p_sky, *p_char;
+static IDirect3DPixelShader9 *p_depth, *p_world, *p_mat, *p_mat2, *p_tiled, *p_inst, *p_card, *p_grass, *p_water, *p_sky, *p_char, *p_glow;
 static IDirect3DPixelShader9 *p_bright, *p_down, *p_up, *p_final, *p_ao, *p_blur;
 static IDirect3DVertexDeclaration9 *d_world, *d_inst, *d_quad, *d_char;
 static int atoc;
@@ -256,7 +256,7 @@ static int make_shaders(hd_dev d)
     VS(v_world, vs_world); VS(v_inst, vs_inst); VS(v_wind, vs_inst_wind); VS(v_grass, vs_grass);
     VS(v_world_z, vs_world_depth); VS(v_inst_z, vs_inst_depth); VS(v_grass_z, vs_grass_depth); VS(v_sky, vs_sky); VS(v_quad, vs_quad); VS(v_char_z, vs_char_depth);
     PS(p_depth, ps_depth); PS(p_world, ps_world); PS(p_mat, ps_world_mat); PS(p_mat2, ps_world_mat2); PS(p_tiled, ps_inst_tiled); PS(p_inst, ps_inst); PS(p_card, ps_card);
-    PS(p_grass, ps_grass); PS(p_water, ps_water); PS(p_sky, ps_sky); PS(p_char, ps_char);
+    PS(p_grass, ps_grass); PS(p_water, ps_water); PS(p_sky, ps_sky); PS(p_char, ps_char); PS(p_glow, ps_glow);
     PS(p_bright, ps_bright); PS(p_down, ps_down); PS(p_up, ps_up); PS(p_final, ps_final); PS(p_ao, ps_ao); PS(p_blur, ps_ao_blur);
     static const D3DVERTEXELEMENT9 e_world[] = {
         { 0, 0, D3DDECLTYPE_FLOAT3, 0, D3DDECLUSAGE_POSITION, 0 }, { 0, 12, D3DDECLTYPE_FLOAT3, 0, D3DDECLUSAGE_NORMAL, 0 },
@@ -1138,6 +1138,22 @@ void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_c
 void hd_char_end(hd_dev d)
 {
     IDirect3DDevice9_SetPixelShader(d, NULL);
+}
+
+void hd_glow_begin(hd_dev d, float scale)
+{
+    float k[4] = { scale, 0, 0, 0 };
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 25, k, 1);
+    IDirect3DDevice9_SetPixelShader(d, p_glow);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_SRCBLEND, D3DBLEND_ONE);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_DESTBLEND, D3DBLEND_INVSRCCOLOR);
+}
+
+void hd_glow_end(hd_dev d)
+{
+    IDirect3DDevice9_SetPixelShader(d, NULL);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_DESTBLEND, D3DBLEND_ONE);
 }
 
 // --- post ---------------------------------------------------------------------------------------

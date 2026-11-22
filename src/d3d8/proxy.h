@@ -86,6 +86,7 @@ extern int capture_world_on;
 void look_install(void *draw);
 int look_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count);
 void look_frame(IDirect3DDevice8 *dev);
+void look_after_draw(IDirect3DDevice8 *dev);
 void look_present_ms(double ms);
 const D3DMATRIX *look_camera(D3DTRANSFORMSTATETYPE t, const D3DMATRIX *m, D3DMATRIX *tmp);
 int look_remaster_available(void);
