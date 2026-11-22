@@ -16,6 +16,7 @@ a = argparse.ArgumentParser()
 a.add_argument("--level", default="zoohub")
 a.add_argument("--runtime", default=None, help="output folder (default extracted/look/runtime)")
 a.add_argument("--rebake", action="store_true")
+a.add_argument("--cpu", action="store_true", help="bake on the CPU, for when the GPU is busy")
 args = a.parse_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else [])
 LEVEL = dress.select(args.level)
 args.scene = LEVEL["scene"]
@@ -28,7 +29,7 @@ SC = dress.SCALE
 root = next(p for p in [os.path.join(here, *([".."] * n)) for n in range(1, 7)] if os.path.isdir(os.path.join(p, "extracted", "textures")))
 ext = os.path.join(root, "extracted")
 base = args.runtime or os.path.join(ext, "look", "runtime")
-cache = os.path.join(ext, "look", LEVEL.get("bake_in", "runtime"), ".bake" if args.level == "zoohub" else ".bake-" + args.level)
+cache = os.path.join(base, ".bake" if args.level == "zoohub" else ".bake-" + args.level)
 out = os.path.join(base, "scene%02d" % args.scene)
 tmp = out + ".tmp%d" % os.getpid()
 if args.rebake:
@@ -45,6 +46,8 @@ for img in bpy.data.images:  # blends saved on another machine keep that machine
         img.filepath = os.path.join(os.path.dirname(kit.ASSET_LIB), img.filepath.split("/personal-games/", 1)[1])
         img.reload()
 bake.use_gpu(sc)
+if args.cpu:
+    sc.cycles.device = "CPU"
 LV = LEVEL["look"]
 
 # ---------------------------------------------------------------- materials
@@ -90,6 +93,8 @@ for name, (tint, rough) in LEVEL.get("flats", {}).items():
     MATS[name] = ("", False, OPAQUE, 0, 1000.0, tint, rough, 0, 0)
 if "skin" in LEVEL:  # wrinkled hide for untextured characters, mapped on their bind pose
     MATS["skin"] = ("skin", False, OPAQUE, 0, LEVEL["skin"]["tile"], (1, 1, 1), 0.6, 0, LEVEL["skin"]["grain"])
+for name, tint in LEVEL.get("tints", {}).items():
+    MATS[name] = (*MATS[name][:5], tint, *MATS[name][6:])
 if "materials" in LEVEL:  # a level loads only what it uses
     MATS["paint"] = ("", False, OPAQUE, 0, 1000.0, (0.86, 0.88, 0.92), 0.6, 0, 0)  # road markings, kept white
     MATS = {n: m for n, m in MATS.items() if n in LEVEL["materials"]}
@@ -279,6 +284,11 @@ bpy.context.view_layer.update()
 if flat:
     bpy.context.view_layer.objects.active = flat[0]
     bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, target="VERTEX_COLORS")
+for o in flat:
+    baked = np.empty(len(o.data.loops) * 4, np.float32)
+    o.data.color_attributes["look_bake"].data.foreach_get("color", baked)
+    if not baked.reshape(-1, 4)[:, :3].any():
+        raise RuntimeError("bake came out black (GPU out of memory? try --cpu): " + o.name)
 
 
 def corner_colors(o, co, grass_rank):
@@ -596,7 +606,7 @@ fp = {}
 for line in open(os.path.join(ext, "textures", "fingerprints.tsv")):
     h, f = line.rstrip("\n").split("\t")[:2]
     fp.setdefault(f, int(h, 16))
-hide, shade, binds, glows = set(), set(), {}, {}
+hide, shade, binds, glows, hash_of = set(), set(), {}, {}, {}
 
 
 def tex_pixels(file):
@@ -641,7 +651,7 @@ for line in list(open(os.path.join(ext, "textures", "index.tsv")))[1:]:
         continue
     label = pak + "/" + os.path.splitext(name)[0]
     role = dress.role_of(label)
-    h = fp[f]
+    h = hash_of[label] = fp[f]
     for pat, power, span in LEVEL.get("glow", ()):
         if fnmatch.fnmatch(label, pat):
             glows[h] = (power, *(span or (0.0, 1.0)), 2 if span else 0)
@@ -665,6 +675,10 @@ for line in list(open(os.path.join(ext, "textures", "index.tsv")))[1:]:
     elif role == "brick":
         binds[h] = brick_binds(h, f)
 bind_list = [b for h in sorted(binds) for b in binds[h]]
+swaps = sorted({(hash_of[n], *(np.array((S @ o.matrix_world).translation) * K))
+                for o in bpy.data.objects if o.get("kit_replaced") for s in o.material_slots if s.material
+                for n in [dress.base_name(s.material.name.split(":", 1)[-1])]
+                if any(fnmatch.fnmatch(n, p) for p in LEVEL["trees"])})
 
 
 
@@ -710,6 +724,7 @@ def level_lights(cfg):
             q = np.average(p[ix], 0, weights=w[ix])
             out.append(((q[0], q[2] + cfg["pool_height"], q[1]), cfg["pool_radius"], colour * cfg["pool_power"], cfg["pool_cone"]))
     print("export: %d lamps, %d baked pools" % (len(lamps), len(out) - len(lamps)))
+    out += [((x, z, y), r, np.array(kit.srgb(c)) * p, -0.2) for x, y, z, r, c, p in cfg.get("extra", ())]
     return [(*(np.array(p) * K), r * K, *c, cone) for p, r, c, cone in out[:64]]
 
 
@@ -763,9 +778,10 @@ with open(os.path.join(tmp, "scene.bin"), "wb") as f:
         for pi, rows in sorted(runs.items()):
             f.write(struct.pack("<II", pi, len(rows)))
             f.write(np.stack(rows).astype("<f4").tobytes())
-    if lights or glows:  # optional sections, absent for a level without local lights
+    if lights or glows or swaps:  # optional sections, absent for a level without local lights
         f.write(struct.pack("<I", len(lights)) + b"".join(struct.pack("<8f", *l) for l in lights))
         f.write(struct.pack("<I", len(glows)) + b"".join(struct.pack("<Q3fI", h, *glows[h]) for h in sorted(glows)))
+        f.write(struct.pack("<I", len(swaps)) + b"".join(struct.pack("<Q4f", *s_, 2.0) for s_ in swaps))
 
 # ---------------------------------------------------------------- level.ini
 sun, grade, sk = LV["sun"], LV["grade"], LV["sky"]
@@ -777,7 +793,7 @@ vals = [
     ("sun_color", np.array(kit.srgb(sun["sun_color"])) * sun["sun_strength"] / math.pi),
     ("sky_ambient", amb), ("ground_ambient", amb * np.array((0.55, 0.47, 0.38))),
     ("shadow_softness", math.tan(math.radians(1.0))), ("ao_radius", 2.5 * SC * K), ("ao_strength", 1.0),
-    ("fog_color", kit.srgb("#b8d6f2")), ("fog_start", fog_start),
+    ("fog_color", kit.srgb(LEVEL.get("fog_color", "#b8d6f2"))), ("fog_start", fog_start),
     ("fog_end", fog_start + grade["fog_depth"] * SC * K / grade["fog"]),  # Blender's fog tops out at this 7%
     ("exposure", 2 ** grade["exposure"]), ("bloom_threshold", 0.9), ("bloom_strength", grade["bloom"]),
     ("saturation", grade["saturation"]), ("contrast", grade.get("contrast", 1.15)),

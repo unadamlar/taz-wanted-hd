@@ -389,16 +389,32 @@ def blender_main(argv):
         bpy.context.view_layer.update()
 
         # 1. trees: cluster trunk + canopy islands of tree textures -> kit tree in the footprint
-        boxes = []
+        def named(ob, pats):
+            hit = np.array([bool(s.material) and any(fnmatch.fnmatch(base_name(s.material.name.split(":", 1)[-1]), p) for p in pats)
+                            for s in ob.material_slots] or [False])
+            mi = np.zeros(len(ob.data.polygons), np.int32)
+            ob.data.polygons.foreach_get("material_index", mi)
+            return hit[np.clip(mi, 0, len(hit) - 1)]
+
+        boxes, feet = [], []
         for ob in live:
             m = poly_mask(ob, ("tree",))
+            if "trees" in L and named(ob, L["trees"][:1]).any():  # leaves shared with potted plants count only on a tree
+                m = named(ob, L["trees"])
+                ob["kit_replaced"] = True
+                vs = {v for p, k in zip(ob.data.polygons, named(ob, L["trees"][:1])) if k for v in p.vertices}
+                pts = [ob.matrix_world @ ob.data.vertices[v].co for v in vs]
+                low = min(p.z for p in pts)
+                foot = [p for p in pts if p.z < low + 0.3]
+                feet.append(sum(foot, Vector()) / len(foot))
             if m.any():
                 boxes += [(lo, hi) for _, lo, hi in kit.islands(ob, m)]
                 hide_faces(ob, m)
         trees = [bx for bx in kit.merge_boxes(boxes, pad=0.3) if bx[1].z - bx[0].z > 2.0]
         tri_props = 0
         for i, (lo, hi) in enumerate(trees):
-            tr, can = kit.tree_from_bbox(lo, hi, SCALE, seed=i, name=f"kit_tree_{i:02d}", coll=props)
+            at = next((f for f in feet if lo.x <= f.x <= hi.x and lo.y <= f.y <= hi.y), None)
+            tr, can = kit.tree_from_bbox(lo, hi, SCALE, at=at, seed=i, name=f"kit_tree_{i:02d}", coll=props)
             tri_props += kit.tri_count(tr) + kit.tri_count(can)
         stats["trees"] = len(trees)
 

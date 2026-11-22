@@ -53,6 +53,7 @@ static struct bind *binds; static UINT nbinds;
 static UINT64 *hides; static UINT nhides, nshades; // the last nshades are baked shadow decals
 static struct light *lights; static UINT nlights;
 static struct file_glow *glows; static UINT nglows;
+static struct { UINT64 hash; float p[3], r; } *swaps; static UINT nswaps;
 static IDirect3DTexture9 *light_tex;
 static int skin_mat = -1;
 static float light_grid[4];
@@ -495,6 +496,11 @@ int hd_load(hd_dev d, int scene)
         glows = malloc((nglows + 1) * sizeof *glows);
         memcpy(glows, p, nglows * sizeof *glows), p += nglows * sizeof *glows;
         build_lights(d);
+        if (p + 4 <= file + n) {
+            nswaps = U();
+            swaps = malloc((nswaps + 1) * sizeof *swaps);
+            memcpy(swaps, p, nswaps * sizeof *swaps), p += nswaps * sizeof *swaps;
+        }
     }
     snprintf(path, sizeof path, "taz-hd\\look\\scene%02d\\sky.dds", scene);
     sky_tex = load_cube(d, path);
@@ -521,6 +527,7 @@ void hd_unload(void)
     if (light_tex) IDirect3DTexture9_Release(light_tex), light_tex = NULL;
     skin_mat = -1;
     free(lights), free(glows), lights = NULL, glows = NULL, nlights = nglows = 0, light_grid[3] = 0;
+    free(swaps), swaps = NULL, nswaps = 0;
     free(mats), free(binds), free(hides), free(protos), free(subs), free(runs), free(chunks), free(vis);
     mats = NULL, binds = NULL, hides = NULL, protos = NULL, subs = NULL, runs = NULL, chunks = NULL, vis = NULL;
     nmats = nbinds = nhides = nshades = nprotos = nchunks = 0;
@@ -533,6 +540,14 @@ int hd_hidden(unsigned long long h)
 {
     for (UINT i = 0; i < nhides - nshades; i++)
         if (hides[i] == h) return 1;
+    return 0;
+}
+
+int hd_swapped(unsigned long long h, const float *at)
+{
+    for (UINT i = 0; i < nswaps; i++)
+        if (swaps[i].hash == h && (!at || (fabsf(at[0] - swaps[i].p[0]) < swaps[i].r && fabsf(at[1] - swaps[i].p[1]) < swaps[i].r && fabsf(at[2] - swaps[i].p[2]) < swaps[i].r)))
+            return 1;
     return 0;
 }
 
