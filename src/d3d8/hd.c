@@ -78,7 +78,7 @@ static D3DMULTISAMPLE_TYPE tms;
 static DWORD tq;
 static int broken;
 
-static float shadow_hw, debug_view[4];
+static float shadow_hw;
 static int redirected, post_done, additions_done, prepass_done, shadow_built, cmap_used;
 static float view[4][4], proj[4][4], clip_rows[4][4], srows[3][4], crows[3][4], cclip[4][4], eye[3], now_s;
 static IDirect3DSurface9 *saved_rt, *saved_ds;
@@ -242,12 +242,6 @@ static void read_ini(void)
 
 void hd_check_reload(void)
 {
-    FILE *f = fopen("taz-hd\\look-debug", "r");
-    if (f) {
-        if (fscanf(f, "%f", &debug_view[0]) != 1) debug_view[0] = 0;
-        fclose(f);
-        DeleteFileA("taz-hd\\look-debug");
-    }
     if (GetFileAttributesA("taz-hd\\look-reload") == INVALID_FILE_ATTRIBUTES) return;
     DeleteFileA("taz-hd\\look-reload");
     if (scene_no >= 0) read_ini(), log_line("hd: level.ini reloaded");
@@ -649,7 +643,6 @@ static void ps_constants(hd_dev d)
     c[14][0] = 1.0f / SMAP, c[14][1] = 1.0f / CMAP;
     memcpy(c[15], lv.water, 12);
     IDirect3DDevice9_SetPixelShaderConstantF(d, 0, c[0], 16);
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 48, debug_view, 1);
 }
 
 void hd_invalidate(void) { quick_ok = 0; }

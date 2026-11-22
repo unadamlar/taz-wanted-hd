@@ -30,7 +30,6 @@ float4 MASK2     : register(c21);
 float4 MWEIGHT   : register(c22);
 float4 MWEIGHT2  : register(c23);
 float4 CHARK     : register(c24);   // characters: texture on, colour on, scale, as the game's stage 0
-float4 DBG       : register(c48);   // x: debug view (look-debug file)
 
 sampler2D BASE     : register(s0);
 sampler2D TNORMAL  : register(s8);
@@ -161,7 +160,6 @@ float3 shade(float3 albedo, float3 n, float3 w, float2 vpos, float ao, float spe
     float nl = saturate(dot(n, SUN.xyz));
     float sh = nl > 0 ? sun_shadow(w, vpos) : 0;
     float3 amb = lerp(GND_AMB.rgb, SKY_AMB.rgb, n.y * 0.5 + 0.5) * ao;
-    if (DBG.x > 0.5) return DBG.x < 1.5 ? albedo : DBG.x < 2.5 ? n * 0.5 + 0.5 : DBG.x < 3.5 ? sh * nl : DBG.x < 4.5 ? ao : amb;
     float3 h = normalize(v + SUN.xyz);
     float gloss = 2 / max(MAT.z * MAT.z * MAT.z * MAT.z, 0.002);
     float sp = spec_mask * pow(saturate(dot(n, h)), gloss) * (gloss + 2) * 0.012;
@@ -337,7 +335,6 @@ SkyOut vs_sky(float4 p : POSITION)
 float4 ps_sky(SkyOut i) : COLOR
 {
     float3 c = to_linear(texCUBE(SKY, normalize(i.ray)).rgb);
-    if (DBG.x > 5.5) return float4(normalize(i.ray) * 0.5 + 0.5, 1);
     return float4(to_gamma(c * SKY_AMB.w), 1);
 }
 
