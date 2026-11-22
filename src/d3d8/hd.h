@@ -57,5 +57,5 @@ void hd_additions(hd_dev d);            // additions and sky, once per frame aft
 int hd_additions_done(void);
 
 // Characters: pixel shader and constants around one draw.
-void hd_char_begin(hd_dev d, const float *model_rows);
+void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_colour, float scale);
 void hd_char_end(hd_dev d);

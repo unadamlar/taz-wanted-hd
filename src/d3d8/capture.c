@@ -62,10 +62,11 @@ void capture_frame(void)
 {
     static int count, left;
 
-    FILE *d = settings.tests ? fopen("taz-hd\\display", "r") : NULL; // "W H V": live size (0 0 keeps it) and vsync, for reset tests
+    FILE *d = settings.tests ? fopen("taz-hd\\display", "r") : NULL; // "W H V [AA]": live size (0 0 keeps it), vsync and samples, for reset tests
     if (d) {
-        UINT w = 0, h = 0, v = settings.vsync;
-        fscanf(d, "%u %u %u", &w, &h, &v);
+        UINT w = 0, h = 0, v = settings.vsync, aa = settings.antialiasing;
+        fscanf(d, "%u %u %u %u", &w, &h, &v, &aa);
+        settings.antialiasing = aa;
         fclose(d);
         DeleteFileA("taz-hd\\display");
         settings.vsync = v;

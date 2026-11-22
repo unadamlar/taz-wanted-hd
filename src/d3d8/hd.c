@@ -677,6 +677,7 @@ static void bind_common(hd_dev d)
 
 static void unbind_common(hd_dev d)
 {
+    if (!common_bound) return;
     for (DWORD s = SMP_DEPTH; s <= SMP_NORMAL2; s++) IDirect3DDevice9_SetTexture(d, s, NULL);
     common_bound = 0, quick_ok = 0;
 }
@@ -1130,10 +1131,12 @@ void hd_merge_draw(hd_dev d, unsigned nverts, unsigned first, unsigned tris)
     IDirect3DDevice9_DrawIndexedPrimitive(d, D3DPT_TRIANGLELIST, 0, 0, nverts, first, tris);
 }
 
-void hd_char_begin(hd_dev d, const float *model_rows)
+void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_colour, float scale)
 {
+    float k[4] = { use_tex, use_colour, scale, 0 };
     IDirect3DDevice9_SetVertexShaderConstantF(d, 60, model_rows, 3);
     ps_constants(d);
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 24, k, 1);
     bind_common(d);
     IDirect3DDevice9_SetPixelShader(d, p_char);
     quick_ok = 0;

@@ -405,7 +405,6 @@ static HRESULT WINAPI hook_SetStreamSource(IDirect3DDevice8 *dev, UINT n, IDirec
 static HRESULT WINAPI hook_Clear(IDirect3DDevice8 *dev, DWORD n, CONST D3DRECT *r, DWORD flags, D3DCOLOR c, float z, DWORD s)
 {
     merge_flush(dev);
-    if (on_bb) look_before_clear(dev);
     return real_Clear(dev, n, r, flags, c, z, s);
 }
 

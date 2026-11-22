@@ -646,7 +646,6 @@ static HRESULT WINAPI hook_SetTexture(IDirect3DDevice8 *dev, DWORD stage, IDirec
     recent[n].stage = stage;
     recent[n].tex = bt;
     recent[n].caller = __builtin_return_address(0);
-    if (stage >= 1 && stage <= 3) look_state_changed();
     if (stage < STAGES) {
         bound[stage] = bt;
         if (recording) {
@@ -689,7 +688,6 @@ static HRESULT WINAPI hook_DeleteStateBlock(IDirect3DDevice8 *dev, DWORD token)
 static HRESULT WINAPI hook_ApplyStateBlock(IDirect3DDevice8 *dev, DWORD token)
 {
     HRESULT hr = real_ApplyStateBlock(dev, token);
-    look_state_changed();
     merge_state_changed();
     for (int i = 0; SUCCEEDED(hr) && i < BLOCKS; i++) {
         if (blocks[i].token != token) continue;
@@ -784,7 +782,6 @@ static HRESULT WINAPI hook_DrawIndexedPrimitiveUP(IDirect3DDevice8 *dev, D3DPRIM
 // The game never asks for mip filtering because its textures have no mips; ours do.
 static HRESULT WINAPI hook_SetTextureStageState(IDirect3DDevice8 *dev, DWORD stage, D3DTEXTURESTAGESTATETYPE type, DWORD value)
 {
-    if (stage >= 1 && stage <= 3) look_state_changed();
     merge_stage_state(stage, type, value);
     if (type == D3DTSS_MIPFILTER && value == D3DTEXF_NONE) value = D3DTEXF_LINEAR;
     return real_SetTextureStageState(dev, stage, type, value);
@@ -844,7 +841,7 @@ void textures_install(IDirect3DDevice8 *dev)
     patch((void **)&vt->DrawPrimitiveUP, hook_DrawPrimitiveUP, (void **)&real_DrawPrimitiveUP);
     patch((void **)&vt->DrawIndexedPrimitiveUP, hook_DrawIndexedPrimitiveUP, (void **)&real_DrawIndexedPrimitiveUP);
     patch((void **)&vt->SetTextureStageState, hook_SetTextureStageState, (void **)&real_SetTextureStageState);
-    look_install(real_DrawPrimitive, real_DrawIndexedPrimitive);
+    look_install(real_DrawPrimitive);
 
     // All textures share one vtable; a throwaway texture gives us access to it.
     IDirect3DTexture8 *probe;

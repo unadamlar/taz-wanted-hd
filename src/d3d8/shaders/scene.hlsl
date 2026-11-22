@@ -29,6 +29,7 @@ float4 TINT2     : register(c20);
 float4 MASK2     : register(c21);
 float4 MWEIGHT   : register(c22);
 float4 MWEIGHT2  : register(c23);
+float4 CHARK     : register(c24);   // characters: texture on, colour on, scale, as the game's stage 0
 float4 DBG       : register(c48);   // x: debug view (look-debug file)
 
 sampler2D BASE     : register(s0);
@@ -365,20 +366,21 @@ struct CharIn { float2 uv : TEXCOORD0; float3 w : TEXCOORD2; float3 n : TEXCOORD
 
 float4 ps_char(CharIn i) : COLOR
 {
-    float4 tex = tex2D(BASE, i.uv);
-    float3 albedo = to_linear(saturate(tex.rgb * i.c.rgb * 2));
+    float4 tex = lerp(1, tex2D(BASE, i.uv), CHARK.x), col = lerp(1, i.c, CHARK.y);
+    float3 albedo = to_linear(saturate(tex.rgb * col.rgb * CHARK.z));
     float3 n = normalize(i.n);
     float nl = dot(n, SUN.xyz);
-    // Keeps a soft cartoon step: the terminator is narrow, the shadow side stays colourful.
-    float band = saturate((nl + 0.08) * 4.5);
+    // A soft cartoon step: the shadow side stays colourful.
+    float band = saturate((nl + 0.22) * 1.9);
     band = band * band * (3 - 2 * band);
     float4 q = float4(i.w, 1);
     float3 s = float3(dot(SROW[0], q), dot(SROW[1], q), dot(SROW[2], q));
     float2 d = 1.5 * TEXEL.x;
     float sh = (tex2Dproj(SHADOW, float4(s.xy + d, s.z, 1)).r + tex2Dproj(SHADOW, float4(s.xy - d, s.z, 1)).r
               + tex2Dproj(SHADOW, float4(s.xy + float2(d.x, -d.y), s.z, 1)).r + tex2Dproj(SHADOW, float4(s.xy + float2(-d.x, d.y), s.z, 1)).r) / 4;
-    float3 amb = lerp(GND_AMB.rgb, SKY_AMB.rgb, n.y * 0.5 + 0.5) * 1.15;
-    float3 c = albedo * (amb + SUN_COL.rgb * band * sh);
-    c = lerp(dot(c, float3(0.3, 0.59, 0.11)), c, 0.82); // the grade is tuned for the world: saturated fur reads as red
-    return float4(to_gamma(c), tex.a * i.c.a * 2);
+    float3 amb = lerp(GND_AMB.rgb, SKY_AMB.rgb, n.y * 0.5 + 0.5) * 0.8;
+    // Character paint is authored brighter and more saturated than the world's albedo.
+    float3 c = albedo * 0.7 * (amb + SUN_COL.rgb * band * sh);
+    c = lerp(dot(c, float3(0.3, 0.59, 0.11)), c, 0.62);
+    return float4(to_gamma(c), saturate(tex.a * col.a * CHARK.z));
 }
