@@ -36,6 +36,26 @@ With the real limit on (`STEAM_COMPAT_CONFIG=noforcelgadd`), 23 level loads acro
 so the game uses about 600 MB. With the 4 GB flag set in the exe, the same walk kept at least 3,485 MB free. Only the two
 hubs have Remaster data so far, and real Windows is not measured.
 
+## Step 6 in progress (2026-11-22)
+
+The user played the build and gave a fix list. Each piece is on its own branch, in `.claude/worktrees/<name>` with a test copy
+in `~/Games/taz-agents/<name>`. `test-rig` collects reviewed work and `look-test` follows it. Check `git log` on each branch
+before trusting this list.
+
+- Done on `test-rig`: floating logs, fence height, Taz's grainy fur, city tree, supermarket lights, city background buildings.
+- `art3d`: 3D zoo boat, blue arched fences, chains and iron gates. Still to add: the same railing around the city tree.
+- `face`: Taz's face looks fatter in HD and Remaster than in the original.
+- `planet`: Planet X, the room between the hubs, shares one look (`scene30`). Its first pass looked washed out, so a second
+  pass is adding richer paint, grass, rock and a better dome.
+- Sound distortion: measured as the game's own files and mix, not the mod. No fix is chosen. Evidence and options:
+  `extracted/look/reports/step6/sound/`.
+- Current dressed scenes: zoo `extracted/look/pass6/zoohub-dressed.blend`, city `extracted/look/city/pass2-agent/cityhub-dressed.blend`,
+  Planet X `extracted/look/planet/planetx.blend`.
+- The user's playable copy is `~/Games/taz-agents/play` (Lutris: "Taz: Wanted Remaster"). Its DLL and data are its own copies,
+  so it gets none of this until updated. Tests must not touch it.
+
+Next: review and merge each branch, re-export all data, run the full check, update the playable copy. Then the rest of step 6.
+
 ## How the pieces fit
 
 1. `taz-hd\world` trigger records the level (`capture.c`).
