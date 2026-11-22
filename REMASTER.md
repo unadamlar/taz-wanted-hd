@@ -113,7 +113,6 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
 - The fade for scenery by the camera is not checked in motion, and the water only along one run beside the moat. A sprite
   closer to the camera than fading scenery may draw behind it.
 - With the camera pressed against the end of the moat, a few frames show a flat green patch and the moat wall. Cause unknown.
-- `master` still has the quickload freeze fixed here.
 - City hub: the big yellow shop door glares, grass right beside a lamp looks like daylight, searchlight beams are flat
   pale triangles, close-up walls are flat and very dark, bright painted green shows at lawn edges, and the painted
   pavement lines don't follow the slab joints. The intro flyover ran without a crash but its frames were not reviewed.
