@@ -16,9 +16,14 @@
 #define MAX_LOCKS 256
 
 // Kept as they are now on quickload: the frame clock (or the first frame would cover the time since the
-// save) and the game's critical sections (their owners and wait handles belong to the present).
+// save), the game's critical sections (their owners and wait handles belong to the present), and the
+// sound channels: a saved one can point at a DirectSound buffer the game has since released.
+#define SOUND_CHANNELS 0x750040
+#define CHANNEL_SIZE 0x54
+#define CHANNEL_COUNT 40
 static const struct { DWORD at, size; } KEEP[] = {
     { 0x6c8c18, 0x18 }, { 0x642cdc, 8 }, { 0x6c7ee0, 4 }, { 0x6f4c48, 4 }, { 0x6c6c14, 4 },
+    { SOUND_CHANNELS, CHANNEL_COUNT * CHANNEL_SIZE },
 };
 static CRITICAL_SECTION *locks[MAX_LOCKS];
 static int nlocks;
@@ -60,7 +65,7 @@ static void copy_all(int load)
     HANDLE held[64];
     int n = threads(held, 64, 1);
     if (load) {
-        static BYTE keep[0x40], lock_now[MAX_LOCKS][sizeof(CRITICAL_SECTION)];
+        static BYTE keep[0x40 + CHANNEL_COUNT * CHANNEL_SIZE], lock_now[MAX_LOCKS][sizeof(CRITICAL_SECTION)];
         BYTE *k = keep;
         for (size_t i = 0; i < sizeof KEEP / sizeof *KEEP; k += KEEP[i++].size) memcpy(k, (void *)KEEP[i].at, KEEP[i].size);
         for (int i = 0; i < nlocks; i++) memcpy(lock_now[i], locks[i], sizeof(CRITICAL_SECTION));
@@ -112,6 +117,16 @@ static void quicksave(void)
     overlay_toast("Quicksaved");
 }
 
+// Sounds started since the save have no owner after the load, so a looping one would never stop.
+static void stop_newer_sounds(void)
+{
+    for (int i = 0; i < CHANNEL_COUNT; i++) {
+        DWORD at = SOUND_CHANNELS + i * CHANNEL_SIZE + 0x30;
+        void *now = *(void **)at, *then = *(void **)(saved_globals + (at - (DWORD)GLOBALS));
+        if (now && now != then) ((void (__cdecl *)(int))0x579ed0)(i);
+    }
+}
+
 static void quickload(void)
 {
     if (saved_scene < 0) { overlay_toast("No quicksave yet"); return; }
@@ -122,6 +137,7 @@ static void quickload(void)
         overlay_toast("Quicksave lost: level or display changed since");
         return;
     }
+    stop_newer_sounds();
     DWORD t = GetTickCount();
     copy_all(1);
     log_line("quickload: scene %d in %lu ms", saved_scene, GetTickCount() - t);
