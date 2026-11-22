@@ -71,7 +71,7 @@ MATS = {  # name: albedo, has normal, kind, flags, tile (game units, 0 = mesh UV
     "boulder": ("boulder", True, OPAQUE, TRIPLANAR, TILES["boulder"][1] * K, (1, 1, 1), 0.8, 1.0, 0),
     "bark": ("bark", True, OPAQUE, TRIPLANAR, TILES["bark"][1] * K, (1, 1, 1), 0.85, 1.0, 0),
     "wood": ("wood", True, OPAQUE, 0, 0.0, (1, 1, 1), 0.75, 1.0, 0),
-    "water_bed": ("dirt", True, OPAQUE, 0, TILES["dirt"][1] * K, (0.42, 0.55, 0.56), 0.9, 0.6, 0),
+    "water_bed": ("dirt", True, OPAQUE, TRIPLANAR, TILES["dirt"][1] * K, (0.42, 0.55, 0.56), 0.9, 0.6, 0),
     "water": ("", True, WATER, 0, 2.5 * SC * K, kit.srgb("#2aa6c8"), 0.03, 0.5, 0),
     "foam": ("foam", False, CARD, TWO_SIDED, 0.0, (1, 1, 1), 0.5, 0, 0.5),
     "leaves": ("leaves", False, CARD, TWO_SIDED | WIND, 0.0, (1.08, 1.08, 1.08), 0.75, 0, 0.5),

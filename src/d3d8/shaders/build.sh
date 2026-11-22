@@ -16,6 +16,7 @@ c() { # file entry profile name [defines]
 }
 c scene.hlsl vs_world vs_3_0 vs_world
 c scene.hlsl vs_inst vs_3_0 vs_inst
+c scene.hlsl vs_inst vs_3_0 vs_water WATER_SURFACE
 c scene.hlsl vs_inst vs_3_0 vs_inst_wind WINDY
 c scene.hlsl vs_inst vs_3_0 vs_grass GRASS WINDY
 c scene.hlsl vs_world_depth vs_3_0 vs_world_depth

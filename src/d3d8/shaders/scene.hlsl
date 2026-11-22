@@ -106,6 +106,9 @@ V2P vs_inst(InstIn i)
 #else
     o.wp = float4(w, o.p.w);
 #endif
+#ifdef WATER_SURFACE
+    o.p.z = 0.5 * o.p.w; // ps_water writes the real depth, so the near plane can't cut a hole by a low camera
+#endif
     o.uv = i.uv;
     o.c = i.c;
     return o;
@@ -353,8 +356,11 @@ float dashes(float2 p, float t)
 }
 
 // Water on the game's own surface: depth colour over the bed, sky reflection, soft shore.
-float4 ps_water(V2P i, float2 vpos : VPOS) : COLOR
+float4 ZPROJ : register(c33); // projection's z scale and offset
+
+float4 ps_water(V2P i, float2 vpos : VPOS, out float z : DEPTH) : COLOR
 {
+    z = saturate(ZPROJ.x + ZPROJ.y / i.wp.w);
     float3 v = normalize(EYE.xyz - i.wp.xyz);
     float t = EYE.w;
     float2 p = i.wp.xz * MAT.x;
