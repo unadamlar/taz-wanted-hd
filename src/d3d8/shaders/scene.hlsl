@@ -194,7 +194,9 @@ float3 shade(float3 albedo, float3 n, float3 w, float2 vpos, float ao, float spe
     float3 h = normalize(v + SUN.xyz);
     float gloss = 2 / max(MAT.z * MAT.z * MAT.z * MAT.z, 0.002);
     float sp = spec_mask * pow(saturate(dot(n, h)), gloss) * (gloss + 2) * 0.012;
-    return albedo * (amb + SUN_COL.rgb * nl * sh + local_lights(n, w)) + SUN_COL.rgb * sp * nl * sh;
+    // Shadows dim lamps too: removing only the blue moonlight left a yellow stain in lamp pools.
+    float3 lamps = local_lights(n, w) * (nl > 0 ? 0.6 + 0.4 * sh : 1);
+    return albedo * (amb + SUN_COL.rgb * nl * sh + lamps) + SUN_COL.rgb * sp * nl * sh;
 }
 
 float3 fogged(float3 c, float3 w)
