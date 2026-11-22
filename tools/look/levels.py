@@ -77,10 +77,11 @@ CITY_LOOK = dict(
     sky=dict(zenith="#0a1540", horizon="#20366f", horizon_warm="#31407a", sky_strength=1.0, cloud_white=0.3, ambient="#7a8fc8"),
     cliff=dict(), low_rail_above=1.3,
 )
-CITY_LAMPS = dict(color="#ffd08a", power=5.5, radius=14.0, drop=0.7, cone=0.8, pool_power=1.6, pool_radius=8.0, pool_height=3.2, pool_cone=-0.2)
+CITY_LAMPS = dict(color="#ffd08a", power=5.5, radius=14.0, drop=0.7, cone=0.8, pool_power=1.0, pool_radius=8.0, pool_height=3.2, pool_cone=-0.2)
 CITY_GLOW = [  # texture pattern, strength, brightness range that glows (None = the whole texture)
+    ("cityhub/textures/deptlight*", 0.55, (0.55, 0.8)),   # big flat shop doors: a full glow reads as a white wall
     ("cityhub/textures/*neon*", 2.2, None), ("cityhub/textures/*light*", 2.4, (0.45, 0.7)), ("cityhub/textures/*bulb*", 2.6, (0.4, 0.65)),
-    ("cityhub/textures/wineon*", 2.0, None), ("cityhub/textures/winstar*", 1.8, (0.3, 0.6)), ("cityhub/textures/*window*", 2.2, (0.4, 0.7)),
+    ("cityhub/textures/wineon*", 2.0, None), ("cityhub/textures/winstar*", 1.8, (0.3, 0.6)), ("cityhub/textures/*window*", 0.9, (0.45, 0.75)),
     ("cityhub/textures/chblock*", 2.4, (0.55, 0.75)), ("cityhub/textures/signtaxi*", 1.2, (0.5, 0.75)), ("cityhub/textures/*tv*.gif", 1.1, None),
     ("cityhub/textures/gladiatoons.gif", 1.1, None), ("cityhub/textures/marvinwash.gif", 1.1, None),
 ]
@@ -91,10 +92,10 @@ LEVELS = {
     "cityhub": dict(scene=8, pak="cityhub", blend="city/cityhub.blend", out="city/pass1", rules=CITY_RULES, hand=CITY_HAND,
                     look=CITY_LOOK, hdri=None, hdri_rotation=0.0, hub=(-66.0, -50.0, 72.0, 82.0), sky_panels=True, clutter=False,
                     materials=("lawn", "asphalt", "paving", "paint", "grass", "flat", "flat_wind"),
-                    tiles={"asphalt": dict(period=4.0, px=2048, sat=0.75, val=0.8, tint=(0.82, 0.86, 0.95), rough=0.75),
+                    tiles={"asphalt": dict(period=4.0, px=2048, sat=0.75, val=1.2, tint=(0.82, 0.86, 0.95), rough=0.75),
                            "paving": dict(period=4.5, px=2048, sat=0.55, val=1.35, tint=(0.95, 0.96, 1.0), rough=0.82)},
                     binds={"ground": (("paving", 1, -0.14, -0.05),),
                            "lawn": (("lawn", 0, 0.0, 1.0),),
                            "road": (("asphalt", 3, 0.42, 0.56), ("paint", 3, 0.86, 0.93))},
-                    glow=CITY_GLOW, lamps=CITY_LAMPS, unbake=0.5, sky_gain=2.4),
+                    glow=CITY_GLOW, lamps=CITY_LAMPS, unbake=0.5, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
 }

@@ -415,6 +415,7 @@ float4 vs_char_depth(float3 p : POSITION, float3 weight : TEXCOORD1, float4 pale
 // Characters: the game's vs_1_1 skinning, patched to also output world position (oT2) and normal (oT3).
 struct CharIn { float2 uv : TEXCOORD0; float3 w : TEXCOORD2; float3 n : TEXCOORD3; float4 c : COLOR0; };
 float4 CHAR_LIGHT[4] : register(c26);  // the two nearest lamps: position, 1 / r^2; colour
+float4 CHAR_FILL     : register(c30);  // keeps characters readable away from the lamps of a night level
 
 float4 ps_char(CharIn i) : COLOR
 {
@@ -439,7 +440,7 @@ float4 ps_char(CharIn i) : COLOR
         float fall = saturate(1 - dot(d, d) * CHAR_LIGHT[k * 2].w);
         lamp += CHAR_LIGHT[k * 2 + 1].rgb * fall * fall * saturate(dot(n, normalize(d)) * 0.7 + 0.3);
     }
-    float3 c = albedo * 0.7 * (amb + 0.85 * SUN_COL.rgb * band * sh + lamp);
+    float3 c = albedo * 0.7 * (amb + CHAR_FILL.rgb + 0.85 * SUN_COL.rgb * band * sh + lamp);
     c = lerp(dot(c, float3(0.3, 0.59, 0.11)) * float3(1.08, 0.94, 0.72), c, 0.62) * float3(1.02, 0.93, 0.76);
     return float4(to_gamma(c), saturate(tex.a * col.a * CHARK.z));
 }

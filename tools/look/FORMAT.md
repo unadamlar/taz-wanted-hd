@@ -94,6 +94,7 @@ grass_fade_start, grass_fade_end
 sky_scale
 unbake     optional. Above 0 the game's vertex colours are baked light (a night level): their tint is dropped
            and their brightness v becomes v^unbake
+char_fill  optional, three numbers: extra ambient on characters only, so they read away from a night level's lamps
 ```
 
 - sun_dir points towards the sun, in game space. sun_color already includes the 1/pi: diffuse = albedo * sun_color * N.L.
