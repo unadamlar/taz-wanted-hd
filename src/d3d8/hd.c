@@ -54,6 +54,9 @@ static UINT64 *hides; static UINT nhides, nshades; // the last nshades are baked
 static struct light *lights; static UINT nlights;
 static struct file_glow *glows; static UINT nglows;
 static struct { UINT64 hash; float p[3], r; } *swaps; static UINT nswaps;
+static struct solid { UINT64 key, tex; UINT proto; } *solids; static UINT nsolids;
+static UINT64 solid_tex[16]; static UINT nsolid_tex;
+static struct { UINT proto; float world[12]; } solid_done[128]; static UINT ndone; // already drawn this frame
 static IDirect3DTexture9 *light_tex;
 static int skin_mat = -1;
 static float light_grid[4];
@@ -502,6 +505,16 @@ int hd_load(hd_dev d, int scene)
             memcpy(swaps, p, nswaps * sizeof *swaps), p += nswaps * sizeof *swaps;
         }
     }
+    if (p + 4 <= file + n) { // optional, sorted by key: game draws replaced by a prototype at the game's transform
+        nsolids = U();
+        solids = malloc((nsolids + 1) * sizeof *solids);
+        for (UINT i = 0; i < nsolids; i++, p += 20) {
+            memcpy(&solids[i].key, p, 8), memcpy(&solids[i].tex, p + 8, 8), memcpy(&solids[i].proto, p + 16, 4);
+            UINT k = 0;
+            while (k < nsolid_tex && solid_tex[k] != solids[i].tex) k++;
+            if (k == nsolid_tex && k < 16) solid_tex[nsolid_tex++] = solids[i].tex;
+        }
+    }
     snprintf(path, sizeof path, "taz-hd\\look\\scene%02d\\sky.dds", scene);
     sky_tex = load_cube(d, path);
     free(file);
@@ -528,6 +541,7 @@ void hd_unload(void)
     skin_mat = -1;
     free(lights), free(glows), lights = NULL, glows = NULL, nlights = nglows = 0, light_grid[3] = 0;
     free(swaps), swaps = NULL, nswaps = 0;
+    free(solids), solids = NULL, nsolids = nsolid_tex = ndone = 0;
     free(mats), free(binds), free(hides), free(protos), free(subs), free(runs), free(chunks), free(vis);
     mats = NULL, binds = NULL, hides = NULL, protos = NULL, subs = NULL, runs = NULL, chunks = NULL, vis = NULL;
     nmats = nbinds = nhides = nshades = nprotos = nchunks = 0;
@@ -1297,6 +1311,62 @@ void hd_world_quick_end(hd_dev d)
     IDirect3DDevice9_SetPixelShader(d, NULL);
 }
 
+int hd_solid_texture(unsigned long long h)
+{
+    for (UINT i = 0; i < nsolid_tex; i++)
+        if (solid_tex[i] == h) return 1;
+    return 0;
+}
+
+int hd_solid_proto(unsigned long long key)
+{
+    UINT lo = 0, hi = nsolids;
+    while (lo < hi) {
+        UINT mid = (lo + hi) / 2;
+        if (solids[mid].key == key) return solids[mid].proto < nprotos ? (int)solids[mid].proto : -1;
+        if (solids[mid].key < key) lo = mid + 1;
+        else hi = mid;
+    }
+    return -1;
+}
+
+// A model is several game draws: the first one seen at a transform draws it all.
+int hd_solid_claim(int proto, const float *world)
+{
+    for (UINT i = 0; i < ndone; i++)
+        if (solid_done[i].proto == (UINT)proto && !memcmp(solid_done[i].world, world, 48)) return 0;
+    if (ndone < 128) solid_done[ndone].proto = proto, memcpy(solid_done[ndone++].world, world, 48);
+    return 1;
+}
+
+void hd_solid_draw(hd_dev d, int proto, const float *world)
+{
+    static const float no_fade[4] = { 0, 0, 0, 0 };
+    const struct proto *q = &protos[proto];
+    hd_camera(d);
+    save_state(d);
+    plain_states(d);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_ZENABLE, TRUE);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_ZWRITEENABLE, TRUE);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
+    vs_constants(d, clip_rows, world);
+    ps_constants(d);
+    bind_common(d);
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 32, no_fade, 1);
+    IDirect3DDevice9_SetVertexDeclaration(d, d_world);
+    IDirect3DDevice9_SetStreamSource(d, 0, vb, 0, 36);
+    IDirect3DDevice9_SetIndices(d, ib);
+    sampler(d, 0, D3DTEXF_ANISOTROPIC, D3DTEXF_LINEAR, D3DTADDRESS_WRAP);
+    for (UINT s = q->sub0; s < q->sub0 + q->nsub; s++) {
+        if (subs[s].mat >= nmats || !subs[s].count) continue;
+        bind_material(d, &mats[subs[s].mat], PASS_COLOUR);
+        IDirect3DDevice9_SetVertexShader(d, v_world);
+        IDirect3DDevice9_SetRenderState(d, D3DRS_CULLMODE, D3DCULL_NONE); // the game's transforms can mirror
+        IDirect3DDevice9_DrawIndexedPrimitive(d, D3DPT_TRIANGLELIST, q->base, 0, q->nv, subs[s].first, subs[s].count / 3);
+    }
+    restore_state(d);
+}
+
 void hd_merge_buffers(hd_dev d, struct IDirect3DVertexBuffer9 *v, struct IDirect3DIndexBuffer9 *i)
 {
     IDirect3DDevice9_SetStreamSource(d, 0, v, 0, 36);
@@ -1401,5 +1471,6 @@ void hd_frame_end(hd_dev d)
     if (redirected) hd_post(d);
     unbind_common(d);
     post_done = additions_done = prepass_done = sky_done = 0;
+    ndone = 0;
     check_reload(d);
 }

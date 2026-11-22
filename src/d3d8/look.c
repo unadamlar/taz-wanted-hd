@@ -382,6 +382,40 @@ void look_after_draw(IDirect3DDevice8 *dev)
     if (glowing) hd_glow_end(d3d9_device(dev), glowing), glowing = 0;
 }
 
+// A game draw with a solid replacement: drawn at the game's own transform, so it follows whatever the game does.
+static int solid_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count)
+{
+    DWORD fvf;
+    IDirect3DVertexBuffer8 *vb = NULL;
+    UINT stride = 0, n = type == D3DPT_TRIANGLESTRIP ? count + 2 : type == D3DPT_TRIANGLELIST ? count * 3 : 0;
+    BYTE *v;
+    if (api || !n || !hd_solid_texture(textures_bound_hash(0))) return 0;
+    IDirect3DDevice8_GetVertexShader(dev, &fvf);
+    if (fvf != 0x152 || FAILED(IDirect3DDevice8_GetStreamSource(dev, 0, &vb, &stride)) || !vb) return 0;
+    UINT64 key = 0xcbf29ce484222325ULL;
+    int ok = stride == 36 && SUCCEEDED(IDirect3DVertexBuffer8_Lock(vb, start * 36, n * 36, &v, D3DLOCK_READONLY));
+    if (ok) {
+        for (UINT i = 0; i < n * 36; i += 36) {
+            for (int b = 0; b < 12; b++) key = (key ^ v[i + b]) * 0x100000001b3ULL;
+            for (int b = 28; b < 36; b++) key = (key ^ v[i + b]) * 0x100000001b3ULL;
+        }
+        IDirect3DVertexBuffer8_Unlock(vb);
+    }
+    IDirect3DVertexBuffer8_Release(vb);
+    int proto = ok ? hd_solid_proto(key) : -1;
+    if (proto < 0) return 0;
+    float w[4][4], rows[3][4];
+    IDirect3DDevice8_GetTransform(dev, D3DTS_WORLD, (D3DMATRIX *)w);
+    for (int i = 0; i < 3; i++)
+        for (int j = 0; j < 4; j++) rows[i][j] = w[j][i];
+    if (!hd_solid_claim(proto, rows[0])) return 1;
+    merge_flush(dev);
+    if (hd_prepass_needed()) prepass(dev);
+    hd_solid_draw(d3d9_device(dev), proto, rows[0]);
+    merge_state_changed();
+    return 1;
+}
+
 // The floating logs share the replaced trees' bark, but only they draw it through a world matrix.
 static int moving_bark(IDirect3DDevice8 *dev, UINT64 raw)
 {
@@ -416,6 +450,7 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     hd_redirect(d);
     if (!hd_redirected()) return 0;
     hd_sky(d);
+    if (solid_draw(dev, api, type, start, count)) return 1;
     if (merge_draw(dev, api, type, start, count)) return 1;
     DWORD shader, zwrite, blend, fog, src, dst, op;
     IDirect3DDevice8_GetRenderState(dev, D3DRS_ALPHABLENDENABLE, &blend);
