@@ -35,6 +35,8 @@ c scene.hlsl ps_inst ps_3_0 ps_card CUT
 c scene.hlsl ps_inst ps_3_0 ps_grass CUT GRASS
 c scene.hlsl ps_water ps_3_0 ps_water
 c scene.hlsl ps_sky ps_3_0 ps_sky
+c scene.hlsl ps_glass ps_3_0 ps_glass
+c scene.hlsl ps_space ps_2_b ps_space
 c scene.hlsl ps_char ps_2_b ps_char
 c scene.hlsl ps_glow ps_2_0 ps_glow
 c post.hlsl vs_quad vs_3_0 vs_quad

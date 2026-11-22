@@ -573,10 +573,12 @@ def blender_main(argv):
 
         # 4. scatter
         gameplay_boxes = []
-        for ob in live + chars:
+        for ob in live if L.get("clear_islands") else live + chars:  # there, characters walk and props share objects with scenery
             if ob in chars or poly_mask(ob, ("gameplay",)).all():
                 lo, hi = kit.world_bbox(ob)
                 gameplay_boxes.append((lo, hi))
+            elif L.get("clear_islands") and poly_mask(ob, ("gameplay",)).any():
+                gameplay_boxes += [(lo, hi) for _, lo, hi in kit.islands(ob, poly_mask(ob, ("gameplay",)))]
         hub = L["hub"]
         masks = {}
 
@@ -625,7 +627,8 @@ def blender_main(argv):
         covers = [o for o in live if poly_mask(o, ("water", "brick", "cliff", "cliff_lilac", "gameplay", "lit")).any()]
         if overlay:
             covers.append(overlay)
-        grass = kit.scatter_grass(live, SCALE, points=(P, N, hm), blockers=covers, exclude=gameplay_boxes, seed=3)
+        grass = kit.scatter_grass(live, SCALE, points=(P, N, hm), blockers=None if L.get("clear_islands") else covers, exclude=gameplay_boxes, seed=3,
+                                  **L.get("grass_opts", {}))
 
         def clutter_sampler(density, seed):
             r, g = ground_info(density, seed)

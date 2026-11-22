@@ -31,7 +31,7 @@ u32 nsolid; solid solids[nsolid]   optional, needs the three sections before it;
 ```
 material (128 bytes)
   char name[32], albedo[32], normal[32]   texture names without .dds; empty = none
-  u16  kind    0 opaque, 1 card (alpha cut), 2 grass, 3 water
+  u16  kind    0 opaque, 1 card (alpha cut), 2 grass, 3 water, 4 glass (blended last), 5 sun-map caster (never drawn)
   u16  flags   1 triplanar, 2 two-sided, 4 wind
   f32  tile    game units per texture repeat; 0 = use the mesh UVs
   f32  tint[3] linear multiplier
@@ -91,6 +91,8 @@ Conventions:
   the image and v runs down, so on walls v = -y / tile keeps a texture upright. Mesh UVs are already in this convention.
 - Normal maps are tangent space with +x along +u and +y towards the top of the image (OpenGL style).
 - sky.dds is sampled with the game-space view direction as is.
+- `tex/paint_<fingerprint>.dds`, where present in Planet X's data, is drawn in place of that game backdrop panel at the game's transform, so it keeps moving.
+- sky.dds is optional: without it the game's own backdrop stays. `scene30` is Planet X, shared by the four hubs.
 - A material named `skin` is the hide of untextured characters: a raw grey tile on their bind pose, `tile` game units per
   repeat, `alpha_cut` its strength.
 
@@ -109,6 +111,8 @@ sky_scale
 unbake     optional. Above 0 the game's vertex colours are baked light (a night level): their tint is dropped
            and their brightness v becomes v^unbake
 char_fill  optional, three numbers: extra ambient on characters only, so they read away from a night level's lamps
+shadow_floor  optional: the height below which `hold` surfaces take no sun shadow
+hold       optional. Above 0 game surfaces keep their painted colour through the tone curve; light only shades it
 ```
 
 - sun_dir points towards the sun, in game space. sun_color already includes the 1/pi: diffuse = albedo * sun_color * N.L.

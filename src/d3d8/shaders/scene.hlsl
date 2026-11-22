@@ -32,6 +32,7 @@ float4 MWEIGHT   : register(c22);
 float4 MWEIGHT2  : register(c23);
 float4 CHARK     : register(c24);   // characters: texture on, colour on, scale, as the game's stage 0
 float4 EMIT      : register(c26);   // glow: strength, lo, 1 / (hi - lo); w: baked-light exponent, 0 keeps vertex colours
+float4 HOLD      : register(c28);   // x: how much painted surfaces keep their colour through the tone curve; y exposure, z contrast, w lowest shadowed height
 float4 LGRID     : register(c27);   // lights: grid x0, z0, 1 / cell, 1 if the level has any
 
 float4 NEAR      : register(c32);   // x: 1 in the blended near pass; y: 1 keep far side, -1 keep near side
@@ -266,6 +267,14 @@ float3 uv_normal(float3 n, float3 w, float2 uv)
     return normalize(t / scale * m.x - b / scale * m.y + n * m.z);
 }
 
+// The scene value the tone curve (post.hlsl film) turns into this colour.
+float3 held(float3 c)
+{
+    float3 s = clamp(pow(saturate(to_gamma(c)), 1 / HOLD.z) - 0.5, -0.47, 0.44);
+    float3 x = s / sqrt(1 - 4 * s * s) / 2.4 + 0.606;
+    return 0.18 * pow(2, 16.5 * x - 10) / HOLD.y;
+}
+
 float4 ps_world(V2P i, float2 vpos : VPOS) : COLOR
 {
     float4 tex = tex2D(BASE, i.uv);
@@ -293,6 +302,12 @@ float4 ps_world(V2P i, float2 vpos : VPOS) : COLOR
 #endif
     float ao = lerp(1, tex2D(AO, (vpos + 0.5) * SCREEN.xy).r, SCREEN.z);
     float3 c = shade(albedo, nor, i.wp.xyz, vpos, ao, spec);
+    if (HOLD.x > 0) {
+        // Below HOLD.w the doors' shadows would only streak down the outside of the planet.
+        float sh = i.wp.y > HOLD.w ? sun_shadow(i.wp.xyz, vpos) : 1;
+        float light = (0.62 + 0.6 * saturate(dot(nor, SUN.xyz))) * lerp(0.62, 1, sh) * ao;
+        c = lerp(c, held(albedo) * light + shade(0, nor, i.wp.xyz, vpos, ao, spec), HOLD.x);
+    }
     if (EMIT.x > 0) { // lit windows and signs
         float t = saturate((dot(tex.rgb, float3(0.3, 0.59, 0.11)) - EMIT.y) * EMIT.z);
         c += to_linear(tex.rgb) * t * t * (3 - 2 * t) * EMIT.x;
@@ -361,6 +376,34 @@ float dashes(float2 p, float t)
 }
 
 // Water on the game's own surface: depth colour over the bed, sky reflection, soft shore.
+// A redrawn backdrop panel: unlit, its painted colour held through the tone curve.
+float4 ps_space(float2 uv : TEXCOORD0) : COLOR
+{
+    float3 c = tex2D(BASE, uv).rgb;
+    float peak = max(c.r, max(c.g, c.b)), low = min(c.r, min(c.g, c.b));
+    // a saturated colour held near white comes out of the tone curve pink, so it stops a little lower
+    c *= min(1, (0.72 + 0.28 * low / max(peak, 0.01)) / max(peak, 0.01));
+    c = held(to_linear(c));
+    float l = dot(c, float3(0.2126, 0.7152, 0.0722));
+    return float4(to_gamma(max(l + (c - l) / 0.86, 0)), 1); // the curve's own desaturation, undone
+}
+
+// The dome: clear glass with a sheen at grazing angles and the sun's glint, or its steel frame (MAT.y 1). Like the game's,
+// what is right by the camera doesn't draw, so no bar crosses the view.
+float4 ps_glass(V2P i, float2 vpos : VPOS) : COLOR
+{
+    float3 v = normalize(EYE.xyz - i.wp.xyz), n = normalize(i.n);
+    if (dot(n, v) < 0) n = -n;
+    float far = saturate((distance(EYE.xyz, i.wp.xyz) - 520) / 360);
+    far *= far * (3 - 2 * far);
+    if (MAT.y > 0.5) return float4(to_gamma(shade(TINT.rgb, n, i.wp.xyz, vpos, 1, 1 - MAT.z)) * far, far);
+    float3 r = reflect(-v, n);
+    float f = 0.03 + 0.5 * pow(1 - saturate(dot(n, v)), 4);
+    float up = saturate(r.y * 0.5 + 0.5), sun = saturate(dot(r, SUN.xyz));
+    float3 sheen = lerp(float3(0.05, 0.07, 0.2), float3(0.55, 0.7, 1.0), up * up) * f + SUN_COL.rgb * (pow(sun, 120) * 0.05 + pow(sun, 1500) * 5);
+    return float4(to_gamma(sheen) * far, f * far);
+}
+
 float4 ZPROJ : register(c33); // projection's z scale and offset
 
 float4 ps_water(V2P i, float2 vpos : VPOS, out float z : DEPTH) : COLOR

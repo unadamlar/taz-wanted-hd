@@ -27,6 +27,10 @@ zoo hub). It is loose reference: do what looks best for this game, never chase a
 - Step 5 is done (2026-11-22): the zoo has hard-edged cliffs, finished buildings, a creased elephant, real 3D barbed wire, a stone moat bank
   and a proper water bed. On-screen messages no longer drop the picture to the flat look, and the moat no longer breaks
   up when the camera skims it. Report: `extracted/look/reports/step5.md`.
+- Planet X, the room behind the doors between hubs, has its own Remaster look (2026-11-22). It is not a scene: the same model
+  sits far below each of the four hubs' levels, so `look.c` swaps to shared look data (`scene30`) while the camera is down there.
+  It works from all four hubs, including the west and Taz hubs, which have no Remaster data of their own. Images:
+  `extracted/look/reports/step6/planet/`.
 
 Measured on the desktop (RTX 4070, 2880x1800, 4x MSAA, vsync off, 3 runs of 600 frames, fixed view). Zoo hub: Remaster
 7.18-7.44 ms per frame, HD 1.63-1.64. City hub: Remaster 5.58-5.67, HD 1.56-1.61.
@@ -66,7 +70,7 @@ Next: review and merge each branch, re-export all data, run the full check, upda
 4. `tools/look/export.py` writes the additions to `taz-hd\look\sceneNN\`; `look.c` draws them.
 
 Rerun commands: see the usage lines at the top of `dress.py`. Look data: `blender -b extracted/look/pass5/zoohub-dressed.blend
---factory-startup --python-exit-code 1 -P tools/look/export.py -- --level zoohub` (or `cityhub`). Shaders: `src/d3d8/shaders/build.sh`
+--factory-startup --python-exit-code 1 -P tools/look/export.py -- --level zoohub` (or `cityhub`; Planet X: `extracted/look/planet/pass2/planetx-dressed.blend`, `--level planetx`). Shaders: `src/d3d8/shaders/build.sh`
 regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender` here means
 `~/.local/share/devtools/blender/blender`.
 
@@ -108,6 +112,12 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
   at 2880x1800 with 4x MSAA the GPU also reaches 94-97%. No case to switch API yet: cut that CPU work on D3D9 in step 6, then
   measure again. How much of it is the API's own cost is not separated, and real Windows is not measured.
 - Hand work for the zoo art: 21 texture rules, 1 path change, no new assets, no hand exceptions, about 19 tuned numbers.
+- Hand work for Planet X: 1 hide rule, 2 dome rules, 1 ground rule, 9 gameplay rules, 4 relief rules, 5 material roles from existing
+  CC0 sets, a table of the 10 painted planets, nothing placed by hand, about 50 tuned numbers (estimate). The round dome (a superellipse
+  containing every vertex of the game's), its ribs and the smooth hull ring are generated from the game's own rings. The hull ring is laid
+  just over the game's faceted one, so collision and everything else stays. Space is the game's three panels redrawn by `tools/look/space.py`
+  (original procedural work) at 4096 px: same layout, lit planets, more stars, still turning with the game's own transform.
+  Painted surfaces there keep their HD colour through the tone curve (`hold`), and light only shades them.
 - Sun is per level and placed for looks; baked vertex shadows are dropped.
 - Never move a game surface. Walkable tops keep their height; replacements must contain the collision shape.
 - Gameplay objects (books, signs, crates, trampolines, pickups) stay readable and clear of grass.
@@ -148,6 +158,8 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
 - Zoo art: rock colour is flat up close and the moss on its ledges looks like green shards. Buildings keep their low-poly
   shapes and the ice detail is subtle. The elephant keeps its low-poly blob shape under its new hide. The water bed barely
   reads.
+- Planet X: the red planet under the dome keeps its low-poly shape, craters and white crosses. Door shadows don't follow a door while it
+  swings open. Coming back from it reloads the hub's look, a pause of about 0.5 s in the zoo.
 - The elephant's hide goes on any untextured character's mid-grey parts. An 18-leg walk found only the elephant, but did
   not cover the whole hub.
 - Test runs load any shader files left in `taz-hd\shaders` over the built-in ones. `qa/fast.sh start` now clears them.

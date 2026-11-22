@@ -3,14 +3,14 @@
 #          -P tools/look/export.py -- --level zoohub|cityhub [--rebake]
 # Writes extracted/look/runtime/scene<NN>/ atomically. Bakes are cached in extracted/look/runtime/.bake/.
 # Game space is worldview.py's inverse: Blender (x, y, z) * 250 -> game (x, z, y).
-import argparse, collections, ctypes, fnmatch, json, math, os, random, shutil, struct, sys, time
+import argparse, collections, ctypes, fnmatch, hashlib, json, math, os, random, shutil, struct, sys, time
 import bmesh, bpy
 import numpy as np
 from mathutils import Matrix, Vector, noise as mnoise
 
 here = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, here)
-import bake, dds, dress, kit, solid
+import bake, dds, dress, kit, space, solid
 
 a = argparse.ArgumentParser()
 a.add_argument("--level", default="zoohub")
@@ -63,7 +63,7 @@ TILES = {
     "boulder": (lambda: kit.mat_boulder_dry(SC), 2 * 1.4 * SC, 1024, True),
 }
 TRIPLANAR, TWO_SIDED, WIND = 1, 2, 4
-OPAQUE, CARD, GRASS, WATER = 0, 1, 2, 3
+OPAQUE, CARD, GRASS, WATER, GLASS, CASTER = 0, 1, 2, 3, 4, 5
 # foliage tints stand in for the kit's small emission term, which has no slot here
 MATS = {  # name: albedo, has normal, kind, flags, tile (game units, 0 = mesh UVs), tint, rough, normal strength, alpha cut
     "dirt": ("dirt", True, OPAQUE, 0, TILES["dirt"][1] * K, (1, 1, 1), 0.88, 1.0, 0),
@@ -95,6 +95,11 @@ if "skin" in LEVEL:  # wrinkled hide for untextured characters, mapped on their 
     MATS["skin"] = ("skin", False, OPAQUE, 0, LEVEL["skin"]["tile"], (1, 1, 1), 0.6, 0, LEVEL["skin"]["grain"])
 for name, tint in LEVEL.get("tints", {}).items():
     MATS[name] = (*MATS[name][:5], tint, *MATS[name][6:])
+if "dome" in LEVEL:
+    MATS["glass"] = ("", False, GLASS, TWO_SIDED, 0.0, (1, 1, 1), 0.05, 0, 0)
+    MATS["caster"] = ("", False, CASTER, TWO_SIDED, 0.0, (1, 1, 1), 1.0, 0, 0)
+    MATS["dome_steel"] = ("", False, GLASS, TWO_SIDED, 0.0, (0.34, 0.37, 0.42), 0.28, 1, 0)
+    LEVEL["materials"] += ("glass", "dome_steel", "caster", "hull")
 if "materials" in LEVEL:  # a level loads only what it uses
     MATS["paint"] = ("", False, OPAQUE, 0, 1000.0, (0.86, 0.88, 0.92), 0.6, 0, 0)  # road markings, kept white
     MATS = {n: m for n, m in MATS.items() if n in LEVEL["materials"]}
@@ -281,8 +286,9 @@ for o in flat:
         sc.collection.objects.link(o)
     o.hide_set(False); o.hide_render = False; o.select_set(True)
 bpy.context.view_layer.update()
-bpy.context.view_layer.objects.active = flat[0]
-bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, target="VERTEX_COLORS")
+if flat:
+    bpy.context.view_layer.objects.active = flat[0]
+    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, target="VERTEX_COLORS")
 for o in flat:
     baked = np.empty(len(o.data.loops) * 4, np.float32)
     o.data.color_attributes["look_bake"].data.foreach_get("color", baked)
@@ -508,15 +514,15 @@ for label, users in sorted(kept.items()):
     print("export: kept %s, %d triangles" % (name, len(k) // 3))
 
 
-def wire_tube(path, side, up, r):
-    """Three-sided tube along a path: triangles of positions and normals."""
-    a = np.arange(3) * 2 * np.pi / 3
+def wire_tube(path, side, up, r, sides=3):
+    """Tube along a path: triangles of positions and normals."""
+    a = np.arange(sides) * 2 * np.pi / sides
     spoke = np.cos(a)[:, None] * side + np.sin(a)[:, None] * up
     ring = path[:, None] + r * spoke
-    I, J = np.arange(len(path) - 1)[:, None], np.arange(3)[None]
-    corners = [(I + di, (J + dj) % 3) for di, dj in ((0, 0), (1, 0), (1, 1), (0, 0), (1, 1), (0, 1))]
+    I, J = np.arange(len(path) - 1)[:, None], np.arange(sides)[None]
+    corners = [(I + di, (J + dj) % sides) for di, dj in ((0, 0), (1, 0), (1, 1), (0, 0), (1, 1), (0, 1))]
     p = np.stack([ring[i, j] for i, j in corners], 2).reshape(-1, 3, 3)
-    n = np.stack([np.broadcast_to(spoke[j], (len(I), 3, 3)) for _, j in corners], 2).reshape(-1, 3, 3)
+    n = np.stack([np.broadcast_to(spoke[j], (len(I), sides, 3)) for _, j in corners], 2).reshape(-1, 3, 3)
     return p, n
 
 
@@ -568,21 +574,160 @@ def barbed_wire(o):
                 parts.append(wire_tube(mid + 1.6 * (np.cos(w)[:, None] * side + np.sin(w)[:, None] * up), side, up, 1.6))
             for s in np.arange(36, L - 12, 72):
                 parts += wire_barb(mid[int(s / L * (len(t) - 1))], axis, side, up, s)
+    print("export: barbed wire, %d strips" % len(quads))
+    return solid_proto("barbed_wire", parts, "steel")
+
+
+def solid_proto(name, parts, mat, colour=None):
+    """A proto from (triangle positions, normals) parts, wound the way game space culls."""
     p, n = (np.concatenate(x).astype(np.float32) for x in zip(*parts))
-    flip = (np.cross(p[:, 1] - p[:, 0], p[:, 2] - p[:, 0]) * n.mean(1)).sum(1) > 0  # game space winding
+    flip = (np.cross(p[:, 1] - p[:, 0], p[:, 2] - p[:, 0]) * n.mean(1)).sum(1) > 0
     p[flip], n[flip] = p[flip][:, [0, 2, 1]], n[flip][:, [0, 2, 1]]
-    print("export: barbed wire, %d strips, %d triangles" % (len(quads), len(p)))
+    c = np.ones_like(p) if colour is None else np.array(colour, np.float32)
+    if colour is not None:
+        c[flip] = c[flip][:, [0, 2, 1]]
     p, n = p.reshape(-1, 3), n.reshape(-1, 3)
-    return add_proto("barbed_wire", p, n, np.ones_like(p), np.zeros((len(p), 2), np.float32), np.full(len(p), MAT_ID["steel"]))
+    return add_proto(name, p, n, c.reshape(-1, 3), np.zeros((len(p), 2), np.float32), np.full(len(p), MAT_ID[mat]))
+
+
+def game_faces(wanted):
+    """Unique faces in game space, with their UVs, of the capture's surfaces whose role or texture passes `wanted`."""
+    faces = {}
+    for coll in dress.GAME_COLLS:
+        for o in (bpy.data.collections[coll].objects if coll in bpy.data.collections else []):
+            if o.type != "MESH":
+                continue
+            M = np.array(S @ o.matrix_world, np.float64)
+            uv = o.data.uv_layers[0].data
+            for f in o.data.polygons:
+                m = o.data.materials[f.material_index]
+                if m and wanted(dress.base_name(m.name.split(":", 1)[-1])):
+                    c = [(np.array(o.data.vertices[o.data.loops[l].vertex_index].co) @ M[:3, :3].T + M[:3, 3]) * K for l in f.loop_indices]
+                    faces[tuple(sorted(tuple(np.round(q, 1)) for q in c))] = (np.array(c), [tuple(np.round(uv[l].uv, 2)) for l in f.loop_indices])
+    return list(faces.values())
+
+
+def revolve(c, ax, e1, e2, r, h, nr, nh, segments, colour=None):
+    """A smooth surface of revolution from a profile: triangle corners (positions, normals, colours)."""
+    th = np.linspace(0, 2 * np.pi, segments + 1)
+    d = np.cos(th)[:, None] * e1 + np.sin(th)[:, None] * e2
+    P = c + r[:, None, None] * d + h[:, None, None] * ax
+    N = nr[:, None, None] * d + nh[:, None, None] * ax
+    C = np.ones((len(r), segments + 1, 3)) if colour is None else np.broadcast_to(colour[:, None], (len(r), segments + 1, 3))
+    I, J = np.mgrid[:len(r) - 1, :segments]
+    corners = ((I, J), (I + 1, J), (I + 1, J + 1), (I, J), (I + 1, J + 1), (I, J + 1))
+    return [np.stack([A[i, j] for i, j in corners], 2).reshape(-1, 3, 3) for A in (P, N, C)]
+
+
+def bent_tube(path, up, radius, sides=8):
+    """Round bar along a curve; `up` is the surface normal at each point."""
+    t = np.gradient(path, axis=0)
+    t /= np.linalg.norm(t, axis=1, keepdims=True)
+    side = np.cross(t, up)
+    side /= np.linalg.norm(side, axis=1, keepdims=True)
+    top = np.cross(side, t)
+    a = np.linspace(0, 2 * np.pi, sides + 1)[:-1]
+    spoke = np.cos(a)[None, :, None] * side[:, None] + np.sin(a)[None, :, None] * top[:, None]
+    ring = path[:, None] + radius * spoke
+    I, J = np.mgrid[:len(path) - 1, :sides]
+    K_ = (J + 1) % sides
+    corners = ((I, J), (I + 1, J), (I + 1, K_), (I, J), (I + 1, K_), (I, K_))
+    return [np.stack([A[i, j] for i, j in corners], 2).reshape(-1, 3, 3) for A in (ring, spoke)]
+
+
+def dome_protos():
+    """A round glass dome on the game's rim, curved steel ribs and rings where its panel edges ran, and a smooth hull ring
+    laid just over the game's faceted one, which stays there underneath (its collision is untouched)."""
+    V = np.unique(np.round(np.concatenate([c for c, _ in game_faces(lambda label: dress.role_of(label) == LEVEL["dome"] and label.endswith("spacestation"))]), 1), axis=0)
+    rim = V[V[:, 1] < V[:, 1].min() + 150]
+    c = rim.mean(0)
+    ax = np.linalg.svd(rim - c)[2][2]
+    ax = ax * np.sign(ax[1])
+    e1 = np.cross(ax, (0, 0, 1.0)); e1 /= np.linalg.norm(e1)
+    e2 = np.cross(ax, e1)
+    H = (V - c) @ ax
+    R = np.linalg.norm(V - c - H[:, None] * ax, axis=1)
+    # a superellipse on the rim plane: walls that rise straight from the hull into a round top, containing every game vertex
+    power, b = 2.6, H.max() + 5
+    wide = (R > 500) & (H > 0)
+    a = (R[wide] / (1 - (H[wide] / b) ** power) ** (1 / power)).max() + 2
+    q = np.linspace(0, np.arccos((R[H > 900].min() * 0.92 / a) ** (power / 2)), 44) ** 1.0
+    r_, h_ = np.r_[a, a * np.cos(q) ** (2 / power)], np.r_[-5.0, b * np.sin(q) ** (2 / power)]
+    nr, nh = (r_ / a) ** (power - 1) / a, (np.maximum(h_, 0) / b) ** (power - 1) / b
+    l = np.hypot(nr, nh)
+    nr, nh = nr / l, nh / l
+    P, N, _ = revolve(c, ax, e1, e2, r_, h_, nr, nh, 160)
+    glass = solid_proto("dome_glass", [(P, N)], "glass")
+
+    az = np.unique(np.round(np.arctan2((rim - c) @ e2, (rim - c) @ e1), 2))
+    frame = []
+    for th in az:  # ribs
+        d = np.cos(th) * e1 + np.sin(th) * e2
+        frame.append(bent_tube(c + r_[:, None] * d + h_[:, None] * ax, nr[:, None] * d + nh[:, None] * ax, 7.0))
+    levels_ = sorted({int(round(x / 40)) * 40 for x in H[(H > 100) & (H < 930)]})
+    th = np.linspace(0, 2 * np.pi, 161)
+    d = np.cos(th)[:, None] * e1 + np.sin(th)[:, None] * e2
+    for lv_h, rad in [(x, 6.5) for x in levels_] + [(4.0, 11.0), (h_[-1], 10.0)]:  # rings
+        k = np.argmin(np.abs(h_[1:] - lv_h)) + 1
+        frame.append(bent_tube(c + r_[k] * d + h_[k] * ax, nr[k] * d + nh[k] * ax, rad))
+    bars = solid_proto("dome_frame", frame, "dome_steel")
+
+    ri, ro = R[H < 40].mean() * np.cos(np.pi / 14) - 3.5, 1304.0  # inside the 14-sided wall's flats, outside its corners
+    top, wall = np.array((226, 227, 247)) / 255, np.array((168, 166, 241)) / 255
+    band, outer = np.array((190, 188, 244)) / 255, np.array((212, 211, 248)) / 255
+    arc = lambda r0, h1, q0, q1, rad, m: (r0 + rad * np.cos(np.linspace(q0, q1, m)), h1 + rad * np.sin(np.linspace(q0, q1, m)))
+    pr, ph, pc = [np.array([ri, ri])], [np.array([-250.0, -6.0])], [np.array([wall, wall])]
+    x, y = arc(ri + 11, -2.0, np.pi, np.pi / 2, 11.0, 7)
+    pr.append(x), ph.append(y), pc.append(np.linspace(wall, band, 7))
+    pr.append(np.array([ri + 30, ro - 30])), ph.append(np.array([9.0, 9.0])), pc.append(np.array([top, top]))
+    x, y = arc(ro - 21, -12.0, np.pi / 2, -0.46, 21.0, 9)
+    pr.append(x), ph.append(y), pc.append(np.linspace(top, outer, 9))
+    pr.append(np.array([ro - 104, 1148.0])), ph.append(np.array([-210.0, -292.0])), pc.append(np.array([band, wall]))
+    pr, ph, pc = np.concatenate(pr), np.concatenate(ph), dds.to_linear(np.concatenate(pc))
+    tr, th_ = np.gradient(pr), np.gradient(ph)
+    l = np.maximum(np.hypot(tr, th_), 1e-6)
+    P, N, C = revolve(c, ax, e1, e2, pr, ph, -th_ / l, tr / l, 160, pc)  # outward: from the inner wall up, over, and down the outside
+    hull = solid_proto("hull_ring", [(P, N)], "hull", C)
+
+    LEVEL["shadow_floor"] = float(c[1] - 252)
+    print("export: dome radius %.0f height %.0f, %d ribs, %d rings, glass %d, frame %d, hull %d triangles" % (
+        a, b, len(az), len(levels_) + 2, len(protos[glass]["ix"]) // 3, len(protos[bars]["ix"]) // 3, len(protos[hull]["ix"]) // 3))
+    return glass, bars, hull
+
+
+def caster_proto():
+    """Depth-only copies of the doors and the flag, for the sun map: the game draws them after it is built."""
+    x0, y0, x1, y1 = (v * K for v in LEVEL["hub"])
+    faces = [c for c, _ in game_faces(lambda label: dress.role_of(label) == "gameplay") if x0 < c[:, 0].mean() < x1 and y0 < c[:, 2].mean() < y1]
+    parts = [(c[[0, 1, 2]][None], np.tile(np.cross(c[1] - c[0], c[2] - c[0]), (1, 3, 1))) for c in faces]
+    parts += [(c[[0, 2, 3]][None], np.tile(np.cross(c[1] - c[0], c[2] - c[0]), (1, 3, 1))) for c in faces if len(c) == 4]
+    return solid_proto("shadow_casters", parts, "caster")
 
 
 if "wire" in LEVEL:
     place.append((barbed_wire(bpy.data.objects[LEVEL["wire"]]), None))
+if "dome" in LEVEL:
+    place += [(pi, None) for pi in (*dome_protos(), caster_proto())]
 
 fp = {}
 for line in open(os.path.join(ext, "textures", "fingerprints.tsv")):
     h, f = line.rstrip("\n").split("\t")[:2]
     fp.setdefault(f, int(h, 16))
+for stem, planets in LEVEL.get("space", {}).items():  # the game's painted backdrop panels, redrawn (bound by look.c in their place)
+    file = "cityhub/textures/%s.png" % stem
+    name = "paint_%016x" % fp[file]
+    key = hashlib.sha1((repr(planets) + open(os.path.join(here, "space.py")).read()).encode()).hexdigest()[:12]
+    cached = os.path.join(cache, "%s-%s.dds" % (name, key))
+    if not os.path.exists(cached):
+        img = bpy.data.images.load(os.path.join(ext, "upscaled", file), check_existing=True)
+        img.colorspace_settings.name = "Non-Color"
+        px = np.empty(img.size[0] * img.size[1] * 4, np.float32)
+        img.pixels.foreach_get(px)
+        rgb = px.reshape(img.size[1], img.size[0], 4)[::-1, :, :3].copy()
+        out_rgb = space.panel(rgb, planets, 4096, seed=sorted(LEVEL["space"]).index(stem) * 40 + 3)
+        dds.write_dxt(cached, dds.mips(np.dstack([out_rgb, np.ones(out_rgb.shape[:2], np.float32)])), b"DXT1")
+    shutil.copy(cached, os.path.join(tmp, "tex", name + ".dds"))
+    tex_bytes[name] = os.path.getsize(cached)
 tex_hash = {}
 for line in list(open(os.path.join(ext, "textures", "index.tsv")))[1:]:
     pak, name, _, _, f = line.rstrip("\n").split("\t")
@@ -765,7 +910,7 @@ for line in list(open(os.path.join(ext, "textures", "index.tsv")))[1:]:
             break
     if "shadowsub" in label:
         shade.add(h)
-    elif role in HIDDEN_ROLES or label in (LEVEL.get("wire"), LEVEL.get("chain"), LEVEL.get("grill")):
+    elif role in HIDDEN_ROLES or role == LEVEL.get("dome") or label in (LEVEL.get("wire"), LEVEL.get("chain"), LEVEL.get("grill")):
         hide.add(h)
     elif h in binds:
         continue
@@ -838,11 +983,13 @@ def level_lights(cfg):
 lights = level_lights(LEVEL["lamps"]) if "lamps" in LEVEL else []
 
 # ---------------------------------------------------------------- sky
-eye = bpy.data.objects["hero camera"].matrix_world.translation.copy() if "hero camera" in bpy.data.objects else Vector()
-sky = np.asarray(bake.bake_sky(cache, sc, eye, panels=LEVEL.get("sky_panels", False)), np.float32)
-sky_scale = max(1.0, float(np.quantile(sky, 0.9999)))
-faces = [np.asarray(dds.to_srgb(f / sky_scale), np.float32) for f in bake.cube_faces(sky, 1024)]
-sky_bytes = dds.write_cube(os.path.join(tmp, "sky.dds"), faces)
+sky_scale, sky_bytes = 1.0, 0
+if not LEVEL.get("game_sky"):  # otherwise the game's own painted backdrop stays
+    eye = bpy.data.objects["hero camera"].matrix_world.translation.copy() if "hero camera" in bpy.data.objects else Vector()
+    sky = np.asarray(bake.bake_sky(cache, sc, eye, panels=LEVEL.get("sky_panels", False)), np.float32)
+    sky_scale = max(1.0, float(np.quantile(sky, 0.9999)))
+    faces = [np.asarray(dds.to_srgb(f / sky_scale), np.float32) for f in bake.cube_faces(sky, 1024)]
+    sky_bytes = dds.write_cube(os.path.join(tmp, "sky.dds"), faces)
 
 # ---------------------------------------------------------------- scene.bin
 
@@ -902,11 +1049,11 @@ vals = [
     ("shadow_softness", math.tan(math.radians(1.0))), ("ao_radius", 2.5 * SC * K), ("ao_strength", 1.0),
     ("fog_color", kit.srgb(LEVEL.get("fog_color", "#b8d6f2"))), ("fog_start", fog_start),
     ("fog_end", fog_start + grade["fog_depth"] * SC * K / grade["fog"]),  # Blender's fog tops out at this 7%
-    ("exposure", 2 ** grade["exposure"]), ("bloom_threshold", 0.9), ("bloom_strength", grade["bloom"]),
-    ("saturation", grade["saturation"]), ("contrast", 1.15),
+    ("exposure", 2 ** grade["exposure"]), ("bloom_threshold", LEVEL.get("bloom_threshold", 0.9)), ("bloom_strength", grade["bloom"]),
+    ("saturation", grade["saturation"]), ("contrast", LEVEL.get("contrast", 1.15)),
     ("water_height", water_y), ("water_color", kit.srgb("#2aa6c8")), ("water_clarity", 0.72),
     ("grass_fade_start", 5000.0), ("grass_fade_end", 10000.0), ("sky_scale", sky_scale * LEVEL.get("sky_gain", 1.0)),
-] + [(k, LEVEL[k]) for k in ("unbake", "char_fill") if k in LEVEL]
+] + [(k, LEVEL[k]) for k in ("unbake", "char_fill", "hold", "shadow_floor") if k in LEVEL]
 with open(os.path.join(tmp, "level.ini"), "w") as f:
     f.write("[level]\n")
     for k, x in vals:
