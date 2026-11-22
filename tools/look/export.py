@@ -782,7 +782,7 @@ vals = [
     ("sun_color", np.array(kit.srgb(sun["sun_color"])) * sun["sun_strength"] / math.pi),
     ("sky_ambient", amb), ("ground_ambient", amb * np.array((0.55, 0.47, 0.38))),
     ("shadow_softness", math.tan(math.radians(1.0))), ("ao_radius", 2.5 * SC * K), ("ao_strength", 1.0),
-    ("fog_color", kit.srgb("#b8d6f2")), ("fog_start", fog_start),
+    ("fog_color", kit.srgb(LEVEL.get("fog_color", "#b8d6f2"))), ("fog_start", fog_start),
     ("fog_end", fog_start + grade["fog_depth"] * SC * K / grade["fog"]),  # Blender's fog tops out at this 7%
     ("exposure", 2 ** grade["exposure"]), ("bloom_threshold", 0.9), ("bloom_strength", grade["bloom"]),
     ("saturation", grade["saturation"]), ("contrast", 1.15),
