@@ -137,6 +137,7 @@ void mesh_shader_deleted(IDirect3DDevice8 *dev, DWORD h);
 HRESULT mesh_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
                   HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT));
 extern DWORD presents; // frames shown so far
+extern int game_quit;  // the game itself called ExitProcess
 extern const DWORD smooth_decl[8];
 extern int style_player;
 void style_shader_created(DWORD h, const DWORD *fn);
