@@ -386,12 +386,17 @@ float4 ps_sky(SkyOut i) : COLOR
 
 // The game's additive sprites (glows, sparkles, flames) are blended as a screen: src + dst * (1 - src). Plain
 // addition has no ceiling in a float target, so stacked sprites burned to white and flooded the bloom.
-float4 GLOW : register(c25);   // x: the game's stage 0 scale
+float4 GLOW : register(c25);   // x: the game's stage 0 scale, y: strength
 
 float4 ps_glow(float2 uv : TEXCOORD0, float4 col : COLOR0) : COLOR
 {
     float4 c = saturate(tex2D(BASE, uv) * col * GLOW.x);
-    return float4(c.rgb * c.a, c.a);
+    // The faint skirt of many stacked sprites is what hazes the view, so it is cut; the core keeps its gold through
+    // the tone curve, which would otherwise wash it to cream.
+    float a = saturate((c.a - 0.14) / 0.5);
+    a = a * a * (3 - 2 * a);
+    c.rgb = pow(c.rgb, float3(0.8, 1.2, 2.2));
+    return float4(saturate(c.rgb * a * GLOW.y), a);
 }
 
 // Characters into the sun map: the game's skinning (palette offsets are register numbers), our own shader.

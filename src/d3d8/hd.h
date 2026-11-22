@@ -58,8 +58,8 @@ void hd_additions(hd_dev d);            // additions and water, once per frame a
 int hd_additions_done(void);
 
 // One additive game sprite, blended so it can't burn out.
-void hd_glow_begin(hd_dev d, float scale);
-void hd_glow_end(hd_dev d);
+void hd_glow_begin(hd_dev d, float scale, float strength);
+void hd_glow_end(hd_dev d, unsigned long dest_blend);
 
 // Characters: pixel shader and constants around one draw.
 struct IDirect3DTexture9;

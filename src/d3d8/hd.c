@@ -1240,20 +1240,20 @@ void hd_char_end(hd_dev d)
     IDirect3DDevice9_SetPixelShader(d, NULL);
 }
 
-void hd_glow_begin(hd_dev d, float scale)
+void hd_glow_begin(hd_dev d, float scale, float strength)
 {
-    float k[4] = { scale, 0, 0, 0 };
+    float k[4] = { scale, strength, 0, 0 };
     IDirect3DDevice9_SetPixelShaderConstantF(d, 25, k, 1);
     IDirect3DDevice9_SetPixelShader(d, p_glow);
     IDirect3DDevice9_SetRenderState(d, D3DRS_SRCBLEND, D3DBLEND_ONE);
     IDirect3DDevice9_SetRenderState(d, D3DRS_DESTBLEND, D3DBLEND_INVSRCCOLOR);
 }
 
-void hd_glow_end(hd_dev d)
+void hd_glow_end(hd_dev d, unsigned long dest_blend)
 {
     IDirect3DDevice9_SetPixelShader(d, NULL);
     IDirect3DDevice9_SetRenderState(d, D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-    IDirect3DDevice9_SetRenderState(d, D3DRS_DESTBLEND, D3DBLEND_ONE);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_DESTBLEND, dest_blend);
 }
 
 // --- post ---------------------------------------------------------------------------------------

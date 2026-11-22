@@ -382,11 +382,12 @@ const D3DMATRIX *look_camera(D3DTRANSFORMSTATETYPE t, const D3DMATRIX *m, D3DMAT
     return m;
 }
 
-static int glowing, backdrop;
+static DWORD glowing; // the game's destination blend while one of its glows draws through ours
+static int backdrop;
 
 void look_after_draw(IDirect3DDevice8 *dev)
 {
-    if (glowing) glowing = 0, hd_glow_end(d3d9_device(dev));
+    if (glowing) hd_glow_end(d3d9_device(dev), glowing), glowing = 0;
 }
 
 static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count)
@@ -415,13 +416,16 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     IDirect3DDevice8_GetRenderState(dev, D3DRS_SRCBLEND, &src);
     IDirect3DDevice8_GetRenderState(dev, D3DRS_DESTBLEND, &dst);
     IDirect3DDevice8_GetTextureStageState(dev, 0, D3DTSS_COLOROP, &op);
-    if (blend && src == D3DBLEND_SRCALPHA && dst == D3DBLEND_ONE && textures_bound(0) && (op == D3DTOP_MODULATE || op == D3DTOP_MODULATE2X)) {
+    // The tutorial book's halo is one big alpha-blended quad of the ribbon's texture: it is what hazes the view up close.
+    UINT64 sprite = api == 2 && blend && src == D3DBLEND_SRCALPHA && dst == D3DBLEND_INVSRCALPHA ? textures_bound_hash(0) : 0;
+    int halo = sprite == 0x78c161107296791dULL || sprite == 0x23416f5ebf5678ffULL;
+    if (halo || (blend && src == D3DBLEND_SRCALPHA && dst == D3DBLEND_ONE && textures_bound(0) && (op == D3DTOP_MODULATE || op == D3DTOP_MODULATE2X))) {
         if (!hd_additions_done()) { // sprites go over the finished world
             if (hd_prepass_needed()) prepass(dev);
             hd_additions(d), merge_state_changed();
         }
-        hd_glow_begin(d, op == D3DTOP_MODULATE2X ? 2 : 1);
-        glowing = 1;
+        hd_glow_begin(d, op == D3DTOP_MODULATE2X ? 2 : 1, halo ? 0.3f : 1.7f);
+        glowing = dst;
         return 0;
     }
     IDirect3DDevice8_GetVertexShader(dev, &shader);
