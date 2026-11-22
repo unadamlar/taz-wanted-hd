@@ -112,7 +112,7 @@ LEVELS = {
                    flats={"steel": ((0.20, 0.17, 0.15), 0.4), "link": ((0.62, 0.68, 0.74), 0.35), "iron": ((0.045, 0.045, 0.05), 0.4)},
                    wire="zoohub/textures/barbed_wire", chain="zoohub/textures/chain", grill="zoohub/textures/safarigrill01",
                    swap=dict(cards=("zoohub/textures/gate", "zoohub/textures/zoohubgate"),
-                             soft=())),
+                             soft=("zoohub/textures/dinghy2", "zoohub/textures/lilo3"))),
     "cityhub": dict(scene=8, pak="cityhub", blend="city/cityhub.blend", out="city/pass1", rules=CITY_RULES, hand=CITY_HAND,
                     look=CITY_LOOK, hdri=None, hdri_rotation=0.0, hub=(-66.0, -50.0, 72.0, 82.0), sky_panels=True, clutter=False,
                     materials=("lawn", "asphalt", "paving", "paint", "grass", "flat", "flat_wind"),
