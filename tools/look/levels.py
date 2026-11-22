@@ -50,7 +50,6 @@ ZOO_LOOK = dict(
     sky=dict(zenith="#1257e6", horizon="#8fd0ff", horizon_warm="#fff4e2", sky_strength=1.3, cloud_white=1.35,
              ambient="#cdd8ea"),
     cliff=dict(top_min_z=-15.2, dilate=0.35, band=(0.8, 1.7), ledge=0.6, erosion=0.2, top_break=0.22),
-    low_rail_above=1.3,  # rail runs this far above their ground (railings over water) are rebuilt low
 )
 ZOO_HDRI = "polyhaven/ph-kloofendal_48d_partly_cloudy_puresky/content/kloofendal_48d_partly_cloudy_puresky_4k.hdr"
 ZOO_PASS1 = dict(sun=dict(sun_azimuth=280.0, sun_elevation=40.0),
@@ -93,7 +92,7 @@ CITY_LOOK = dict(
     grade=dict(exposure=0.3, look="AgX - Punchy", saturation=1.2, bloom=0.9, fog=0.25, fog_start=40.0, fog_depth=200.0,
                ambient_strength=0.5),
     sky=dict(zenith="#0a1540", horizon="#20366f", horizon_warm="#31407a", sky_strength=1.0, cloud_white=0.3, ambient="#7a8fc8"),
-    cliff=dict(), low_rail_above=1.3,
+    cliff=dict(),
 )
 CITY_LAMPS = dict(color="#ffd08a", power=5.5, radius=14.0, drop=0.7, cone=0.8, pool_power=1.0, pool_radius=8.0, pool_height=3.2, pool_cone=-0.2)
 CITY_GLOW = [  # texture pattern, strength, brightness range that glows (None = the whole texture)

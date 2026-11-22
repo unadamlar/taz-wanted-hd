@@ -431,31 +431,12 @@ def blender_main(argv):
             hit = ground_bvh.ray_cast(Vector((p.x, p.y, p.z + 0.01)), Vector((0, 0, -1)), 4.0)
             return hit[0].z if hit[0] is not None else p.z - 1.0
 
-        water_pts = []
-        for o in live:
-            wm = poly_mask(o, ("water",))
-            if wm.any():
-                water_pts += [tuple(o.matrix_world @ p_.center) for p_ in o.data.polygons if wm[p_.index]]
-                for p_ in o.data.polygons:
-                    if wm[p_.index]:
-                        water_pts += [tuple(o.matrix_world @ o.data.vertices[k].co) for k in p_.vertices]
-        water_pts = np.array(water_pts) if water_pts else np.zeros((0, 3))
         fences = []
         for i, (p0, p1) in enumerate(uniq.values()):
             # level fence hung from the game's rail line; posts sink to the lowest ground
             g0, g1 = ground_z(p0), ground_z(p1)
             top = (p0.z + p1.z) / 2
             h = min(max(top - max(g0, g1), 0.7 * SCALE), 1.15 * SCALE)
-            mid = (p0 + p1) / 2
-            near_water = len(water_pts) and np.min(np.hypot(water_pts[:, 0] - mid.x, water_pts[:, 1] - mid.y)) < 1.5 * SCALE
-            if not a.pass1 and near_water and top - max(g0, g1) > look.get("low_rail_above", 99) * SCALE:
-                h = 0.55 * SCALE  # railing above water: a low rail so the water stays visible
-                base = min(g0, g1) + 0.0
-                f = kit.fence((p0.x, p0.y, base), (p1.x, p1.y, base), SCALE, height=h / SCALE, rails=(0.7,),
-                              name=f"kit_fence_{i:02d}", coll=props)
-                fences.append(f)
-                tri_props += kit.tri_count(f)
-                continue
             base = top - h
             f = kit.fence((p0.x, p0.y, base), (p1.x, p1.y, base), SCALE, height=h / SCALE,
                           sink=max(0.0, base - min(g0, g1)) + 0.1 * SCALE, name=f"kit_fence_{i:02d}", coll=props)

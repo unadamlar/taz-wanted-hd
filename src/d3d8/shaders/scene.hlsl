@@ -455,7 +455,7 @@ float4 ps_char(CharIn i) : COLOR
     float2 uvs = float2(i.bp.z / 36, (i.bp.y + i.bp.x / 2) / 40) / size, uvf = i.bp.xy / float2(36, 40) / size;
     float tuft = lerp(tex2D(FUR, uvs).r, tex2D(FUR, uvf).r, side);
     float hide = CHARK.w > 0 ? saturate((0.75 - col.r) * 8) : 1;  // the body is 0.5 grey, the tusks white and smooth
-    albedo *= 1 + (tuft - 0.5) * 3.5 * CHAR_STYLE.z * hide;
+    albedo *= 1 + (tuft - 0.5) * (CHARK.w > 0 ? 3.5 : 1.4) * CHAR_STYLE.z * hide;
     float3 n = normalize(i.n), v = normalize(EYE.xyz - i.w);
     if (CHARK.w > 0) {  // its creases catch the light
         float3 dx = ddx(i.w), dy = ddy(i.w), r1 = cross(dy, n), r2 = cross(n, dx);
