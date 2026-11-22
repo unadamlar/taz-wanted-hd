@@ -363,10 +363,10 @@ float4 ps_water(V2P i, float2 vpos : VPOS) : COLOR
     float3 h = normalize(v + SUN.xyz);
     float3 glint = SUN_COL.rgb * pow(saturate(dot(n, h)), 400) * 2;
     // White flecks where two drifting copies of the ripples peak together.
-    float peak = tex2D(TNORMAL, p * 2.3 + float2(0.05, -0.03) * t).g * tex2D(TNORMAL, p * 3.1 - float2(0.04, 0.06) * t).g;
-    float fleck = saturate((peak - 0.42) * 16) * lit * shore;
+    float peak = tex2D(TNORMAL, p * float2(0.7, 2.2) + float2(0.05, -0.03) * t).g * tex2D(TNORMAL, p * float2(1.1, 3) - float2(0.04, 0.06) * t).g;
+    float fleck = saturate((peak - 0.345) * 30) * lit * shore;
     float alpha = saturate((1 - clear) * 0.62 + fres) * shore;
-    float3 c = lerp(body, sky, fres) + glint * shore + SUN_COL.rgb * fleck;
+    float3 c = lerp(body, sky, fres) + glint * shore + (1.5 * SUN_COL.rgb + SKY_AMB.rgb) * fleck;
     return float4(to_gamma(fogged(c, i.wp.xyz)), saturate(max(alpha, 0.04 * shore) + fleck));
 }
 
