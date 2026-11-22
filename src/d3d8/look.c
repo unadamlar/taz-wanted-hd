@@ -390,6 +390,13 @@ void look_after_draw(IDirect3DDevice8 *dev)
     if (glowing) hd_glow_end(d3d9_device(dev), glowing), glowing = 0;
 }
 
+// The floating logs share the replaced trees' bark, but only they draw it through a world matrix.
+static int moving_bark(IDirect3DDevice8 *dev, UINT64 raw)
+{
+    D3DMATRIX w;
+    return raw == 0x744855ebde27c1b5ULL && SUCCEEDED(IDirect3DDevice8_GetTransform(dev, D3DTS_WORLD, &w)) && (w._41 || w._42 || w._43);
+}
+
 static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count)
 {
     struct IDirect3DDevice9 *d = d3d9_device(dev);
@@ -440,7 +447,7 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     UINT64 raw = textures_bound_hash(0);
     if (raw && hd_shade(raw)) return 1;
     UINT64 h = look_own_hash(dev, textures_bound(0), raw);
-    if (h && hd_hidden(h)) return 1;
+    if (h && hd_hidden(h) && !moving_bark(dev, raw)) return 1;
     IDirect3DDevice8_GetRenderState(dev, D3DRS_ZWRITEENABLE, &zwrite);
     IDirect3DDevice8_GetRenderState(dev, D3DRS_FOGENABLE, &fog);
     if (!zwrite && !fog && !blend && hd_hidden(raw)) return 1; // its sky, also a cutscene pack's copy of it
