@@ -473,6 +473,33 @@ static void wine_override(int set)
     RegCloseKey(k);
 }
 
+// Sets or clears the exe's large-address flag: 4 GB instead of 2 for this 32-bit game on 64-bit Windows.
+// The marker file means we set it, so uninstalling never clears a flag the player set.
+static void large_address(const WCHAR *d, int on)
+{
+    WCHAR exe[PATH], mark[PATH];
+    BYTE b[4096];
+    DWORD n;
+    join(exe, d, L"taz.exe");
+    join(mark, d, L"taz-hd\\large-address");
+    if ((on ? pe_stamp(exe) != RETAIL_TIMESTAMP : !exists(mark)) || is_link(exe)) return;
+    HANDLE h = CreateFileW(exe, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+    if (h == INVALID_HANDLE_VALUE) return;
+    if (ReadFile(h, b, sizeof b, &n, NULL) && n == sizeof b) {
+        DWORD pe = *(DWORD *)(b + 0x3c), at = pe + 22; // IMAGE_FILE_HEADER.Characteristics
+        if (at + 2 <= n && !memcmp(b + pe, "PE\0\0", 4)) {
+            WORD c = *(WORD *)(b + at);
+            if (!(c & IMAGE_FILE_LARGE_ADDRESS_AWARE) == !!on) {
+                c ^= IMAGE_FILE_LARGE_ADDRESS_AWARE;
+                if (SetFilePointer(h, at, NULL, FILE_BEGIN) == at && WriteFile(h, &c, 2, &n, NULL) && n == 2 && on)
+                    CloseHandle(CreateFileW(mark, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL));
+            }
+        }
+    }
+    CloseHandle(h);
+    if (!on) DeleteFileW(mark);
+}
+
 static DWORD do_install(const WCHAR *dir, WCHAR *msg)
 {
     WCHAR d[PATH], bak[PATH], p[PATH], name[PATH], cleared[PATH] = L"";
@@ -509,6 +536,7 @@ static DWORD do_install(const WCHAR *dir, WCHAR *msg)
             return fail(msg, L"A file here is a link to another file; the installer leaves it alone.", 0, p);
         if ((res = write_file(p, size, msg))) return res;
     }
+    large_address(d, 1);
     if (wine) wine_override(1);
     return OK;
 }
@@ -519,6 +547,7 @@ static DWORD do_uninstall(const WCHAR *dir, WCHAR *msg)
     long_form(d, dir);
     DWORD res = check_folder(dir, d, msg);
     if (res) return res;
+    large_address(d, 0);
     join(a, d, L"d3d8.dll");
     join(b, d, L"d3d8.dll.bak");
     if (dll_state(dir) == DLL_OURS) {
