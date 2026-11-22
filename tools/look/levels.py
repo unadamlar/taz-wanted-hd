@@ -107,9 +107,9 @@ CITY_GLOW = [  # texture pattern, strength, brightness range that glows (None = 
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
-                   tiles=ZOO_TILES, detail=ZOO_DETAIL, skin=dict(tile=430.0, grain=0.3),
+                   tiles=ZOO_TILES, detail=ZOO_DETAIL, skin=dict(tile=520.0, grain=0.18),
                    binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05))},
-                   flats={"steel": ((0.20, 0.17, 0.15), 0.4)}, material_rules=(("zoohub/textures/barbed_wire", "steel"),)),
+                   flats={"steel": ((0.20, 0.17, 0.15), 0.4)}, wire="zoohub/textures/barbed_wire"),
     "cityhub": dict(scene=8, pak="cityhub", blend="city/cityhub.blend", out="city/pass1", rules=CITY_RULES, hand=CITY_HAND,
                     look=CITY_LOOK, hdri=None, hdri_rotation=0.0, hub=(-66.0, -50.0, 72.0, 82.0), sky_panels=True, clutter=False,
                     materials=("lawn", "asphalt", "paving", "paint", "grass", "flat", "flat_wind"),

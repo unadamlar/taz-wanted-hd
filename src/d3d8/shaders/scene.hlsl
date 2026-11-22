@@ -454,12 +454,13 @@ float4 ps_char(CharIn i) : COLOR
     float size = CHARK.w > 0 ? CHARK.w : 1;  // an untextured character wears the level's hide here, at its own scale
     float2 uvs = float2(i.bp.z / 36, (i.bp.y + i.bp.x / 2) / 40) / size, uvf = i.bp.xy / float2(36, 40) / size;
     float tuft = lerp(tex2D(FUR, uvs).r, tex2D(FUR, uvf).r, side);
-    albedo *= 1 + (tuft - 0.5) * 3.5 * CHAR_STYLE.z;
+    float hide = CHARK.w > 0 ? saturate((0.75 - col.r) * 8) : 1;  // the body is 0.5 grey, the tusks white and smooth
+    albedo *= 1 + (tuft - 0.5) * 3.5 * CHAR_STYLE.z * hide;
     float3 n = normalize(i.n), v = normalize(EYE.xyz - i.w);
-    if (CHARK.w > 0) {  // its folds catch the light, and it stays slate grey through the warm character grade below
-        albedo *= float3(0.96, 1.04, 1.26);
-        float above = lerp(tex2D(FUR, uvs + float2(0, 0.01)).r, tex2D(FUR, uvf + float2(0, 0.01)).r, side);
-        n = normalize(n + float3(0, (above - tuft) * 3.5, 0));
+    if (CHARK.w > 0) {  // its creases catch the light
+        float3 dx = ddx(i.w), dy = ddy(i.w), r1 = cross(dy, n), r2 = cross(n, dx);
+        float det = dot(dx, r1);
+        n = normalize(abs(det) * n - 2.2 * hide * sign(det) * (ddx(tuft) * r1 + ddy(tuft) * r2));
     }
     float nl = dot(n, SUN.xyz), nv = saturate(dot(n, v));
     // A soft cartoon step: the shadow side stays colourful.

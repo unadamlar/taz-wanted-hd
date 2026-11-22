@@ -181,12 +181,19 @@ if "water" in MATS:
     foam_a = np.clip(fade * 1.6 * (0.35 + foam_u), 0, 1)
     put_tex("foam", dds.mips(np.dstack([np.full((256, 256, 3), 0.97), foam_a]).astype(np.float32), cut=0.5), b"DXT5")
 if "skin" in MATS:
-    f = np.fft.fftfreq(512)
-    r = np.sqrt((f[None, :] * 3.2) ** 2 + f[:, None] ** 2)  # folds run around the body, along u
-    r[0, 0] = 1
-    h = np.fft.ifft2(np.fft.fft2(np.random.default_rng(9).normal(size=(512, 512))) / r ** 2.7).real
-    h = np.sin((h - h.mean()) / h.std() * 7)  # contour lines of smooth noise: long folds that never cross
-    h = 1 - 0.55 * np.clip(h, 0, 1) ** 5 + 0.12 * (periodic_noise(512, 1.3, 10) - 0.5)
+    def creases(count, seed):
+        """Tileable cracks between wobbly cells, wider along u (around the body): 0 on a crack, about 1 mid-cell."""
+        pts = np.random.default_rng(seed).random((count, 2))
+        v, u = np.mgrid[0:512, 0:512] / 512
+        u = u + 0.09 * (periodic_noise(512, 2.2, seed + 1) - 0.5)
+        v = v + 0.09 * (periodic_noise(512, 2.2, seed + 2) - 0.5)
+        out = np.empty((512, 512), np.float32)
+        for row in range(512):
+            du, dv = np.abs(u[row, :, None] - pts[:, 0]) % 1, np.abs(v[row, :, None] - pts[:, 1]) % 1
+            d = np.sqrt(np.partition(np.minimum(du, 1 - du) ** 2 / 2.2 + np.minimum(dv, 1 - dv) ** 2, 1, axis=1)[:, :2])
+            out[row] = (d[:, 1] - d[:, 0]) * np.sqrt(count)
+        return out
+    h = 1 - 0.42 * np.exp(-creases(46, 21) / 0.05) - 0.2 * np.exp(-creases(420, 31) / 0.07) + 0.22 * (periodic_noise(512, 1.6, 10) - 0.5)
     shade = np.clip(0.5 * (1 + 0.9 * (h / h.mean() - 1)), 0, 1)  # read raw by the character shader
     put_tex("skin", dds.mips_data(np.dstack([shade, shade, shade, np.ones((512, 512))]).astype(np.float32)), b"DXT1")
 print("export: textures %.1fs, %.1f MB" % (time.time() - t0, sum(tex_bytes.values()) / 1e6))
@@ -488,6 +495,78 @@ for label, users in sorted(kept.items()):
     place.append((add_proto(name, P[k], N[k], C[k], U[k], np.full(len(k), MAT_ID[name])), None))
     print("export: kept %s, %d triangles" % (name, len(k) // 3))
 
+
+def wire_tube(path, side, up, r):
+    """Three-sided tube along a path: triangles of positions and normals."""
+    a = np.arange(3) * 2 * np.pi / 3
+    spoke = np.cos(a)[:, None] * side + np.sin(a)[:, None] * up
+    ring = path[:, None] + r * spoke
+    I, J = np.arange(len(path) - 1)[:, None], np.arange(3)[None]
+    corners = [(I + di, (J + dj) % 3) for di, dj in ((0, 0), (1, 0), (1, 1), (0, 0), (1, 1), (0, 1))]
+    p = np.stack([ring[i, j] for i, j in corners], 2).reshape(-1, 3, 3)
+    n = np.stack([np.broadcast_to(spoke[j], (len(I), 3, 3)) for _, j in corners], 2).reshape(-1, 3, 3)
+    return p, n
+
+
+def wire_barb(c, axis, side, up, turn):
+    """A wrap around the wire and four spikes."""
+    parts = [wire_tube(np.array([c - axis * 3, c + axis * 3]), side, up, 2.8)]
+    for k in range(4):
+        t = turn + k * np.pi / 2
+        d = np.cos(t) * side + np.sin(t) * up + (0.35 if k % 2 else -0.35) * axis
+        d /= np.linalg.norm(d)
+        e1 = np.cross(d, axis); e1 /= np.linalg.norm(e1)
+        e2 = np.cross(d, e1)
+        a = np.arange(3) * 2 * np.pi / 3
+        base = c + 1.3 * (np.cos(a)[:, None] * e1 + np.sin(a)[:, None] * e2)
+        p = np.stack([base, np.roll(base, -1, 0), np.tile(c + d * 13, (3, 1))], 1)
+        f = np.cross(p[:, 1] - p[:, 0], p[:, 2] - p[:, 0])
+        f *= np.sign((f * (p.mean(1) - c)).sum(1, keepdims=True)) / np.linalg.norm(f, axis=1, keepdims=True)
+        parts.append((p, np.repeat(f[:, None], 3, 1)))
+    return parts
+
+
+def barbed_wire(o):
+    """Real twisted wire along the rows the game paints on its flat strips, which the look hides."""
+    me = o.data
+    M = np.array(S @ o.matrix_world, np.float64)
+    uv = me.uv_layers[0].data
+    tris = {}
+    for f in me.polygons:
+        c = [((np.array(me.vertices[me.loops[l].vertex_index].co) @ M[:3, :3].T + M[:3, 3]) * K, tuple(uv[l].uv)) for l in f.loop_indices]
+        tris[tuple(sorted(tuple(np.round(q, 1)) for q, _ in c))] = c
+    tris, quads, used = list(tris.items()), [], set()
+    for i, (ka, a) in enumerate(tris):
+        for j, (kb, b) in enumerate(tris[i + 1:], i + 1):
+            if i not in used and j not in used and len(set(ka) & set(kb)) == 2:
+                used |= {i, j}
+                quads.append({(u[0] > 0.5, u[1] > 0.28): q for q, u in a + b})
+    parts = []
+    for q in quads:
+        for row in (0.3, 0.8):
+            a, b = (q[(s, False)] * (1 - row) + q[(s, True)] * row for s in (False, True))
+            L = np.linalg.norm(b - a)
+            axis = (b - a) / L
+            side = np.cross(axis, (0, 1, 0)); side /= np.linalg.norm(side)
+            up = np.cross(side, axis)
+            t = np.linspace(0, 1, max(8, int(L / 6)) + 1)
+            mid = a + (b - a) * t[:, None] - [0, 1, 0] * (5 * 4 * t * (1 - t))[:, None]  # a little slack
+            for phase in (0, np.pi):
+                w = 2 * np.pi * L * t / 36 + phase
+                parts.append(wire_tube(mid + 1.6 * (np.cos(w)[:, None] * side + np.sin(w)[:, None] * up), side, up, 1.6))
+            for s in np.arange(36, L - 12, 72):
+                parts += wire_barb(mid[int(s / L * (len(t) - 1))], axis, side, up, s)
+    p, n = (np.concatenate(x).astype(np.float32) for x in zip(*parts))
+    flip = (np.cross(p[:, 1] - p[:, 0], p[:, 2] - p[:, 0]) * n.mean(1)).sum(1) > 0  # game space winding
+    p[flip], n[flip] = p[flip][:, [0, 2, 1]], n[flip][:, [0, 2, 1]]
+    print("export: barbed wire, %d strips, %d triangles" % (len(quads), len(p)))
+    p, n = p.reshape(-1, 3), n.reshape(-1, 3)
+    return add_proto("barbed_wire", p, n, np.ones_like(p), np.zeros((len(p), 2), np.float32), np.full(len(p), MAT_ID["steel"]))
+
+
+if "wire" in LEVEL:
+    place.append((barbed_wire(bpy.data.objects[LEVEL["wire"]]), None))
+
 # chunks: instance centre -> grid cell; each cell lists (proto, matrices), shuffled for thinning
 cells = collections.defaultdict(lambda: collections.defaultdict(list))
 boxes = {}
@@ -566,12 +645,10 @@ for line in list(open(os.path.join(ext, "textures", "index.tsv")))[1:]:
             break
     if "shadowsub" in label:
         shade.add(h)
-    elif role in HIDDEN_ROLES:
+    elif role in HIDDEN_ROLES or label == LEVEL.get("wire"):
         hide.add(h)
     elif h in binds:
         continue
-    elif any(fnmatch.fnmatch(label, pat) for pat, _ in LEVEL.get("material_rules", ())):
-        binds[h] = [(h, MAT_ID[next(m for pat, m in LEVEL["material_rules"] if fnmatch.fnmatch(label, pat))], 0, 0.0, 1.0)]
     elif role == "lit" and any(fnmatch.fnmatch(label, pat) for pat, _ in LEVEL.get("detail", ())):
         binds[h] = [(h, MAT_ID[next(m for pat, m in LEVEL["detail"] if fnmatch.fnmatch(label, pat))], 4, -1.0, 0.0)]
     elif role in LEVEL.get("binds", ()):
