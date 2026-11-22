@@ -80,6 +80,7 @@ static void copy_all(int load)
 // Its sound and models stream in from other threads; a quickload during a boss outro froze the game.
 int cutscene_playing(void)
 {
+    if (outro_music_held()) return 1;
     for (int i = 0; i < 4; i++) {
         BYTE *c = ((BYTE **)0x704d38)[i];
         if (c && *(DWORD *)(c + 0x3f4c) >= 2) return 1;

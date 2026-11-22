@@ -189,6 +189,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         menuspeed_patch(settings.menu_speed); // also at 1x, so the overlay can change it live
         video_patch();
         quicksave_patch();
+        outro_patch();
         menu_patch();
         drawdist_patch();
         preview_patch();

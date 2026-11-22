@@ -4,8 +4,8 @@
 // had them do, so D moves instead of ranting and Space jumps instead of opening the map. Keys the
 // layout doesn't use keep their old jobs (C, F, R, X, V, E, T, arrows). Mouse look: around the
 // camera control (FUN_004e0f00) the mouse is added to the pad's camera stick for that call only, so
-// the game's own camera rules still apply, except that the camera doesn't trail Taz for a moment
-// after. The mouse is held (DirectInput exclusive, which hides it) only while that camera control
+// the game's own camera rules still apply, except that the camera stays where the mouse left it.
+// The mouse is held (DirectInput exclusive, which hides it) only while that camera control
 // runs, so menus get it back. Gamepad: see bind_gamepad.
 #include <math.h>
 #include <stdio.h>
@@ -19,6 +19,11 @@
 #define KEYBOARD_DEFAULTS ((void (*)(BYTE *, int))0x48c100)
 #define CAMERA_CONTROL ((void (*)(void **))0x4e0f00)
 #define CAMERA_UPDATE ((void (*)(BYTE *))0x4dfef0)
+#define LINE_HITS ((BYTE (*)(void *, const float *, const float *))0x45e870) // level between two points?
+#define COLLISION_CACHE ((void *)0x7054e8)
+#define ARM_MARGIN 70.f         // kept between the camera and a wall (near plane is 50)
+#define ARM_MIN 180.f           // closest the camera is placed to Taz
+#define ARM_CLOSE 250.f         // with less clear line than this it rises over him
 #define KEY_TABLE ((const DWORD *)0x658770) // key code -> DIK
 #define MOUSE_DX (*(const LONG *)0x751548)
 #define MOUSE_DY (*(const LONG *)0x75154c)
@@ -75,6 +80,10 @@ static float tilt_step;         // tilt change this frame (radians)
 static BYTE *tilt_cam;          // camera whose tilt the mouse holds this frame
 static BYTE *mouse_cam;         // camera the mouse last turned...
 static DWORD mouse_time;        // ...and when (ms)
+static int mouse_led;           // that last turn came from the mouse, not the gamepad's stick
+static float arm;               // camera's distance from Taz, shortened by walls
+static float rise;              // extra camera elevation with a wall right behind Taz (radians)
+static float blocked_for;       // seconds the line from Taz to the camera has been blocked
 static DWORD camera_frame, now; // frames: last camera control call, current
 static int held;                // mouse held exclusively
 static BYTE *p1_pad;            // player 1's pad as set up for the keyboard...
@@ -411,7 +420,7 @@ static void __cdecl camera_control(void **cc)
     // The gamepad's camera stick is made to work like the mouse: the view turns the way it is pushed
     // and the tilt stays where it was left (the game turns the other way and springs back).
     float dx = mouse ? MOUSE_DX : 0, dy = mouse ? MOUSE_DY : 0, sx = stick(pad[6]), sy = stick(pad[7]);
-    if (dx || dy || sx || sy) mouse_cam = cam, mouse_time = GetTickCount();
+    if (dx || dy || sx || sy) mouse_cam = cam, mouse_time = GetTickCount(), mouse_led = dx || dy;
     float sens = settings.mouse * 0.0003f, per_frame = TURN_RATE / FPS;
     float yaw = -dx * sens / per_frame; // in stick units: the game turns per_frame * stick
     float saved[8];
@@ -445,22 +454,102 @@ static void __cdecl camera_control(void **cc)
     memcpy(pad, saved, sizeof saved);
 }
 
+// Share of the line from o to end that is clear of the level.
+static float clear_part(const float *o, const float *end)
+{
+    if (!LINE_HITS(COLLISION_CACHE, o, end)) return 1;
+    float lo = 0, hi = 1, p[4] = { 0, 0, 0, 1 };
+    for (int i = 0; i < 7; i++) {
+        float m = (lo + hi) / 2;
+        for (int k = 0; k < 3; k++) p[k] = o[k] + (end[k] - o[k]) * m;
+        if (LINE_HITS(COLLISION_CACHE, o, p)) hi = m;
+        else lo = m;
+    }
+    return lo;
+}
+
+// Walls shorten the camera's distance from Taz and never turn it: in quickly once the line to him
+// has been blocked for a moment (so a passing pole doesn't pop it), back out slowly. With a wall
+// right behind him there's no room to stay level, so the camera rises to look down over him.
+static void pull_in(float *c, float full)
+{
+    const float zero[3] = { 0 };
+    float d[3] = { c[8] - c[12], c[9] - c[13], c[10] - c[14] }, e[3] = { c[0] - c[12], c[1] - c[13], c[2] - c[14] }, u[3];
+    float len = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]), el = sqrtf(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]);
+    if (len < 1) return;
+    for (int k = 0; k < 3; k++) d[k] /= len;
+    float want = 0, room = -1;
+    for (int i = 0; i < 4 && room < ARM_CLOSE; i++) {
+        float end[4] = { 0, 0, 0, 1 };
+        memcpy(u, d, sizeof u);
+        lift(u, zero, i * 0.4f);
+        for (int k = 0; k < 3; k++) end[k] = c[12 + k] + u[k] * full;
+        float r = clear_part(c + 12, end) * full;
+        if (r > room) room = r, want = i * 0.4f;
+    }
+    int hit = room < full;
+    blocked_for = hit ? blocked_for + 1 / FPS : 0;
+    if (hit) room = room - ARM_MARGIN < ARM_MIN ? ARM_MIN : room - ARM_MARGIN;
+    if (hit && blocked_for < 0.1f) {
+        if (room < arm) room = arm;
+        want = rise;
+    }
+    float rate = (room < arm ? 18 : 3) / FPS, up = (want > rise ? 10 : 2) / FPS;
+    arm += (room - arm) * (rate > 1 ? 1 : rate);
+    rise += (want - rise) * (up > 1 ? 1 : up);
+    for (int k = 0; k < 3; k++) c[8 + k] = c[12 + k] + d[k] * arm;
+    if (el > arm) for (int k = 0; k < 3; k++) c[k] = c[12 + k] + e[k] * arm / el;
+    if (rise > 0.01f) {
+        float mix = rise / 0.2f > 1 ? 1 : rise / 0.2f;
+        memcpy(u, d, sizeof u);
+        lift(u, zero, rise);
+        for (int k = 0; k < 3; k++) c[k] += (c[12 + k] + u[k] * arm - c[k]) * mix;
+    }
+    // The eased eye can still trail behind a corner.
+    float part = clear_part(c + 12, c);
+    if (part < 1) {
+        for (int k = 0; k < 3; k++) e[k] = c[k] - c[12 + k];
+        el = sqrtf(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]);
+        float safe = part * el - ARM_MARGIN < 40 ? 40 : part * el - ARM_MARGIN;
+        if (el > safe) for (int k = 0; k < 3; k++) c[k] = c[12 + k] + e[k] * safe / el;
+    }
+    // Close up, a trailing look-at could end up on the far side of the eye and flip the view.
+    if (arm < full) for (int k = 0; k < 3; k++) c[4 + k] = c[12 + k] + (c[4 + k] - c[12 + k]) * arm / full;
+}
+
 // The camera trails Taz on a leash (and in some states swings behind him), so running anywhere but
-// straight ahead turns it, fighting the mouse. For a while after mouse input it keeps the direction
-// it had around Taz, then gently hands back to the game. Taz's moves also set the tilt after the
-// camera control ran (level while he spins, steeper while he falls), so the mouse's tilt is put back.
+// straight ahead turns it, fighting the mouse. So it keeps the direction the mouse left it, except
+// for the game's deliberate swings behind Taz (flags 4, 0x40). After the gamepad's stick it keeps it
+// for a moment, then gently hands back to the game. Taz's moves also set the tilt after the camera
+// control ran (level while he spins, steeper while he falls), so the mouse's tilt is put back.
 // The game only moves the eye's destination for a tilt and eases the eye after it, which lags the
 // mouse, so the eye is tilted by the same step, as it is turned.
 static void __cdecl camera_update(BYTE *cam)
 {
     float *c = (float *)cam, before = heading(c + 8, c + 12), t = (GetTickCount() - mouse_time) / 1000.f;
-    float keep = cam != mouse_cam || (*(DWORD *)(cam + 0x74) & 0x1b00) != 0x1000 || *(void **)(cam + 0xac) ? 0
-               : t < 1.5f ? 1 : t < 3 ? (3 - t) / 1.5f : 0; // player camera, not scripted, look-around or catching up
+    DWORD flags = *(DWORD *)(cam + 0x74);
+    int hold = mouse_led && settings.wasd && settings.mouse && !(flags & 0x44);
+    int follow = cam == mouse_cam && (flags & 0x1b00) == 0x1000 && !*(void **)(cam + 0xac); // not scripted, look-around or catching up
+    float keep = !follow ? 0 : hold || t < 1.5f ? 1 : t < 3 ? (3 - t) / 1.5f : 0;
     int tilt = cam == tilt_cam && now - camera_frame <= 1 && !*(void **)(cam + 0xac);
     if (tilt) c[0x19] = TILT_REST - pitch * TILT_SWING, *(DWORD *)(cam + 0x74) |= 1;
+    float full = c[0x18];
+    if (!follow || arm <= 0 || arm > full) arm = full;
+    c[0x18] = arm;
+    void *body = *(void **)(cam + 0x278); // the game's collision ball, which would fight pull_in
+    if (follow) *(void **)(cam + 0x278) = NULL;
     CAMERA_UPDATE(cam);
+    *(void **)(cam + 0x278) = body;
+    c[0x18] = full;
     if (tilt && tilt_step) lift(c, c + 12, tilt_step), tilt_step = 0;
     if (keep) spin(c + 8, c + 12, wrap(before - heading(c + 8, c + 12)) * keep);
+    // The eye trails Taz further than the point it looks at, which turned the view during sideways
+    // runs. Aim it along its destination, at a limited rate so a jump in heading can't snap the view.
+    if (follow && FPS > 0 && full > 0) {
+        float err = wrap(heading(c + 8, c + 12) - heading(c, c + 4)), most = 4 / FPS;
+        spin(c, c + 4, err > most ? most : err < -most ? -most : err);
+        pull_in(c, full);
+    }
 }
 
 // IDirectInputDevice8 vtable slots.

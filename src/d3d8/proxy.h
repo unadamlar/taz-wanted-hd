@@ -39,6 +39,8 @@ void to_bgra(D3DFORMAT f, const BYTE *src, UINT n, BYTE *out);
 void queue_png(const char *path, UINT w, UINT h, BYTE *bgra);
 void screenshot_frame(IDirect3DDevice8 *dev);
 void quicksave_patch(void);
+void outro_patch(void);
+int outro_music_held(void);
 void overlay_toast(const char *msg);
 extern DWORD textures_created; // Direct3D textures taz.exe has created so far
 void widescreen_apply(void);
