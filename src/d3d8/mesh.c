@@ -27,13 +27,20 @@ struct group { DWORD first, tris, texbatch, nbones, base, nverts; WORD bones[16]
 #pragma pack(pop)
 // File: head, batch[nbatches] (draw order), source[nbones], spring[nsprings], group[ngroups],
 // 52-byte vertices[nverts], WORD indices[nindices] (triangle lists).
-// "TZM4" files have float places[nverts][3][3] before the indices: per vertex, where each of its
-// three bones alone puts it (tools/subdivide.py, PERBONE). The game's shaders move one position with
-// all three bones; a copy of each shader reads the three places instead (shader_created). That is
-// exactly how the original model's flat faces stretch between bones, so skin a bone slides a long way
-// (Gossamer's brows) keeps its shape. The 52-byte position is the old single one, for any other shader.
+// "TZM5" files have, before the indices, 96 bytes per vertex: where each of its six bones alone puts it
+// (float[6][3]), then weights and palette registers of bones 4-6 (float[3] each; tools/subdivide.py).
+// The game's shaders move one position with three bones; a copy of each shader reads the places
+// instead (shader_created). That is exactly how the original model's flat faces stretch between bones,
+// so skin a bone slides a long way (Gossamer's brows, Taz's jaw) keeps its shape. The 52-byte position
+// is the old single one, kept for the fur's bind-pose map.
 #define TZM3 0x334d5a54
-#define TZM4 0x344d5a54
+#define TZM5 0x354d5a54
+#define PLACES 96
+
+const DWORD mesh_places_decl[17] = { 0x20000000, 0x40020000, 0x40020001, 0x40050002, 0x40020003, 0x40040004, 0x40010005, 0x20000001,
+                                     0x40020006, 0x40020007, 0x40020008, 0x40020009, 0x4002000a, 0x4002000b, 0x4002000c, 0x4002000d, 0xffffffff };
+
+static UINT places_size(DWORD magic) { return magic == TZM5 ? PLACES : 0; }
 
 struct rep {
     char path[MAX_PATH + 16];
@@ -68,7 +75,7 @@ static void load(void)
         struct rep *r = &reps[nreps];
         snprintf(r->path, sizeof r->path, DIR "\\%s", fd.cFileName);
         FILE *in = fopen(r->path, "rb");
-        int ok = in && nreps < REPS && fread(&r->head, sizeof r->head, 1, in) == 1 && (r->head.magic == TZM3 || r->head.magic == TZM4);
+        int ok = in && nreps < REPS && fread(&r->head, sizeof r->head, 1, in) == 1 && (r->head.magic == TZM3 || places_size(r->head.magic));
         if (in) fclose(in);
         if (ok) nreps++;
         else log_line("mesh: skipped %s", r->path);
@@ -85,7 +92,7 @@ static int read_rep(struct rep *r)
     fseek(in, 0, SEEK_SET);
     const struct head *h = &r->head;
     long want = sizeof *h + h->nbatches * sizeof(struct batch) + h->nbones * sizeof(struct source) + h->nsprings * sizeof(struct spring)
-              + h->ngroups * sizeof(struct group) + h->nverts * (h->magic == TZM4 ? 88 : 52) + h->nindices * 2;
+              + h->ngroups * sizeof(struct group) + h->nverts * (52 + places_size(h->magic)) + h->nindices * 2;
     BYTE *b = n == want ? malloc(n) : NULL;
     if (b && (fread(b, 1, n, in) != (size_t)n || memcmp(b, h, sizeof *h))) free(b), b = NULL;
     fclose(in);
@@ -100,7 +107,7 @@ static int read_rep(struct rep *r)
     r->springs = (struct spring *)(r->sources + r->h->nbones);
     r->groups = (struct group *)(r->springs + r->h->nsprings);
     r->verts = (BYTE *)(r->groups + r->h->ngroups);
-    r->indices = (WORD *)(r->verts + r->h->nverts * (h->magic == TZM4 ? 88 : 52));
+    r->indices = (WORD *)(r->verts + r->h->nverts * (52 + places_size(h->magic)));
     r->bones = calloc(r->h->nbones + r->h->nsprings, sizeof *r->bones);
     r->swing = calloc(r->h->nsprings, sizeof *r->swing);
     r->tex = calloc(r->h->nbatches, sizeof *r->tex);
@@ -216,9 +223,10 @@ static void pose_springs(struct rep *r)
 // The game has each kind of character shader (lit, outline, a plain one) for 1, 2 and 3 bones per
 // vertex and picks by the model, so a one-bone character such as Gossamer arrives with a shader that
 // ignores the blended weights of a dense replacement: its in-between points snapped to one bone (brows
-// with sawtooth edges). Replacements are drawn with the 3-bone shader of the same kind, and "TZM4"
-// ones with a copy of it in which each bone moves its own place (v6-v8, stream 1) instead of all three
-// moving v0: the three blocks of "dp4 r, v0, c[a0 + row]", one block per bone.
+// with sawtooth edges). Replacements are drawn with the 3-bone shader of the same kind, and those with
+// places with a copy of it in which each bone moves its own place (v6-v11, stream 1) instead of all
+// moving v0: the blocks of "dp4 r, v0, c[a0 + row]", one per bone, plus three more made from the third
+// (weights v12, palette registers v13).
 static struct vshader { DWORD game, bent; int kind, bones; } vshaders[16];
 static int nvshaders;
 
@@ -226,21 +234,34 @@ void mesh_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *fn)
 {
     static const DWORD ramp[] = { 1, 0xe0020001, 0xa0ff0030 };          // mov oT1.y, c48.w: lit
     static const DWORD push[] = { 4, 0x80070000, 0x80e40002, 0xa0ff0031 }; // mad r0.xyz, r2, c49.w, r0: outline
-    DWORD decl[12], code[1024];
+    DWORD code[1024];
     int n = 0, found = 0, kind = 0;
     if (nvshaders == 16) return;
-    memcpy(decl, smooth_decl, 7 * sizeof *decl);
-    decl[7] = 0x20000001, decl[8] = 0x40020006, decl[9] = 0x40020007, decl[10] = 0x40020008, decl[11] = 0xffffffff; // stream 1: three float3
     for (; n < 1023 && fn[n] != 0xffff; n++) {
         code[n] = fn[n];
         if (n >= 2 && fn[n - 2] == 9 && (fn[n] & 0xf0001fff) == 0x90000000) code[n] |= 6 + found++ / 3; // dp4, source v0
         if (!memcmp(fn + n, ramp, sizeof ramp)) kind = 1;
         if (!memcmp(fn + n, push, sizeof push)) kind = 2;
     }
+    int from = 0, to = 0; // the third bone's block: from its palette read to just after its last weight
+    for (int i = 0; i < n; i++) {
+        if (code[i] == 1 && code[i + 2] == 0x90aa0002) from = i;
+        if (code[i] == 0x90aa0001) to = i + 2;
+    }
+    int len = to - from;
+    if (found == 9 && from && len > 0 && n + 3 * len < 1023) {
+        memmove(code + to + 3 * len, code + to, (n - to) * sizeof *code);
+        for (DWORD k = 0; k < 3; k++)
+            for (int i = 0; i < len; i++) {
+                DWORD t = code[from + i], part = 0x90000000 | k * 0x55 << 16;
+                code[to + k * len + i] = t == 0x90aa0002 ? part | 13 : t == 0x90e40008 ? 0x90e40009 + k : t == 0x90aa0001 ? part | 12 : t;
+            }
+        n += 3 * len;
+    }
     code[n] = 0xffff;
     struct vshader *v = &vshaders[nvshaders++];
     v->game = h, v->kind = kind, v->bones = found / 3;
-    if (found == 9 && FAILED(IDirect3DDevice8_CreateVertexShader(dev, decl, code, &v->bent, 0))) v->bent = 0, log_line("mesh: no per-bone copy of shader %#lx", h);
+    if (found == 9 && FAILED(IDirect3DDevice8_CreateVertexShader(dev, mesh_places_decl, code, &v->bent, 0))) v->bent = 0, log_line("mesh: no per-bone copy of shader %#lx", h);
 }
 
 void mesh_shader_deleted(IDirect3DDevice8 *dev, DWORD h)
@@ -251,6 +272,14 @@ void mesh_shader_deleted(IDirect3DDevice8 *dev, DWORD h)
         vshaders[i--] = vshaders[--nvshaders];
         if (bent) IDirect3DDevice8_DeleteVertexShader(dev, bent);
     }
+}
+
+// 1 or 2 when vs is the per-bone copy of a lit or outline shader.
+int mesh_places_kind(DWORD vs)
+{
+    for (int i = 0; i < nvshaders; i++)
+        if (vshaders[i].bent == vs) return vshaders[i].kind;
+    return 0;
 }
 
 // What to draw a replacement with in place of the game's shader vs; *bent says it reads the places.
@@ -287,14 +316,14 @@ static void draw_replacement(IDirect3DDevice8 *dev, struct rep *r, IDirect3DVert
     if (!r->vb || !r->ib) return;
     DWORD vs = 0;
     int bent = 0;
-    if (r->h->magic == TZM4 && !r->places && SUCCEEDED(IDirect3DDevice8_CreateVertexBuffer(dev, r->h->nverts * 36, D3DUSAGE_WRITEONLY, 0, D3DPOOL_MANAGED, &r->places))
+    if (r->h->magic == TZM5 && !r->places && SUCCEEDED(IDirect3DDevice8_CreateVertexBuffer(dev, r->h->nverts * PLACES, D3DUSAGE_WRITEONLY, 0, D3DPOOL_MANAGED, &r->places))
         && SUCCEEDED(IDirect3DVertexBuffer8_Lock(r->places, 0, 0, &p, 0))) {
-        memcpy(p, r->verts + r->h->nverts * 52, r->h->nverts * 36);
+        memcpy(p, r->verts + r->h->nverts * 52, r->h->nverts * PLACES);
         IDirect3DVertexBuffer8_Unlock(r->places);
     }
     IDirect3DDevice8_GetVertexShader(dev, &vs);
-    DWORD use = shader_for(vs, r->places && !style_player, &bent);
-    if (bent) IDirect3DDevice8_SetStreamSource(dev, 1, r->places, 36);
+    DWORD use = shader_for(vs, r->places != NULL, &bent);
+    if (bent) IDirect3DDevice8_SetStreamSource(dev, 1, r->places, PLACES);
     if (use != vs) IDirect3DDevice8_SetVertexShader(dev, use);
     pose_springs(r);
     float saved[48][4], c[48][4];

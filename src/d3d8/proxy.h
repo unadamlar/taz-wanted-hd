@@ -94,7 +94,7 @@ int look_remaster_available(void);
 void look_set_remaster(int on);
 void look_bb_restored(IDirect3DDevice8 *dev);
 int look_redirected(void);
-void look_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *fn);
+void look_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *decl, const DWORD *fn);
 void look_shader_deleted(IDirect3DDevice8 *dev, DWORD h);
 int look_copying_shader(void);
 int look_char_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
@@ -142,6 +142,8 @@ extern int style_player;
 void style_shader_created(DWORD h, const DWORD *fn);
 void style_shader_deleted(DWORD h);
 int style_is_player(IDirect3DVertexBuffer8 *vb);
+extern const DWORD mesh_places_decl[17];
+int mesh_places_kind(DWORD vs);
 IDirect3DTexture8 *style_look(IDirect3DDevice8 *dev, float out[4]);
 HRESULT style_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
                    HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT));
