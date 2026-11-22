@@ -72,6 +72,9 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
   about 25 tuned numbers, nothing placed by hand. Estimate, not measured: 1 to 2 hours of agent time per further level of
   this size plus about 15 minutes of review, and 30 to 60 minutes more for a new surface type.
 - Frame rate is a later pass. Don't let it block the look, but don't build anything that can't be made fast.
+- The remaster targets modern hardware (user, 2026-11-22). Older PCs are not a reason to avoid a feature or graphics API.
+- Stay on D3D9 unless a measurement shows a newer API would make the game meaningfully faster after D3D9's own fixes, or
+  gives an effect we want (user, 2026-11-22). Measure after step 5: frame time across resolutions, and each part of the look code.
 - Sun is per level and placed for looks; baked vertex shadows are dropped.
 - Never move a game surface. Walkable tops keep their height; replacements must contain the collision shape.
 - Gameplay objects (books, signs, crates, trampolines, pickups) stay readable and clear of grass.
