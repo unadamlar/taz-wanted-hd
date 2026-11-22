@@ -557,10 +557,11 @@ void look_frame(IDirect3DDevice8 *dev)
             m.last.QuadPart = 0;
         }
     }
-    stat_world = stat_game = merge_stat_pieces = merge_stat_draws = backdrop = 0;
+    stat_world = stat_game = merge_stat_pieces = merge_stat_draws = 0;
 }
 
 void look_present_ms(double ms)
 {
+    backdrop = 0; // here, so the mod's own messages drawn at Present don't count as the game's 2D screen
     if (m.frames > 0 && m.last.QuadPart) m.present_ms += ms;
 }
