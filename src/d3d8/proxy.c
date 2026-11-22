@@ -197,6 +197,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         asserts_patch();
         real_OutputDebugStringA = patch_import("KERNEL32.dll", "OutputDebugStringA", hook_OutputDebugStringA);
     } else if (reason == DLL_PROCESS_DETACH) {
+        if (!game_quit) log_line("process ending, and the game did not ask to quit (Wine or a driver ended it)");
         textures_report();
     }
     return TRUE;

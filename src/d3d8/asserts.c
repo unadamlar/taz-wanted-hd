@@ -39,8 +39,11 @@ static void WINAPI hook_PostQuitMessage(int code)
     real_PostQuitMessage(code);
 }
 
+int game_quit;
+
 static void WINAPI hook_ExitProcess(UINT code)
 {
+    game_quit = 1;
     log_line("game quits: ExitProcess(%u) from %p", code, __builtin_return_address(0));
     real_ExitProcess(code);
 }

@@ -151,7 +151,12 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
 - The walking-shadow fix is in but not measured. Jumping scenes with the test trigger during the boss intro closes the
   game, with the look off too; plain `master` was not tried.
 - Looningdale's level ending still shows 0.9 s of black, on plain `master` too (measured 0.87 s there, 0.92 s here).
-- Not tested on the D3D9 build: real Windows, Wine without DXVK, a physical gamepad, a real alt-tab, `config.exe`,
+- One crash on returning from an alt-tab (2026-11-22, 3840x2160, level 11, Proton CachyOS, NVIDIA 620.73), cause unknown and
+  not reproduced. A graphics thread aborted on a double free while the main thread destroyed DXVK semaphores, and Wine ended
+  the game with exit code 3, past our crash log. About 1.18 GB of address space was free, so it was not the memory limit.
+  130 real alt-tabs in that level at that size under a private KWin did not crash. The device never reported lost, so the
+  game's reset path did not run. Test builds now log focus, device state and exits the game did not ask for.
+- Not tested on the D3D9 build: real Windows, Wine without DXVK, a physical gamepad, an alt-tab on a real monitor, `config.exe`,
   a full `tools/package.sh` run, a world piece first seen after the merge is built, a world buffer rewritten mid-scene.
 - At level 0, 3.9% of pixels differ from the D3D8 build by more than 16 levels, on thin edges and foliage. It looks
   the same side by side; the cause is not isolated.

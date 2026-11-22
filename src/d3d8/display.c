@@ -62,6 +62,8 @@ void display_change(UINT w, UINT h, int vsync)
 static HRESULT WINAPI hook_TestCooperativeLevel(IDirect3DDevice8 *dev)
 {
     HRESULT hr = real_TestCooperativeLevel(dev);
+    static HRESULT last;
+    if (settings.tests && hr != last) log_line("device: TestCooperativeLevel 0x%08lx", last = hr);
     if (FAILED(hr)) return hr; // really lost: the game's own recovery
     if (state == 1 && GetTickCount() - asked_at >= SETTLE_MS) return state = 2, D3DERR_DEVICELOST;
     if (state >= 2) {
@@ -94,7 +96,11 @@ static HRESULT WINAPI hook_Reset(IDirect3DDevice8 *dev, D3DPRESENT_PARAMETERS *p
 {
     look_reset(dev); // our render targets, and anything holding the game's buffers
     overlay_reset(dev);
-    if (state != 3 || pp != GAME_PP) return real_Reset(dev, pp);
+    if (state != 3 || pp != GAME_PP) {
+        HRESULT hr = real_Reset(dev, pp);
+        if (settings.tests) log_line("device: Reset after a real loss 0x%08lx", hr);
+        return hr;
+    }
     state = 0;
     D3DPRESENT_PARAMETERS old = *pp;
     if (want_w && want_h) pp->BackBufferWidth = want_w, pp->BackBufferHeight = want_h;
@@ -133,9 +139,19 @@ static HRESULT WINAPI hook_Reset(IDirect3DDevice8 *dev, D3DPRESENT_PARAMETERS *p
     return hr;
 }
 
+static LRESULT CALLBACK log_focus(int code, WPARAM w, LPARAM l)
+{
+    const CWPSTRUCT *m = (const CWPSTRUCT *)l;
+    if (code == HC_ACTION && (m->message == WM_ACTIVATEAPP || m->message == WM_ACTIVATE || m->message == WM_SETFOCUS ||
+                              m->message == WM_KILLFOCUS || m->message == WM_SIZE || m->message == WM_DISPLAYCHANGE))
+        log_line("focus: message 0x%x wparam 0x%lx lparam 0x%lx, frame %lu", m->message, (DWORD)m->wParam, (DWORD)m->lParam, presents);
+    return CallNextHookEx(NULL, code, w, l);
+}
+
 void display_install(IDirect3DDevice8 *dev)
 {
     if (!settings.exe_known || real_Reset) return; // the addresses above are the retail exe's
     patch((void **)&dev->lpVtbl->TestCooperativeLevel, hook_TestCooperativeLevel, (void **)&real_TestCooperativeLevel);
     patch((void **)&dev->lpVtbl->Reset, hook_Reset, (void **)&real_Reset);
+    if (settings.tests) SetWindowsHookExA(WH_CALLWNDPROC, log_focus, NULL, GetCurrentThreadId());
 }
