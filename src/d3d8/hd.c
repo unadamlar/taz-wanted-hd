@@ -24,11 +24,12 @@ enum { OPAQUE_KIND, CARD, GRASS, WATER_KIND };
 enum { F_TRIPLANAR = 1, F_TWOSIDED = 2, F_WIND = 4 };
 enum { PASS_COLOUR, PASS_DEPTH, PASS_SHADOW };
 // Our samplers sit above the stages the game uses (it never enables stage 7), so its state caching never sees them.
-enum { SMP_DEPTH = 7, SMP_NORMAL, SMP_ALBEDO, SMP_SKY, SMP_SHADOW, SMP_CMAP, SMP_AO, SMP_ALBEDO2, SMP_NORMAL2 };
+enum { SMP_LIGHTS = 6, SMP_DEPTH = 7, SMP_NORMAL, SMP_ALBEDO, SMP_SKY, SMP_SHADOW, SMP_CMAP, SMP_AO, SMP_ALBEDO2, SMP_NORMAL2 };
 
 #pragma pack(push, 1)
 struct file_mat { char name[32], albedo[32], normal[32]; WORD kind, flags; float tile, tint[3], rough, nstrength, cut; };
 struct file_bind { UINT64 hash; UINT mat, mask; float lo, hi; };
+struct file_glow { UINT64 hash; float strength, lo, hi; UINT mask; };
 #pragma pack(pop)
 
 struct mat { IDirect3DTexture9 *albedo, *normal; int kind, flags; float tile, tint[3], rough, nstrength, cut; };
@@ -37,17 +38,22 @@ struct sub { UINT mat, first, count; };
 struct proto { UINT base, nv, sub0, nsub, run0, nrun; };
 struct run { UINT chunk, first, n; };
 struct chunk { float lo[3], hi[3]; };
+struct light { float p[3], r, c[3], cone; };
 struct target { IDirect3DTexture9 *t; IDirect3DSurface9 *s; UINT w, h; };
 
 static struct level {
     float sun[3], sun_col[3], sky[3], ground[3], soft, ao_radius, ao_strength, fog[3], fog_start, fog_end;
-    float exposure, bloom_t, bloom_s, sat, contrast, water_h, water[3], clarity, fade0, fade1, sky_scale;
+    float exposure, bloom_t, bloom_s, sat, contrast, water_h, water[3], clarity, fade0, fade1, sky_scale, unbake;
 } lv;
 
 static int scene_no = -1;
 static struct mat *mats; static UINT nmats;
 static struct bind *binds; static UINT nbinds;
 static UINT64 *hides; static UINT nhides, nshades; // the last nshades are baked shadow decals
+static struct light *lights; static UINT nlights;
+static struct file_glow *glows; static UINT nglows;
+static IDirect3DTexture9 *light_tex;
+static float light_grid[4];
 static struct proto *protos; static UINT nprotos;
 static struct sub *subs;
 static struct run *runs;
@@ -221,7 +227,7 @@ static void read_ini(void)
         K("fog_color", fog, 3), K("fog_start", fog_start, 1), K("fog_end", fog_end, 1), K("exposure", exposure, 1),
         K("bloom_threshold", bloom_t, 1), K("bloom_strength", bloom_s, 1), K("saturation", sat, 1), K("contrast", contrast, 1),
         K("water_height", water_h, 1), K("water_color", water, 3), K("water_clarity", clarity, 1),
-        K("grass_fade_start", fade0, 1), K("grass_fade_end", fade1, 1), K("sky_scale", sky_scale, 1),
+        K("grass_fade_start", fade0, 1), K("grass_fade_end", fade1, 1), K("sky_scale", sky_scale, 1), K("unbake", unbake, 1),
     };
     while (fgets(line, sizeof line, f)) {
         char *eq = strchr(line, '=');
@@ -293,6 +299,46 @@ static int make_shaders(hd_dev d)
     log_line("hd: shaders %s, alpha to coverage %s", ok ? "ready" : "FAILED", atoc ? "yes" : "no (alpha cut)");
     if (!ok) broken = 1;
     return ok;
+}
+
+// Grid over the lights' reach: each cell names its four nearest, in a float texture with the light table below it.
+#define LIGHT_CELLS 64
+static void build_lights(hd_dev d)
+{
+    if (!nlights || FAILED(IDirect3DDevice9_CreateTexture(d, LIGHT_CELLS, 128, 1, 0, D3DFMT_A32B32G32R32F, D3DPOOL_MANAGED, &light_tex, NULL))) return;
+    float lo[2] = { 1e9f, 1e9f }, hi[2] = { -1e9f, -1e9f };
+    for (UINT i = 0; i < nlights; i++)
+        for (int a = 0; a < 2; a++) {
+            float v = lights[i].p[a * 2], r = lights[i].r;
+            if (v - r < lo[a]) lo[a] = v - r;
+            if (v + r > hi[a]) hi[a] = v + r;
+        }
+    float cell = (hi[0] - lo[0] > hi[1] - lo[1] ? hi[0] - lo[0] : hi[1] - lo[1]) / LIGHT_CELLS * 1.001f;
+    light_grid[0] = lo[0], light_grid[1] = lo[1], light_grid[2] = 1 / cell, light_grid[3] = 1;
+    D3DLOCKED_RECT lr;
+    if (FAILED(IDirect3DTexture9_LockRect(light_tex, 0, &lr, NULL, 0))) return;
+    memset(lr.pBits, 0, lr.Pitch * 128);
+    for (int z = 0; z < LIGHT_CELLS; z++)
+        for (int x = 0; x < LIGHT_CELLS; x++) {
+            float cx = lo[0] + (x + 0.5f) * cell, cz = lo[1] + (z + 0.5f) * cell, best[4] = { 1e30f, 1e30f, 1e30f, 1e30f }, id[4] = { 0 };
+            for (UINT i = 0; i < nlights && i < LIGHT_CELLS; i++) {
+                float dx = lights[i].p[0] - cx, dz = lights[i].p[2] - cz, reach = lights[i].r + cell * 0.71f, dd = dx * dx + dz * dz;
+                if (dd > reach * reach) continue;
+                for (int k = 0; k < 4; k++) {
+                    if (dd >= best[k]) continue;
+                    for (int m = 3; m > k; m--) best[m] = best[m - 1], id[m] = id[m - 1];
+                    best[k] = dd, id[k] = (float)i + 1;
+                    break;
+                }
+            }
+            memcpy((BYTE *)lr.pBits + z * lr.Pitch + x * 16, (float[4]){ id[0], id[1], id[2], id[3] }, 16);
+        }
+    for (UINT i = 0; i < nlights && i < LIGHT_CELLS; i++) {
+        const struct light *l = &lights[i];
+        memcpy((BYTE *)lr.pBits + 64 * lr.Pitch + i * 16, (float[4]){ l->p[0], l->p[1], l->p[2], 1 / (l->r * l->r) }, 16);
+        memcpy((BYTE *)lr.pBits + 65 * lr.Pitch + i * 16, (float[4]){ l->c[0], l->c[1], l->c[2], l->cone }, 16);
+    }
+    IDirect3DTexture9_UnlockRect(light_tex, 0);
 }
 
 int hd_load(hd_dev d, int scene)
@@ -412,6 +458,15 @@ int hd_load(hd_dev d, int scene)
         IDirect3DVertexBuffer9_Unlock(ivb);
     }
     free(src);
+    if (p + 4 <= file + n) { // optional, after the chunks: lamps and glowing textures
+        nlights = U();
+        lights = malloc((nlights + 1) * sizeof *lights);
+        memcpy(lights, p, nlights * sizeof *lights), p += nlights * sizeof *lights;
+        nglows = U();
+        glows = malloc((nglows + 1) * sizeof *glows);
+        memcpy(glows, p, nglows * sizeof *glows), p += nglows * sizeof *glows;
+        build_lights(d);
+    }
     snprintf(path, sizeof path, "taz-hd\\look\\scene%02d\\sky.dds", scene);
     sky_tex = load_cube(d, path);
     free(file);
@@ -434,6 +489,8 @@ void hd_unload(void)
     if (ivb) IDirect3DVertexBuffer9_Release(ivb), ivb = NULL;
     if (ib) IDirect3DIndexBuffer9_Release(ib), ib = NULL;
     if (sky_tex) IDirect3DCubeTexture9_Release(sky_tex), sky_tex = NULL;
+    if (light_tex) IDirect3DTexture9_Release(light_tex), light_tex = NULL;
+    free(lights), free(glows), lights = NULL, glows = NULL, nlights = nglows = 0, light_grid[3] = 0;
     free(mats), free(binds), free(hides), free(protos), free(subs), free(runs), free(chunks), free(vis);
     mats = NULL, binds = NULL, hides = NULL, protos = NULL, subs = NULL, runs = NULL, chunks = NULL, vis = NULL;
     nmats = nbinds = nhides = nshades = nprotos = nchunks = 0;
@@ -644,6 +701,7 @@ static void ps_constants(hd_dev d)
     c[14][0] = 1.0f / SMAP, c[14][1] = 1.0f / CMAP;
     memcpy(c[15], lv.water, 12);
     IDirect3DDevice9_SetPixelShaderConstantF(d, 0, c[0], 16);
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 27, light_grid, 1);
 }
 
 void hd_invalidate(void) { quick_ok = 0; }
@@ -667,12 +725,16 @@ static void bind_common(hd_dev d)
     sampler(d, SMP_ALBEDO, D3DTEXF_ANISOTROPIC, D3DTEXF_LINEAR, D3DTADDRESS_WRAP);
     sampler(d, SMP_NORMAL2, D3DTEXF_ANISOTROPIC, D3DTEXF_LINEAR, D3DTADDRESS_WRAP);
     sampler(d, SMP_ALBEDO2, D3DTEXF_ANISOTROPIC, D3DTEXF_LINEAR, D3DTADDRESS_WRAP);
+    if (light_tex) {
+        IDirect3DDevice9_SetTexture(d, SMP_LIGHTS, (IDirect3DBaseTexture9 *)light_tex);
+        sampler(d, SMP_LIGHTS, D3DTEXF_POINT, D3DTEXF_NONE, D3DTADDRESS_CLAMP);
+    }
 }
 
 static void unbind_common(hd_dev d)
 {
     if (!common_bound) return;
-    for (DWORD s = SMP_DEPTH; s <= SMP_NORMAL2; s++) IDirect3DDevice9_SetTexture(d, s, NULL);
+    for (DWORD s = light_tex ? SMP_LIGHTS : SMP_DEPTH; s <= SMP_NORMAL2; s++) IDirect3DDevice9_SetTexture(d, s, NULL);
     common_bound = 0, quick_ok = 0;
 }
 
@@ -1066,6 +1128,13 @@ void hd_world_material(hd_dev d, unsigned long long hash)
 {
     const struct bind *b[2] = { NULL, NULL };
     int n = 0;
+    float emit[4] = { 0, 0, 1, lv.unbake };
+    for (UINT i = 0; i < nglows; i++)
+        if (glows[i].hash == hash) {
+            float span = glows[i].hi - glows[i].lo;
+            emit[0] = glows[i].strength, emit[1] = glows[i].mask ? glows[i].lo : -1, emit[2] = glows[i].mask ? 1 / (fabsf(span) < 0.001f ? 0.001f : span) : 1;
+        }
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 26, emit, 1);
     for (UINT i = 0; i < nbinds && n < 2; i++)
         if (binds[i].hash == hash && (UINT)binds[i].mat < nmats) b[n++] = &binds[i];
     if (!n) {
@@ -1142,10 +1211,19 @@ void hd_merge_draw(hd_dev d, unsigned nverts, unsigned first, unsigned tris)
 
 void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_colour, float scale)
 {
-    float k[4] = { use_tex, use_colour, scale, 0 };
+    float k[4] = { use_tex, use_colour, scale, 0 }, two[4][4] = { { 0 } };
     IDirect3DDevice9_SetVertexShaderConstantF(d, 60, model_rows, 3);
     ps_constants(d);
     IDirect3DDevice9_SetPixelShaderConstantF(d, 24, k, 1);
+    float d0 = 1e30f, d1 = 1e30f;
+    for (UINT i = 0; i < nlights; i++) { // the two lamps nearest this character
+        const struct light *l = &lights[i];
+        float x = l->p[0] - model_rows[3], y = l->p[1] - model_rows[7], z = l->p[2] - model_rows[11], dd = x * x + y * y + z * z;
+        float e[2][4] = { { l->p[0], l->p[1], l->p[2], 1 / (l->r * l->r) }, { l->c[0], l->c[1], l->c[2], 0 } };
+        if (dd < d0) memcpy(two[2], two[0], 32), d1 = d0, memcpy(two[0], e, 32), d0 = dd;
+        else if (dd < d1) memcpy(two[2], e, 32), d1 = dd;
+    }
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 26, two[0], 4);
     bind_common(d);
     IDirect3DDevice9_SetPixelShader(d, p_char);
     quick_ok = 0;

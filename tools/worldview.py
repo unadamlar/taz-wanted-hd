@@ -17,7 +17,7 @@ here = os.path.dirname(os.path.abspath(__file__))
 ext = os.path.join(here, '..', 'extracted')
 if not os.path.isdir(os.path.join(ext, 'textures')):  # a worktree: use the main checkout's extracted data
     ext = os.path.join(here, '..', '..', '..', '..', 'extracted')
-PAK = 'zoohub'  # the scene's own pak: textures shared with other paks are named after their copy here
+PAK = os.environ.get('WORLD_PAK', 'zoohub')  # the scene's own pak: textures shared with other paks are named after their copy here
 files, occurs = {}, collections.defaultdict(list)
 for line in open(os.path.join(ext, 'textures', 'fingerprints.tsv')):
     h, n = line.rstrip('\n').split('\t')[:2]
@@ -34,6 +34,9 @@ names = {h: label(f) for h, f in files.items()}
 RS = dict(ZWRITE=14, ATEST=15, SRC=19, DST=20, CULL=22, ZFUNC=23, AREF=24, AFUNC=25, BLEND=27, FOG=28, FOGCOLOR=34,
           FOGSTART=36, FOGEND=37, TFACTOR=60)
 COLOROP, CARG1, CARG2, ALPHAOP, AARG1, AARG2, ADDRU, ADDRV, MAGF, TTF = 1, 2, 3, 4, 5, 6, 13, 14, 16, 24
+
+
+def is_vs(d): return d['shader'] & 0x80000000  # otherwise an FVF code
 
 
 def load(path):
@@ -56,7 +59,7 @@ def load(path):
         d['size'] = struct.unpack_from('<2I', b, q + 8); q += 24  # viewport x, y, w, h, min z, max z
         d['rs'] = dict(zip(rs, struct.unpack_from('<%dI' % nrs, b, q))); q += 4 * nrs
         d['tss'] = [dict(zip(tss, struct.unpack_from('<%dI' % ntss, b, q + 4 * ntss * s))) for s in range(3)]; q += 12 * ntss
-        if d['shader'] >= 0xf0000000:
+        if is_vs(d):
             d['c'] = struct.unpack_from('<384f', b, q); q += 1536
         d['verts'] = b[q:q + d['nverts'] * d['stride']]; q += d['nverts'] * d['stride']
         d['idx'] = struct.unpack_from('<%dI' % d['nidx'], b, q) if d['nidx'] else None; q += 4 * d['nidx']
@@ -119,7 +122,7 @@ def vertices(d):  # (position, normal, colour, u, v) in the draw's own space
 # --- which draws to build -------------------------------------------------------------------------
 frames = [load(p) for p in caps]
 hero = [d for d in frames[0] if d['frame'] == 1]
-cam = collections.Counter(tuple(d['view']) + tuple(d['proj']) for d in hero if d['shader'] < 0xf0000000).most_common(1)[0][0]
+cam = collections.Counter(tuple(d['view']) + tuple(d['proj']) for d in hero if not is_vs(d)).most_common(1)[0][0]
 view, proj = cam[:16], cam[16:]
 camera_vp = (Matrix([view[0:4], view[4:8], view[8:12], view[12:16]]) @ Matrix([proj[0:4], proj[4:8], proj[8:12], proj[12:16]])).transposed()
 skipped = collections.Counter()
@@ -131,11 +134,11 @@ def key(d): return (hashlib.md5(d['verts']).digest(), d['tex'], tuple(round(x, 1
 chosen, seen = [], set()
 # Characters: the lit and plain passes (the outline pass left out). A model the mod
 # replaces has its game batches captured but not drawn; its indexed replacement follows them.
-replaced = {hero[i - 1]['vb'] for i in range(1, len(hero)) if hero[i]['api'] == 1 and hero[i]['shader'] >= 0xf0000000 and hero[i - 1]['api'] == 0}
+replaced = {hero[i - 1]['vb'] for i in range(1, len(hero)) if hero[i]['api'] == 1 and is_vs(hero[i]) and hero[i - 1]['api'] == 0}
 for d in hero:
-    vs = d['shader'] >= 0xf0000000
+    vs = is_vs(d)
     if not same_camera(d) and not vs: skipped['other camera (screen-space)'] += 1; continue
-    if vs and d['shader'] == 0xf0000004: skipped['character outline pass'] += 1; continue
+    if vs and d['rs'][RS['CULL']] == 2: skipped['character outline pass'] += 1; continue
     if vs and d['api'] == 0 and d['vb'] in replaced: skipped['character batch replaced by HD model'] += 1; continue
     if d['type'] not in (4, 5, 6): skipped['points/lines'] += 1; continue
     d['set'] = 'characters' if vs else 'hero'
@@ -147,7 +150,7 @@ for draws in [frames[0][len(hero):]] + frames[1:]:
     perframe = collections.defaultdict(set)
     for d in draws: perframe[hashlib.md5(d['verts']).digest()].add(d['frame'])
     for d in draws:
-        if d['shader'] >= 0xf0000000 or d['type'] not in (4, 5, 6): continue
+        if is_vs(d) or d['type'] not in (4, 5, 6): continue
         if not same_camera(d): skipped['other camera (screen-space)'] += 1; continue
         if len(perframe[hashlib.md5(d['verts']).digest()]) >= 20: skipped['moving every frame (sweep copies)'] += 1; continue
         k = key(d)

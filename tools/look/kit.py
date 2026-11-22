@@ -483,6 +483,8 @@ TEXSETS = {  # name -> (folder, colour, height, ao)
     "ivy017": ("ambientcg/acg-LeafSet017/content", "LeafSet017_2K-JPG_Color.jpg", "LeafSet017_2K-JPG_Opacity.jpg", None),
     "boulder_dry": ("polyhaven/ph-rock_boulder_dry/content", "rock_boulder_dry_diff_2k.jpg", "rock_boulder_dry_disp_2k.jpg", "rock_boulder_dry_ao_2k.jpg"),
     "stone_wall": ("polyhaven/ph-japanese_stone_wall/content", "japanese_stone_wall_diff_2k.jpg", "japanese_stone_wall_disp_2k.jpg", "japanese_stone_wall_ao_2k.jpg"),
+    "asphalt": ("polyhaven/ph-asphalt_02/content", "asphalt_02_diff_2k.jpg", "asphalt_02_disp_2k.jpg", "asphalt_02_ao_2k.jpg"),
+    "paving": ("polyhaven/ph-concrete_pavement/content", "concrete_pavement_diff_2k.jpg", "concrete_pavement_disp_2k.jpg", "concrete_pavement_ao_2k.jpg"),
 }
 
 
@@ -512,6 +514,15 @@ def _texset(b, name, vec, box=False):
 def _cartoonify(b, col, sat=1.3, val=1.1, tint=(1.0, 1.0, 1.0)):
     c = o(b("ShaderNodeHueSaturation", {"Color": col, "Saturation": sat, "Value": val}), "Color")
     return b.mix(1.0, c, tint, "MULTIPLY")
+
+
+def mat_texset(name, scale=1.0, period=4.0, sat=1.0, val=1.0, tint=(1.0, 1.0, 1.0), rough=0.85):
+    """A CC0 set laid flat in world space, pulled towards the look with a saturation, value and tint."""
+    m, b = _new_mat("kit_" + name)
+    col, hgt, ao = _texset(b, name, b.vmath("SCALE", _wp(b, scale), 1.0 / period))
+    c = b.mix(1.0, _cartoonify(b, col, sat, val, tint), b.mix(0.5, (1, 1, 1), ao), "MULTIPLY")
+    _finish(b, c, rough, _bump(b, o(b("ShaderNodeRGBToBW", {0: hgt})), 0.6, 0.02 * scale))
+    return m
 
 
 def _dirt(b, p):

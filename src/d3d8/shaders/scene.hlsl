@@ -31,6 +31,8 @@ float4 MASK2     : register(c21);
 float4 MWEIGHT   : register(c22);
 float4 MWEIGHT2  : register(c23);
 float4 CHARK     : register(c24);   // characters: texture on, colour on, scale, as the game's stage 0
+float4 EMIT      : register(c26);   // glow: strength, lo, 1 / (hi - lo); w: baked-light exponent, 0 keeps vertex colours
+float4 LGRID     : register(c27);   // lights: grid x0, z0, 1 / cell, 1 if the level has any
 
 sampler2D BASE     : register(s0);
 sampler2D TNORMAL  : register(s8);
@@ -42,6 +44,7 @@ sampler2D AO       : register(s13);
 sampler2D DEPTH    : register(s7);
 sampler2D TALBEDO2 : register(s14);
 sampler2D TNORMAL2 : register(s15);
+sampler2D LIGHTS   : register(s6);   // 64 wide: rows 0-63 the grid (up to 4 light numbers + 1), row 64 position, 1 / r^2, row 65 colour, cone
 
 float3 to_linear(float3 c) { return c * c * (0.3 * c + 0.7); }
 float3 to_gamma(float3 c)  { return pow(max(c, 0.00001), 1 / 2.2); }
@@ -158,6 +161,30 @@ float sun_shadow(float3 w, float2 vpos)
     return lit / 12 * (ch / 4);
 }
 
+// Street lamps: the grid cell under the point names the few that reach it, so the cost doesn't grow with their number.
+float3 local_lights(float3 n, float3 w)
+{
+    float3 sum = 0;
+    if (LGRID.w > 0) {
+        float2 g = floor((w.xz - LGRID.xy) * LGRID.z);
+        if (g.x >= 0 && g.y >= 0 && g.x < 64 && g.y < 64) {
+            float4 ids = tex2Dlod(LIGHTS, float4((g + 0.5) / float2(64, 128), 0, 0));
+            for (int k = 0; k < 4; k++) {
+                float id = k == 0 ? ids.x : k == 1 ? ids.y : k == 2 ? ids.z : ids.w;
+                if (id < 0.5) break;
+                float u = (id - 0.5) / 64;
+                float4 p = tex2Dlod(LIGHTS, float4(u, 64.5 / 128, 0, 0)), col = tex2Dlod(LIGHTS, float4(u, 65.5 / 128, 0, 0));
+                float3 d = p.xyz - w;
+                float l2 = dot(d, d), fall = saturate(1 - l2 * p.w);
+                float3 dir = d / sqrt(max(l2, 1));
+                float cone = saturate((dir.y - col.w) / max(1 - col.w, 0.01) * 4);
+                sum += col.rgb * fall * fall * cone * saturate(dot(n, dir) * 0.8 + 0.2);
+            }
+        }
+    }
+    return sum;
+}
+
 float3 shade(float3 albedo, float3 n, float3 w, float2 vpos, float ao, float spec_mask)
 {
     float3 v = normalize(EYE.xyz - w);
@@ -167,7 +194,7 @@ float3 shade(float3 albedo, float3 n, float3 w, float2 vpos, float ao, float spe
     float3 h = normalize(v + SUN.xyz);
     float gloss = 2 / max(MAT.z * MAT.z * MAT.z * MAT.z, 0.002);
     float sp = spec_mask * pow(saturate(dot(n, h)), gloss) * (gloss + 2) * 0.012;
-    return albedo * (amb + SUN_COL.rgb * nl * sh) + SUN_COL.rgb * sp * nl * sh;
+    return albedo * (amb + SUN_COL.rgb * nl * sh + local_lights(n, w)) + SUN_COL.rgb * sp * nl * sh;
 }
 
 float3 fogged(float3 c, float3 w)
@@ -230,7 +257,10 @@ float3 uv_normal(float3 n, float3 w, float2 uv)
 float4 ps_world(V2P i, float2 vpos : VPOS) : COLOR
 {
     float4 tex = tex2D(BASE, i.uv);
-    float3 game = to_linear(saturate(tex.rgb * i.c.rgb * 2));
+    float3 vc = i.c.rgb;
+    // A night level's colour is baked into its vertices as blue light: keep how bright, not the tint.
+    if (EMIT.w > 0) vc = pow(saturate(max(vc.r, max(vc.g, vc.b)) * 2), EMIT.w) * 0.5;
+    float3 game = to_linear(saturate(tex.rgb * vc * 2));
     float3 n = normalize(i.n);
     float3 albedo = game, nor = n;
     float spec = 0;
@@ -251,6 +281,10 @@ float4 ps_world(V2P i, float2 vpos : VPOS) : COLOR
 #endif
     float ao = lerp(1, tex2D(AO, (vpos + 0.5) * SCREEN.xy).r, SCREEN.z);
     float3 c = shade(albedo, nor, i.wp.xyz, vpos, ao, spec);
+    if (EMIT.x > 0) { // lit windows and signs
+        float t = saturate((dot(tex.rgb, float3(0.3, 0.59, 0.11)) - EMIT.y) * EMIT.z);
+        c += to_linear(tex.rgb) * t * t * (3 - 2 * t) * EMIT.x;
+    }
     return float4(to_gamma(fogged(c, i.wp.xyz)), tex.a * i.c.a * 2);
 }
 
@@ -380,6 +414,7 @@ float4 vs_char_depth(float3 p : POSITION, float3 weight : TEXCOORD1, float4 pale
 
 // Characters: the game's vs_1_1 skinning, patched to also output world position (oT2) and normal (oT3).
 struct CharIn { float2 uv : TEXCOORD0; float3 w : TEXCOORD2; float3 n : TEXCOORD3; float4 c : COLOR0; };
+float4 CHAR_LIGHT[4] : register(c26);  // the two nearest lamps: position, 1 / r^2; colour
 
 float4 ps_char(CharIn i) : COLOR
 {
@@ -398,7 +433,13 @@ float4 ps_char(CharIn i) : COLOR
     float3 amb = lerp(GND_AMB.rgb, SKY_AMB.rgb, n.y * 0.5 + 0.5) * (0.62 + 0.3 * saturate(n.y + 0.4));  // form in the shade
     // Character paint is authored brighter and more saturated than the world's albedo. Pulled towards a warm
     // grey: a neutral one turned the brown fur magenta.
-    float3 c = albedo * 0.7 * (amb + 0.85 * SUN_COL.rgb * band * sh);
+    float3 lamp = 0;
+    for (int k = 0; k < 2; k++) {
+        float3 d = CHAR_LIGHT[k * 2].xyz - i.w;
+        float fall = saturate(1 - dot(d, d) * CHAR_LIGHT[k * 2].w);
+        lamp += CHAR_LIGHT[k * 2 + 1].rgb * fall * fall * saturate(dot(n, normalize(d)) * 0.7 + 0.3);
+    }
+    float3 c = albedo * 0.7 * (amb + 0.85 * SUN_COL.rgb * band * sh + lamp);
     c = lerp(dot(c, float3(0.3, 0.59, 0.11)) * float3(1.08, 0.94, 0.72), c, 0.62) * float3(1.02, 0.93, 0.76);
     return float4(to_gamma(c), saturate(tex.a * col.a * CHARK.z));
 }

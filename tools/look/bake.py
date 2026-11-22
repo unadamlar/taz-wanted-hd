@@ -109,15 +109,15 @@ def _render_pano(sc, path, n, transparent):
     return px.reshape(n // 2, n, 4)[::-1].copy()
 
 
-def bake_sky(cache, sc, eye, n=8192):
+def bake_sky(cache, sc, eye, n=8192, panels=False):
     """Equirect of what a camera sees beyond the level, scene-linear: the world, with the far hill panels over it.
     The panels on the +y side carry the game's painted sun and are hidden in the dressing, so the -y hills are
     mirrored across the x axis to close the ring; below the horizon is the hills' own ground colour."""
     f = Path(cache) / "sky.npz"
     if f.exists():
         return np.load(f)["sky"]
-    panels = [o for o in bpy.data.objects if o.type == "MESH" and
-              any(s.material and s.material.name.startswith("backdrop:") for s in o.material_slots)]
+    panels_ob = [o for o in bpy.data.objects if o.type == "MESH" and
+                 any(s.material and s.material.name.startswith("backdrop:") for s in o.material_slots)]
     for o in bpy.data.objects:
         if o.type == "MESH":
             o.hide_render = True
@@ -126,7 +126,9 @@ def bake_sky(cache, sc, eye, n=8192):
     cd.panorama_type = "EQUIRECTANGULAR"
     cam = bpy.data.objects.new("sky_cam", cd)
     sc.collection.objects.link(cam)
-    cam.location = eye
+    # a painted sky is seen from the middle of its box, as the game draws it around the camera
+    cam.location = (sum((Vector(c) for o in panels_ob for c in [o.matrix_world @ Vector(b) for b in o.bound_box]), Vector()) / (8 * len(panels_ob))
+                    if panels and panels_ob else eye)
     cam.rotation_euler = (math.pi / 2, 0, 0)  # image centre looks along +y
     sc.camera = cam
     r = sc.render
@@ -137,17 +139,32 @@ def bake_sky(cache, sc, eye, n=8192):
     r.image_settings.color_mode = "RGBA"
     r.image_settings.color_depth = "32"
     world = _render_pano(sc, str(Path(cache) / "sky_world.exr"), n, False)[..., :3]
-    for o in panels:
+    for o in panels_ob:
         o.hide_render = False
     hills = _render_pano(sc, str(Path(cache) / "sky_hills.exr"), n, True)
     h, w = hills.shape[:2]
-    mid = np.arange(w // 4, 3 * w // 4)
-    hills[:, mid] = hills[:, (3 * w // 2 - 1 - mid) % w]
-    sky = world * (1 - hills[..., 3:]) + hills[..., :3]
-    below = h // 2 + max(2, h // 180)
-    band = hills[h // 2 + 1:below]
-    ground = np.median(band[band[..., 3] > 0.5][..., :3], axis=0)
-    sky[below:] = ground
+    if panels:  # the level's own painted sky, whole
+        sky = world * (1 - hills[..., 3:]) + hills[..., :3]
+        # the box's ceiling is one dark colour with a hard edge against the panels: fade across it, and give it stars
+        ceil = np.median(sky[:h // 10].reshape(-1, 3), 0)
+        edge = np.minimum((sky[:h // 2].sum(2) > ceil.sum() * 1.6).argmax(0) + 6, h // 2)
+        rim = np.median(sky[edge, np.arange(w)], 0)
+        for x in range(w):
+            a = max(edge[x] - h // 9, 0)
+            t = ((np.arange(a, edge[x]) - a + 1) / (edge[x] - a))[:, None] ** 2
+            sky[:a, x], sky[a:edge[x], x] = ceil, ceil * (1 - t) + rim * t
+        rng = np.random.default_rng(8)
+        for x, y, v in zip(rng.integers(0, w, 1400), (np.arccos(rng.uniform(0.2, 1, 1400)) / np.pi * h).astype(int), rng.uniform(0.3, 0.9, 1400)):
+            if y < edge[x] - 8:
+                sky[y:y + 2, x:x + 2] = v
+    else:
+        mid = np.arange(w // 4, 3 * w // 4)
+        hills[:, mid] = hills[:, (3 * w // 2 - 1 - mid) % w]
+        sky = world * (1 - hills[..., 3:]) + hills[..., :3]
+        below = h // 2 + max(2, h // 180)
+        band = hills[h // 2 + 1:below]
+        ground = np.median(band[band[..., 3] > 0.5][..., :3], axis=0)
+        sky[below:] = ground
     np.savez_compressed(f, sky=sky.astype(np.float16))
     return sky
 

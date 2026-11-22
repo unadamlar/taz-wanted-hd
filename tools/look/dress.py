@@ -1,11 +1,11 @@
-"""Look test on the real zoo hub: game / lit / dressed, from the captured hero
-camera (A) and a hand-placed camera (B).
+"""Dresses a captured level with the look kit: game / lit / dressed, from the captured hero
+camera (A) and hand-placed cameras (B, C). The level's data is its block in levels.py.
 
-  blender -b --factory-startup --python-exit-code 1 -P tools/look/zoohub.py -- <game|lit|dressed> [--camera A|B|AB] [--samples 64] [--res 100]
-  python3 tools/look/zoohub.py compose        # strips and the target comparison (needs PIL)
+  blender -b --factory-startup --python-exit-code 1 -P tools/look/dress.py -- <game|lit|dressed> [--level zoohub] [--camera A|B|AB] [--samples 64] [--res 100]
+  python3 tools/look/dress.py compose        # strips and the target comparison (needs PIL)
 
-Inputs: extracted/look/zoohub.blend (never written). Outputs: extracted/look/final-*.jpg,
-zoohub-lit.blend, zoohub-dressed.blend.
+Inputs: the level's capture blend (never written). Outputs in its out folder: final-*.jpg,
+<level>-lit.blend, <level>-dressed.blend.
 
 Everything is driven by RULES (texture name -> role). The only hand-made items
 are in HAND, kept short on purpose: how much is rules vs hand work is a result.
@@ -14,63 +14,21 @@ import sys, os, math, fnmatch, time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import levels
+
 SCALE = 1.05  # Taz ~1.26 BU standing vs the kit's 1.2 m hero
 
-# texture (material base name) -> role. First match wins. Unmatched -> "lit".
-RULES = [
-    # gameplay objects keep the game's own look (lit, textured), never dressed or buried
-    ("zoohub/textures/tazbook*", "gameplay"), ("zoohub/textures/tazwanted", "gameplay"),
-    ("zoohub/textures/tazanted02", "gameplay"), ("zoohub/textures/animalcrate*", "gameplay"),
-    ("zoohub/textures/bananacrate*", "gameplay"), ("zoohub/textures/dinghy*", "gameplay"),
-    ("zoohub/textures/hitsignexplan", "gameplay"), ("zoohub/textures/zoosign*", "gameplay"),
-    ("zoohub/textures/tazcagelock*", "gameplay"), ("zoohub/extras/tazcagelock*", "gameplay"),
-    ("resobjs/*", "gameplay"),
-    # ground: path strips carry the lawn's jagged fringe painted in their texture
-    ("zoohub/textures/zoohubpathaqua", "lit"), ("zoohub/textures/zoohubpathice", "lit"),
-    ("zoohub/textures/zoohubpathisaf", "lit"),
-    ("zoohub/textures/zoohubpath*", "ground"), ("zoohub/textures/zoopathjoiner", "ground"),
-    ("zoohub/textures/hubpath02", "ground"),
-    ("zoohub/textures/zoohubgrass*", "lawn"), ("zoohub/textures/hubflowers04", "lawn"),
-    ("zoohub/textures/grassjoiner", "lawn"), ("zoohub/textures/grassedge*", "lawn"),
-    ("zoohub/textures/tazcagegrass", "lawn"),
-    ("zoohub/textures/safrockcream*", "cliff"),
-    ("zoohub/textures/safrock[0-9]*", "lit"),       # the lilac mountain keeps its own lilac look
-    ("zoohub/textures/zoohubwall2", "lit"),         # cream lamp globes / caps: not brick, not trim
-    ("zoohub/textures/zoohubpiller*", "brick"), ("zoohub/textures/zoohubwall*", "brick"),
-    ("zoohub/textures/hutbrick*", "brick"),
-    ("zoohub/textures/safariwater", "water"), ("zoohub/textures/water", "water"),
-    # replaced: cards and props swapped for kit geometry
-    ("zoohub/textures/grassy", "hide"),            # drip cards -> kit vines along cliff tops
-    ("zoohub/textures/snowbeam07", "fence_rail"),   # rail cards -> kit fences along their top edge
-    ("zoohub/textures/metaledges", "fence_post"), ("zoohub/textures/tazcage3", "fence_cap"),
-    ("zoohub/textures/tazwood02a", "tree"), ("zoohub/textures/tazfern05*", "tree"),
-    ("zoohub/skybox/*", "sky"),                     # kept as a far hill band; its painted sky is cut away
-    ("resTex/shadowsub", "hide"),                  # baked blob shadow: real shadows now
-]
+RULES = []  # the selected level's texture -> role table
 
-# Hand-placed / hand-tuned items. Keep this short and count it in the report.
-HAND = {
-    "camera_B": dict(loc=(6.0, -8.0, -15.3), look_at=(4.0, -19.5, -15.8), lens=15.0),
-    "taz_offset_B": (13.3, 7.4, 0.0),  # move Taz onto the path in front of camera B
-    "elephant_offset_B": (0.0, 0.0, 0.0),
-    "camera_C": dict(loc=(2.8, -4.0, -13.8), look_at=(-4.5, -13.5, -17.4), lens=17.0),  # water view
-}
-# Per-level look settings (one block per level). Sun: compass angle it shines FROM
-# (0 = +X, 90 = +Y). Pass 1 followed the baked shadows (280/40); pass 2 puts it on
-# camera B's side, upper left, so faces toward the player are lit.
-LEVEL = dict(
-    sun=dict(sun_azimuth=45.0, sun_elevation=38.0, sun_strength=5.2, sun_color="#fff0d6"),
-    grade=dict(exposure=0.45, look="AgX - Punchy", saturation=1.28, bloom=0.4, fog=0.07, fog_start=30.0, fog_depth=160.0,
-               ambient_strength=1.0),
-    sky=dict(zenith="#1257e6", horizon="#8fd0ff", horizon_warm="#fff4e2", sky_strength=1.3, cloud_white=1.35,
-             ambient="#cdd8ea"),
-    cliff=dict(top_min_z=-15.2, dilate=0.35, band=(0.8, 1.7), ledge=0.6, erosion=0.2, top_break=0.22),
-    low_rail_above=1.3,  # rail runs this far above their ground (railings over water) are rebuilt low
-)
-HDRI = "polyhaven/ph-kloofendal_48d_partly_cloudy_puresky/content/kloofendal_48d_partly_cloudy_puresky_4k.hdr"
-LEVEL_HDRI_ROT = 0.0
-PASS1 = dict(sun=dict(sun_azimuth=280.0, sun_elevation=40.0),
-             grade=dict(exposure=0.3, ambient_strength=1.1, fog_start=22.0, fog_depth=120.0), sky={})
+
+def select(name):
+    """Makes this level's rules current and returns its block."""
+    global RULES
+    L = levels.LEVELS[name]
+    RULES = L["rules"]
+    return L
+
 
 GAME_COLLS = ("hero", "hero placed", "sweep", "sweep placed")
 
@@ -92,19 +50,22 @@ def blender_main(argv):
     import bpy, argparse
     import numpy as np
     from mathutils import Vector, Matrix
-    sys.path.insert(0, str(HERE))
     import kit
 
     ap = argparse.ArgumentParser()
     ap.add_argument("version", choices=["game", "lit", "dressed"])
+    ap.add_argument("--level", default="zoohub", choices=sorted(levels.LEVELS))
     ap.add_argument("--camera", default="AB")
     ap.add_argument("--samples", type=int, default=64)
     ap.add_argument("--res", type=int, default=100)
-    ap.add_argument("--out", default="pass3", help="subfolder of extracted/look ('' = pass 1 location)")
+    ap.add_argument("--out", default=None, help="subfolder of extracted/look (default: the level's; '' = pass 1 location)")
     ap.add_argument("--pass1", action="store_true", help="pass 1 look (baked sun, old cliffs/trees)")
     ap.add_argument("--procedural", action="store_true", help="don't use the CC0 texture sets")
     ap.add_argument("--procedural-sky", action="store_true", help="procedural clouds instead of the HDRI's")
     a = ap.parse_args(argv)
+    L = select(a.level)
+    HAND, LEVEL, HDRI, HDRI_ROT, PASS1 = L["hand"], L["look"], L["hdri"], L["hdri_rotation"], levels.ZOO_PASS1
+    a.out = L["out"] if a.out is None else a.out
     kit.USE_ASSETS = not (a.procedural or a.pass1)
     src = kit.out_dir()
     if a.out.rstrip("/") == "pass2":
@@ -112,7 +73,7 @@ def blender_main(argv):
     out = src / a.out if a.out else src
     out.mkdir(parents=True, exist_ok=True)
     look = PASS1 if a.pass1 else LEVEL
-    bpy.ops.wm.open_mainfile(filepath=str(src / "zoohub.blend"))
+    bpy.ops.wm.open_mainfile(filepath=str(src / L["blend"]))
     sc = bpy.context.scene
     cam_a = sc.camera
     stats = {}
@@ -235,6 +196,18 @@ def blender_main(argv):
         nm.surface_render_method = "DITHERED"
         return nm
 
+    def panel_material(m):
+        """A level whose own painted sky is kept: texture x vertex colour x 2 in sRGB, as the game draws it, unlit."""
+        img, _ = game_image(m)
+        img.colorspace_settings.name = "Non-Color"
+        nm, b = kit._new_mat("backdrop:" + m.name)
+        tx = b("ShaderNodeTexImage", {"Vector": kit.o(b("ShaderNodeUVMap", uv_map="UVMap"))}, image=img)
+        vc = kit.o(b("ShaderNodeVertexColor", layer_name="game_color"), "Color")
+        col = b.mix(1.0, kit.o(tx, "Color"), b.mix(1.0, vc, vc, "ADD"), "MULTIPLY")
+        col = kit.o(b("ShaderNodeGamma", {"Color": col, "Gamma": 2.2}))
+        b("ShaderNodeOutputMaterial", {"Surface": b("ShaderNodeEmission", {"Color": col, "Strength": 1.0})})
+        return nm
+
     def lit_material(m, character=False, stylized=False, punch=False):
         key = m.name + ("~s" if stylized else "") + ("~p" if punch else "")
         if key in lit_cache:
@@ -292,7 +265,8 @@ def blender_main(argv):
             continue
         if all(r == "sky" for r in roles):
             for s in ob.material_slots:  # side panels carry the hill band; top/bottom panels go
-                s.material = backdrop_material(s.material) if "second" in s.material.name else hidden
+                s.material = (panel_material(s.material) if L.get("sky_panels") else
+                              backdrop_material(s.material) if "second" in s.material.name else hidden)
             ob.visible_shadow = False
             continue
         for s in ob.material_slots:
@@ -348,8 +322,8 @@ def blender_main(argv):
                     sl.material = nm
 
     sky = dict(look["sky"])
-    if not (a.procedural_sky or a.pass1):
-        sky.update(hdri=kit.ASSET_LIB / HDRI, hdri_rotation=LEVEL_HDRI_ROT, hdri_strength=1.0)
+    if not (a.procedural_sky or a.pass1 or HDRI is None):
+        sky.update(hdri=kit.ASSET_LIB / HDRI, hdri_rotation=HDRI_ROT, hdri_strength=1.0)
     kit.setup_render(sc, cam_a, scale=SCALE, samples=a.samples, dof_target=taz[0] if taz else None, fstop=4.0,
                      sky=sky, **look["sun"], **look["grade"])
 
@@ -554,9 +528,9 @@ def blender_main(argv):
             rmat = kit.mat_sandstone(kit.srgb("#d98e62"), SCALE, 0.7, drips=False, base_dark=False)
             rmat.name = "kit_sandstone_mass"
             t_m = time.time()
-            rock, rubble, mass_edges, covered = kit.cliff_masses(cliffs_o, lawn_o, ground_o, SCALE, seed=9, coll=props,
-                                                                 mat=rmat, rubble_mat=kit.mat_boulder_dry(SCALE),
-                                                                 **look["cliff"])
+            rock, rubble, mass_edges, covered = (kit.cliff_masses(cliffs_o, lawn_o, ground_o, SCALE, seed=9, coll=props,
+                                                                  mat=rmat, rubble_mat=kit.mat_boulder_dry(SCALE),
+                                                                  **look["cliff"]) if cliffs_o else (None, None, [], None))
             if rock:
                 overlay = rock
                 stats["cliff_mass_tris"] = kit.tri_count(rock)
@@ -575,13 +549,13 @@ def blender_main(argv):
         if not a.pass1:
             bed, foam = kit.water_dress([o for o in live if poly_mask(o, ("water",)).any()],
                                         lambda o: poly_mask(o, ("water",)), SCALE, depth=0.7,
-                                        region=(-31.5, -31.5, 18.5, 19.5), coll=props)
+                                        region=L["hub"], coll=props)
             if bed:
                 stats["water_bed_tris"] = kit.tri_count(bed) + kit.tri_count(foam)
                 tri_props += stats["water_bed_tris"]
 
         # 3d. characters (not collision): smooth shading, fur and skin materials
-        if not a.pass1:
+        if not a.pass1 and L.get("dress_characters"):
             dress_characters()
 
         # 4. scatter
@@ -590,7 +564,7 @@ def blender_main(argv):
             if ob in chars or poly_mask(ob, ("gameplay",)).all():
                 lo, hi = kit.world_bbox(ob)
                 gameplay_boxes.append((lo, hi))
-        hub = (-31.5, -31.5, 18.5, 19.5)
+        hub = L["hub"]
         masks = {}
 
         def gmask(img):
@@ -645,14 +619,14 @@ def blender_main(argv):
             return r["P"][g < 0.05]
         leaf_centers = [((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, max(1.5, min(hi.x - lo.x, hi.y - lo.y) * 0.45)) for lo, hi in trees]
         clutter = kit.scatter_clutter(live, SCALE, sampler=clutter_sampler, blockers=covers, exclude=gameplay_boxes, seed=4,
-                                      leaves=2.5 if not a.pass1 else 5.0, leaf_centers=None if a.pass1 else leaf_centers)
+                                      leaves=2.5 if not a.pass1 else 5.0, leaf_centers=None if a.pass1 else leaf_centers) if L.get("clutter", True) else []
         cliffs = [o for o in live if poly_mask(o, ("cliff", "cliff_lilac")).any()]
         solid = [o for o in live if not poly_mask(o, ("hide", "sky", "fence_rail", "tree")).all()]
-        edges = kit.top_edges_open(cliffs, ("cliff", "cliff_lilac"), blockers=solid)
+        edges = kit.top_edges_open(cliffs, ("cliff", "cliff_lilac"), blockers=solid) if cliffs else []
         if overlay:  # vines hang from the rock mass rim (also where tops border grass objects)
             edges = mass_edges
         vines = [v for v in (kit.scatter_vines(edges, SCALE, seed=5, per_m=3.0 if overlay else 5.0),
-                             kit.scatter_ledge_moss(edges, SCALE, seed=6)) if v]
+                             kit.scatter_ledge_moss(edges, SCALE, seed=6)) if v] if edges else []
         scat = grass + clutter + vines
         stats["scatter"] = {o.name: (o["kit_instances"], o["kit_tris"]) for o in scat}
         stats["instances"] = sum(o["kit_instances"] for o in scat)
@@ -688,7 +662,7 @@ def blender_main(argv):
         stats[f"render_{c}"] = render(out / f"final-{c}-{tag}.jpg")
     move_chars("A")
     sc.camera = cam_a
-    bpy.ops.wm.save_as_mainfile(filepath=str(out / f"zoohub-{tag}.blend"))
+    bpy.ops.wm.save_as_mainfile(filepath=str(out / f"{a.level}-{tag}.blend"))
     print("ZOOHUB", stats)
 
 

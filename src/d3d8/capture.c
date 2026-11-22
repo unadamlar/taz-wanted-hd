@@ -260,9 +260,10 @@ void capture_world(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT c
     if (ind) k = fnv(k, ind, w.nidx * 4);
     int cell[3] = { (int)(w.world._41 / 64), (int)(w.world._42 / 64), (int)(w.world._43 / 64) };
     k = fnv(k, cell, sizeof cell) | 1;
+    if (wdraws >= KEYS / 2) wleft = 0; // ends the capture: a full table would never stop probing
     UINT h = (UINT)k & (KEYS - 1);
     while (keys[h] && keys[h] != k) h = (h + 1) & (KEYS - 1);
-    if (!keys[h] || wframe == 1) {
+    if ((!keys[h] || wframe == 1) && wdraws < KEYS / 2) {
         keys[h] = k;
         wdraws++;
         fwrite(&w, sizeof w, 1, wout);

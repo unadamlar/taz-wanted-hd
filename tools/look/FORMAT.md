@@ -22,6 +22,8 @@ u32 nmat;   material mat[nmat]
 u32 nbind;  bind binds[nbind]
 u32 nproto; proto protos[nproto]
 u32 nchunk; chunk chunks[nchunk]
+u32 nlight; light lights[nlight]   optional: a level without lamps or glows ends at the chunks
+u32 nglow;  glow glows[nglow]
 ```
 
 ```
@@ -58,6 +60,16 @@ chunk
   f32 lo[3], hi[3]  world bounds
   u32 nruns
   run               u32 proto, n; f32 rows[n][12]   3x4 instance matrices, shuffled so a prefix thins evenly
+
+light (32 bytes): a street lamp or a pool of light; at most 64
+  f32 pos[3], radius   falloff (1 - d^2 / r^2)^2
+  f32 color[3]         linear, multiplies albedo directly
+  f32 cone             cosine from straight down where it starts to fade; -1 lights all round
+
+glow (24 bytes): a game texture that emits, added after lighting
+  u64 fingerprint
+  f32 strength, lo, hi over the texture's own colour; lo, hi as a bind's smoothstep on brightness
+  u32 mask             0 the whole texture, 2 by brightness
 ```
 
 Conventions:
@@ -80,6 +92,8 @@ exposure, bloom_threshold, bloom_strength, saturation, contrast
 water_height, water_color, water_clarity
 grass_fade_start, grass_fade_end
 sky_scale
+unbake     optional. Above 0 the game's vertex colours are baked light (a night level): their tint is dropped
+           and their brightness v becomes v^unbake
 ```
 
 - sun_dir points towards the sun, in game space. sun_color already includes the 1/pi: diffuse = albedo * sun_color * N.L.
