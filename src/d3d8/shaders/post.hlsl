@@ -66,6 +66,7 @@ float4 ps_final(Quad i) : COLOR
 {
     float3 c = decode(tex2D(SRC, i.uv).rgb) * BLOOM.w + tex2D(SRC2, i.uv).rgb * BLOOM.z;
     c = pow(film(c), GRADE.y);
+    c.g = lerp(c.g, c.r, 0.07);  // strong reds lean to orange, as in the Blender look
     float l = dot(c, float3(0.2126, 0.7152, 0.0722));
     return float4(saturate(lerp(l, c, GRADE.x)), 1);
 }

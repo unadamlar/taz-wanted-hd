@@ -318,12 +318,16 @@ float4 ps_water(V2P i, float2 vpos : VPOS) : COLOR
     r.y = abs(r.y);
     float3 sky = to_linear(texCUBE(SKY, r).rgb) * SKY_AMB.w;
     float nl = saturate(dot(n, SUN.xyz));
-    float3 body = WATER.rgb * (1.1 * SKY_AMB.rgb + 0.9 * SUN_COL.rgb * nl * sun_shadow(i.wp.xyz, vpos));
+    float lit = sun_shadow(i.wp.xyz, vpos);
+    float3 body = WATER.rgb * (1.5 * SKY_AMB.rgb + 1.2 * SUN_COL.rgb * nl * lit);
     float3 h = normalize(v + SUN.xyz);
     float3 glint = SUN_COL.rgb * pow(saturate(dot(n, h)), 400) * 2;
+    // White flecks where two drifting copies of the ripples peak together.
+    float peak = tex2D(TNORMAL, p * 2.3 + float2(0.05, -0.03) * t).g * tex2D(TNORMAL, p * 3.1 - float2(0.04, 0.06) * t).g;
+    float fleck = saturate((peak - 0.42) * 16) * lit * shore;
     float alpha = saturate((1 - clear) * 0.62 + fres) * shore;
-    float3 c = lerp(body, sky, fres) + glint * shore;
-    return float4(to_gamma(fogged(c, i.wp.xyz)), max(alpha, 0.04 * shore));
+    float3 c = lerp(body, sky, fres) + glint * shore + SUN_COL.rgb * fleck;
+    return float4(to_gamma(fogged(c, i.wp.xyz)), saturate(max(alpha, 0.04 * shore) + fleck));
 }
 
 // Sky: a full-screen triangle at the far plane; rays from the inverse camera in c4-c6.
@@ -391,9 +395,10 @@ float4 ps_char(CharIn i) : COLOR
     float2 d = 1.5 * TEXEL.x;
     float sh = (tex2Dproj(SHADOW, float4(s.xy + d, s.z, 1)).r + tex2Dproj(SHADOW, float4(s.xy - d, s.z, 1)).r
               + tex2Dproj(SHADOW, float4(s.xy + float2(d.x, -d.y), s.z, 1)).r + tex2Dproj(SHADOW, float4(s.xy + float2(-d.x, d.y), s.z, 1)).r) / 4;
-    float3 amb = lerp(GND_AMB.rgb, SKY_AMB.rgb, n.y * 0.5 + 0.5) * 0.8;
-    // Character paint is authored brighter and more saturated than the world's albedo.
-    float3 c = albedo * 0.7 * (amb + SUN_COL.rgb * band * sh);
-    c = lerp(dot(c, float3(0.3, 0.59, 0.11)), c, 0.62);
+    float3 amb = lerp(GND_AMB.rgb, SKY_AMB.rgb, n.y * 0.5 + 0.5) * (0.62 + 0.3 * saturate(n.y + 0.4));  // form in the shade
+    // Character paint is authored brighter and more saturated than the world's albedo. Pulled towards a warm
+    // grey: a neutral one turned the brown fur magenta.
+    float3 c = albedo * 0.7 * (amb + 0.85 * SUN_COL.rgb * band * sh);
+    c = lerp(dot(c, float3(0.3, 0.59, 0.11)) * float3(1.08, 0.94, 0.72), c, 0.62) * float3(1.02, 0.93, 0.76);
     return float4(to_gamma(c), saturate(tex.a * col.a * CHARK.z));
 }
