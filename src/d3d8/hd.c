@@ -78,7 +78,7 @@ static D3DMULTISAMPLE_TYPE tms;
 static DWORD tq;
 static int broken;
 
-static float shadow_hw;
+static float shadow_hw, player[4]; // position and 1 / radius of the grass pressed under his feet
 static int redirected, post_done, additions_done, prepass_done, shadow_built, cmap_used;
 static float view[4][4], proj[4][4], clip_rows[4][4], srows[3][4], crows[3][4], cclip[4][4], eye[3], now_s;
 static IDirect3DSurface9 *saved_rt, *saved_ds;
@@ -620,13 +620,14 @@ const float *hd_proj(void) { return proj[0]; }
 static void vs_constants(hd_dev d, const float rows[4][4], const float *world)
 {
     static const float id[3][4] = { { 1, 0, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 1, 0 } };
-    float c[15][4] = { { 0 } };
+    float c[16][4] = { { 0 } };
     memcpy(c[0], rows, 64);
     memcpy(c[10], world ? world : id[0], 48);
     c[13][0] = eye[0], c[13][1] = eye[1], c[13][2] = eye[2], c[13][3] = now_s;
     float span = lv.fade1 - lv.fade0;
     c[14][0] = 7, c[14][1] = 1.6f, c[14][2] = lv.fade0, c[14][3] = 1 / (span > 1 ? span : 1);
-    IDirect3DDevice9_SetVertexShaderConstantF(d, 0, c[0], 15);
+    memcpy(c[15], player, 16);
+    IDirect3DDevice9_SetVertexShaderConstantF(d, 0, c[0], 16);
 }
 
 static void ps_constants(hd_dev d)
@@ -1017,8 +1018,15 @@ void hd_shadow_end(hd_dev d)
 
 void hd_cmap_begin(hd_dev d, const float *centre)
 {
-    float cl[4][4];
-    light_rows(crows, cl, centre, 1400, -3000, 3000, 0.001f);
+    float cl[4][4], snapped[3];
+    memcpy(player, centre, 12), player[3] = 1 / 130.0f;
+    // Move the map in whole texels along its two axes, so a walking character's shadow edge doesn't shimmer.
+    float f[3] = { -lv.sun[0], -lv.sun[1], -lv.sun[2] }, rt[3] = { -f[1], f[0], 0 }, up[3], texel = 2 * 1400.0f / CMAP;
+    norm3(rt);
+    up[0] = f[1] * rt[2] - f[2] * rt[1], up[1] = f[2] * rt[0] - f[0] * rt[2], up[2] = f[0] * rt[1] - f[1] * rt[0];
+    float x = dot3(centre, rt), y = dot3(centre, up), dx = floorf(x / texel) * texel - x, dy = floorf(y / texel) * texel - y;
+    for (int k = 0; k < 3; k++) snapped[k] = centre[k] + rt[k] * dx + up[k] * dy;
+    light_rows(crows, cl, snapped, 1400, -3000, 3000, 0.001f);
     memcpy(cclip, cl, 64);
     save_state(d);
     shadow_target(d, null_c, cmap_s, CMAP);

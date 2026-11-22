@@ -7,6 +7,7 @@ float4 VP[4]     : register(c0);    // clip rows
 float4 WORLD[3]  : register(c10);   // game draws: world rows
 float4 EYE_TIME  : register(c13);
 float4 WIND      : register(c14);   // strength, speed, grass fade start, 1 / fade length
+float4 PRESS     : register(c15);   // the player, 1 / radius of the grass pressed under his feet
 
 // Pixel constants
 float4 SUN       : register(c0);
@@ -82,7 +83,10 @@ V2P vs_inst(InstIn i)
     // Blades sink into the ground as they fade, so distance never pops.
     float rnd = frac(dot(root.xz, float2(0.7131, 0.5293)));
     float fade = saturate((1 - (dist - WIND.z) * WIND.w) * 2 - rnd);
-    w.y = root.y + (w.y - root.y) * fade;
+    float2 away = root.xz - PRESS.xz;
+    float near_feet = saturate(1 - length(away) * PRESS.w) * saturate(1 - abs(root.y - PRESS.y) / 300);
+    w.y = root.y + (w.y - root.y) * fade * (1 - 0.72 * near_feet);
+    w.xz += away * near_feet * saturate((w.y - root.y) / 20) * 0.35;
 #endif
 #ifdef WINDY
     float h = saturate((w.y - root.y) / 60);
@@ -253,6 +257,8 @@ float4 ps_world(V2P i, float2 vpos : VPOS) : COLOR
 // Additions: card, grass or solid.
 float4 ps_inst(V2P i, float2 vpos : VPOS, float face : VFACE) : COLOR
 {
+    // Dissolve whatever the camera is about to pass through, so it never fills the view.
+    clip(saturate((distance(EYE.xyz, i.wp.xyz) - 45) / 130) - frac(52.9829 * frac(dot(vpos, float2(0.0671, 0.00584)))));
 #ifdef TILED
     float3 tiled, tn;
     float3 fn = normalize(i.n);
