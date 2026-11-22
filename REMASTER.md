@@ -24,9 +24,12 @@ zoo hub). It is loose reference: do what looks best for this game, never chase a
   grass under the player, scenery at the camera, and the game's own screens. Report: `extracted/look/reports/step3.md`.
 - Step 4 is done (2026-11-22): the city hub (scene 8) is a moonlit night city through the same pipeline, with street
   lamps, lit windows and signs. Report: `extracted/look/reports/step4.md`.
+- Step 5 is done (2026-11-22): the zoo has hard-edged cliffs, finished buildings, a wrinkled elephant, a stone moat bank
+  and a proper water bed. On-screen messages no longer drop the picture to the flat look, and the moat no longer breaks
+  up when the camera skims it. Report: `extracted/look/reports/step5.md`.
 
 Measured on the desktop (RTX 4070, 2880x1800, 4x MSAA, vsync off, 3 runs of 600 frames, fixed view). Zoo hub: Remaster
-6.57-6.76 ms per frame. City hub: Remaster 5.63-5.73, HD 1.56-1.67.
+7.10-7.33 ms per frame, HD 1.52-1.64. City hub: Remaster 5.67-5.97, HD 1.54-1.59.
 
 Memory, measured under Proton: Proton lifts the game's 2 GB limit by default, so normal test runs show about 3,500 MB free.
 With the real limit on (`STEAM_COMPAT_CONFIG=noforcelgadd`), 23 level loads across 8 levels never went below 1,435 MB free,
@@ -42,7 +45,7 @@ hubs have Remaster data so far, and real Windows is not measured.
    is the main question.
 4. `tools/look/export.py` writes the additions to `taz-hd\look\sceneNN\`; `look.c` draws them.
 
-Rerun commands: see the usage lines at the top of `dress.py`. Look data: `blender -b extracted/look/pass3/zoohub-dressed.blend
+Rerun commands: see the usage lines at the top of `dress.py`. Look data: `blender -b extracted/look/pass5/zoohub-dressed.blend
 --factory-startup --python-exit-code 1 -P tools/look/export.py -- --level zoohub` (or `cityhub`). Shaders: `src/d3d8/shaders/build.sh`
 regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender` here means
 `~/.local/share/devtools/blender/blender`.
@@ -79,7 +82,12 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
 - The Windows installer sets the 4 GB flag on the player's own retail `taz.exe` and uninstalling restores it. We never ship
   a `taz.exe`: it is the game's copyrighted program, and the mod only works on the player's own copy.
 - Stay on D3D9 unless a measurement shows a newer API would make the game meaningfully faster after D3D9's own fixes, or
-  gives an effect we want (user, 2026-11-22). Measure after step 5: frame time across resolutions, and each part of the look code.
+  gives an effect we want (user, 2026-11-22).
+- Measured after step 5: frame time is the same from 1920x1200 to 2880x1800 (zoo 7.2-7.4 vs 7.1-7.3 ms, city 5.6-5.9 vs
+  5.7-6.0), so the CPU sets the frame rate. The Remaster code on the game's thread is 60-65% of the frame. In the city at
+  2880x1800 with 4x MSAA the GPU also reaches 97-100%. No case to switch API yet: cut that CPU work on D3D9 in step 6, then
+  measure again. How much of it is the API's own cost is not separated, and real Windows is not measured.
+- Hand work for the zoo art: 21 texture rules, 1 path change, no new assets, no hand exceptions, about 19 tuned numbers.
 - Sun is per level and placed for looks; baked vertex shadows are dropped.
 - Never move a game surface. Walkable tops keep their height; replacements must contain the collision shape.
 - Gameplay objects (books, signs, crates, trampolines, pickups) stay readable and clear of grass.
@@ -95,16 +103,17 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
 3. (Done 2026-11-22) Walk the whole zoo hub and fix what shows in motion: popping, sorting against particles and blended draws, feet in
    grass, hidden pickups, the camera passing through trees and fences, level transitions, quickload.
 4. (Done 2026-11-22) Second level (city hub, scene 8) to prove what carries over; measure hand work per level.
-5. More zoo hub art: sharper cliffs, buildings, the elephant, painted leftovers (zigzag moat bank, barbed wire).
+5. (Done 2026-11-22) More zoo hub art: sharper cliffs, buildings, the elephant, painted leftovers (zigzag moat bank, barbed wire).
 6. Later, with the user: optimization pass, whether to split into its own repo, rollout to all levels.
 
 ## Known problems
 
-- Taz looks flat from behind, which is how the player mostly sees him. The three non-Current Taz styles ignore the
-  level's sun and shadows.
-- The tutorial book's ribbon is pale and faint next to HD, and its yellow haze still covers part of the view up close.
-- Bright flat green ground shows around the book stands. Scenery right next to the camera dissolves in visible dots.
-  The water has fewer white glints than pass 3.
+- The middle of Taz's back is still dark in the zoo when the sun is behind him.
+- The tutorial book's ribbon is thinner and less bright than in HD, and a soft yellow glow remains around the book.
+- The fade for scenery by the camera is not checked in motion, and the water only along one run beside the moat. A sprite
+  closer to the camera than fading scenery may draw behind it.
+- With the camera pressed against the end of the moat, a few frames show a flat green patch and the moat wall. Cause unknown.
+- `master` still has the quickload freeze fixed here.
 - City hub: the big yellow shop door glares, grass right beside a lamp looks like daylight, searchlight beams are flat
   pale triangles, close-up walls are flat and very dark, bright painted green shows at lawn edges, and the painted
   pavement lines don't follow the slab joints. The intro flyover ran without a crash but its frames were not reviewed.
@@ -117,8 +126,11 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
   a full `tools/package.sh` run, a world piece first seen after the merge is built, a world buffer rewritten mid-scene.
 - At level 0, 3.9% of pixels differ from the D3D8 build by more than 16 levels, on thin edges and foliage. It looks
   the same side by side; the cause is not isolated.
-- Pass 3: cliffs are rounded like stacked pancakes, the water bed barely reads, the elephant is plain, buildings are
-  untouched, a green-and-white fragment sits in camera B's bottom-right corner.
+- Zoo art: rock colour is flat up close and the moss on its ledges looks like green shards. Buildings keep their low-poly
+  shapes and the ice detail is subtle. The elephant is a smooth blob under its wrinkles, and the barbed wire is a flat
+  cut-out. The water bed barely reads.
+- The elephant's skin goes on every untextured character in the level. An 18-leg walk found only the elephant, but did not
+  cover the whole hub.
 
 ## Working rules for this branch
 
