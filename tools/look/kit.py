@@ -15,7 +15,7 @@ bounds): tree fence boulder.
 """
 import bpy, bmesh, math, fnmatch, os, time
 import numpy as np
-from mathutils import Vector, Matrix, noise as mnoise
+from mathutils import Vector, Matrix, kdtree, noise as mnoise
 from mathutils.bvhtree import BVHTree
 from pathlib import Path
 
@@ -483,6 +483,7 @@ TEXSETS = {  # name -> (folder, colour, height, ao)
     "ivy017": ("ambientcg/acg-LeafSet017/content", "LeafSet017_2K-JPG_Color.jpg", "LeafSet017_2K-JPG_Opacity.jpg", None),
     "boulder_dry": ("polyhaven/ph-rock_boulder_dry/content", "rock_boulder_dry_diff_2k.jpg", "rock_boulder_dry_disp_2k.jpg", "rock_boulder_dry_ao_2k.jpg"),
     "stone_wall": ("polyhaven/ph-japanese_stone_wall/content", "japanese_stone_wall_diff_2k.jpg", "japanese_stone_wall_disp_2k.jpg", "japanese_stone_wall_ao_2k.jpg"),
+    "old_sandstone": ("polyhaven/ph-old_sandstone_02/content", "old_sandstone_02_diff_2k.jpg", "old_sandstone_02_disp_2k.jpg", "old_sandstone_02_ao_2k.jpg"),
     "asphalt": ("polyhaven/ph-asphalt_02/content", "asphalt_02_diff_2k.jpg", "asphalt_02_disp_2k.jpg", "asphalt_02_ao_2k.jpg"),
     "paving": ("polyhaven/ph-concrete_pavement/content", "concrete_pavement_diff_2k.jpg", "concrete_pavement_disp_2k.jpg", "concrete_pavement_ao_2k.jpg"),
 }
@@ -1760,29 +1761,61 @@ def cliff_masses(cliff_objs, top_objs, ground_objs, scale=1.0, *, top_min_z=-1e9
     hz = Hat(co[:, 0], co[:, 1])
     hz = np.where(np.isnan(hz), co[:, 2], hz)
     off3 = rng.uniform(-50, 50, 3)
-    nzv = np.array([mnoise.noise(Vector((x * 0.35 / scale, y * 0.35 / scale, 0)) + Vector(off3)) for x, y, _ in co])
-    L = (co[:, 2] - base) / (np.mean(band) * scale) + nzv * 0.6
+    nzv = np.array([mnoise.noise(Vector((x * 0.3 / scale, y * 0.3 / scale, 0)) + Vector(off3)) for x, y, _ in co])
+    # Bedding planes dip across the level, so the bands never read as stacked discs.
+    dip = (co[:, 0] * 0.13 + co[:, 1] * 0.07) / scale
+    L = (co[:, 2] - base + dip * scale) / (np.mean(band) * scale) + nzv * 0.45
     idx = np.floor(L)
     f = L - idx
-    bd = np.array([((int(ii) * 7919 + seed * 31) % 97) / 97.0 for ii in idx])  # per-band depth
-    prof = ledge * scale * (0.35 + 0.65 * bd) * np.clip(f, 0, 1) ** 0.7          # ledge: band top juts out
-    prof -= 0.12 * scale * (f < 0.08)                                           # groove under each ledge
-    ero = np.array([mnoise.noise(Vector((x * 1.4 / scale, y * 1.4 / scale, z * 0.25 / scale)) + Vector(off3) * 2)
-                    for x, y, z in co]) * erosion * scale
+    bd = np.array([((int(ii) * 7919 + seed * 31) % 97) / 97.0 for ii in idx])
+    prof = ledge * scale * (bd - 0.35) + 0.14 * scale * (f - 0.5)                # each band stands at its own depth
+    prof -= 0.1 * scale * (f < 0.07)                                             # dark seam under it
     w = np.clip(1.0 - np.abs(nr[:, 2]) * 1.4, 0, 1)
     nh = nr[:, :2] / np.maximum(np.linalg.norm(nr[:, :2], axis=1, keepdims=True), 1e-6)
-    co[:, :2] += nh * ((prof + ero) * w)[:, None]
+    moved = co.copy()
+    moved[:, :2] += nh * (prof * w)[:, None]
+    # Each band breaks into blocks, wider than tall; every block is cut to one flat plane, which makes the hard edges.
+    seeds = moved[np.unique(np.floor(moved / (np.array((1.5, 1.5, 0.9)) * scale)).astype(int), axis=0, return_index=True)[1]]
+    tree = kdtree.KDTree(len(seeds))
+    for i_, q in enumerate(seeds):
+        tree.insert((q[0], q[1], q[2] * 1.7), i_)
+    tree.balance()
+    near = np.array([tree.find((x, y, z * 1.7))[1] for x, y, z in moved])
+    _, block = np.unique(np.stack([near, idx.astype(np.int64)], 1), axis=0, return_inverse=True)
+    block = block.ravel()
+    count = np.bincount(block)
+    centre = np.stack([np.bincount(block, moved[:, a_]) for a_ in range(3)], 1) / count[:, None]
+    plane = np.stack([np.bincount(block, nr[:, a_]) for a_ in range(3)], 1) / count[:, None]
+    plane += rng.normal(0, 0.2, plane.shape) * (1, 1, 0.6)
+    plane /= np.maximum(np.linalg.norm(plane, axis=1, keepdims=True), 1e-6)
+    jut = rng.uniform(-0.05, 0.16, len(count)) * scale
+    along = ((moved - centre[block]) * plane[block]).sum(1)
+    cut = moved + plane[block] * (jut[block] - along)[:, None]
+    co = co + (cut - co) * w[:, None]
+    # Never behind the game's wall: its face stays inside the rock.
+    out = (co[:, :2] - moved[:, :2] + nh * (prof * w)[:, None]) * nh
+    short = np.minimum(out.sum(1) + dilate * 0.75 * scale, 0)
+    co[:, :2] -= nh * short[:, None]
     # tops: just under the walkable cliff top; the rim gets a broken outline
     top = nr[:, 2] > 0.5
     rim = (w > 0.25) & (co[:, 2] > hz - 0.35 * scale)
     co[top, 2] = np.minimum(co[top, 2], hz[top] - 0.03 * scale)
     bump = np.array([max(0.0, mnoise.noise(Vector((x * 0.9 / scale, y * 0.9 / scale, 3.0)))) for x, y, _ in co[rim]])
-    co[rim, 2] += bump * top_break * scale
+    co[rim, 2] = np.minimum(co[rim, 2] + bump * top_break * scale, hz[rim] - 0.03 * scale)
     rm.vertices.foreach_set("co", co.ravel())
     rm.update()
     rm.materials.clear()
     rm.materials.append(mat or mat_sandstone(None, scale, drips=False, base_dark=False))
-    rm.polygons.foreach_set("use_smooth", np.ones(len(rm.polygons), bool))
+    # Flat faces merged: crisp edges, and far fewer triangles than the voxel grid.
+    tmp = _obj(name + "_tmp", rm, coll)
+    dc = tmp.modifiers.new("flat", "DECIMATE")
+    dc.decimate_type, dc.angle_limit = "DISSOLVE", math.radians(5)
+    flat_me = bpy.data.meshes.new_from_object(tmp.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+    bpy.data.objects.remove(tmp)
+    bpy.data.meshes.remove(rm)
+    rm = flat_me
+    rm.name = name
+    rm.polygons.foreach_set("use_smooth", np.zeros(len(rm.polygons), bool))
     rock = _obj(name, rm, coll)
     # rim edges for vines/overgrowth: boundary cells of the (undilated) cliff, outward normals
     edges = []
@@ -1805,12 +1838,12 @@ def cliff_masses(cliff_objs, top_objs, ground_objs, scale=1.0, *, top_min_z=-1e9
             if rng.random() > 0.18:
                 continue
             r = rng.uniform(0.15, 0.5) * scale
-            res = bmesh.ops.create_icosphere(rb, subdivisions=3, radius=r)
+            res = bmesh.ops.create_icosphere(rb, subdivisions=2, radius=r)
             oo = Vector(rng.uniform(-40, 40, 3))
             cpos = Vector((xs[i] + di * (c_ + dilate * scale + rng.uniform(0, 0.5) * scale),
                            ys[j] + dj * (c_ + dilate * scale + rng.uniform(0, 0.5) * scale), gfill[ii, jj] + r * 0.35))
             for v in res["verts"]:
-                v.co = Vector((v.co.x * rng.uniform(1, 1.4), v.co.y, v.co.z * 0.7)) * (1 + 0.15 * mnoise.noise(v.co * 3 / max(r, 1e-3) + oo))
+                v.co = Vector((v.co.x * rng.uniform(1, 1.4), v.co.y, v.co.z * 0.7)) * (1 + 0.32 * mnoise.noise(v.co * 2.2 / max(r, 1e-3) + oo))
                 v.co = cpos + v.co
             nrub += 1
     rubble = None
@@ -1818,7 +1851,7 @@ def cliff_masses(cliff_objs, top_objs, ground_objs, scale=1.0, *, top_min_z=-1e9
         rmesh = bpy.data.meshes.new(name + "_rubble")
         rb.to_mesh(rmesh)
         rmesh.materials.append(rubble_mat or mat_rock(scale=scale))
-        rmesh.polygons.foreach_set("use_smooth", np.ones(len(rmesh.polygons), bool))
+        rmesh.polygons.foreach_set("use_smooth", np.zeros(len(rmesh.polygons), bool))
         rubble = _obj(name + "_rubble", rmesh, coll)
         rubble["kit_count"] = nrub
     rb.free()
