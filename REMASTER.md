@@ -26,9 +26,12 @@ zoo hub). It is loose reference: do what looks best for this game, never chase a
   lamps, lit windows and signs. Report: `extracted/look/reports/step4.md`.
 
 Measured on the desktop (RTX 4070, 2880x1800, 4x MSAA, vsync off, 3 runs of 600 frames, fixed view). Zoo hub: Remaster
-6.57-6.76 ms per frame. City hub: Remaster 5.63-5.73, HD 1.56-1.67. Free address space reads about 3,500 MB in both hubs
-and held steady over five level changes. Earlier notes said 1,772 MB; the cause of the difference is not known, and test
-runs did not reproduce the 2 GB limit this game has without the large-address flag.
+6.57-6.76 ms per frame. City hub: Remaster 5.63-5.73, HD 1.56-1.67.
+
+Memory, measured under Proton: Proton lifts the game's 2 GB limit by default, so normal test runs show about 3,500 MB free.
+With the real limit on (`STEAM_COMPAT_CONFIG=noforcelgadd`), 23 level loads across 8 levels never went below 1,435 MB free,
+so the game uses about 600 MB. With the 4 GB flag set in the exe, the same walk kept at least 3,485 MB free. Only the two
+hubs have Remaster data so far, and real Windows is not measured.
 
 ## How the pieces fit
 
@@ -73,6 +76,8 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
   this size plus about 15 minutes of review, and 30 to 60 minutes more for a new surface type.
 - Frame rate is a later pass. Don't let it block the look, but don't build anything that can't be made fast.
 - The remaster targets modern hardware (user, 2026-11-22). Older PCs are not a reason to avoid a feature or graphics API.
+- The Windows installer sets the 4 GB flag on the player's own retail `taz.exe` and uninstalling restores it. We never ship
+  a `taz.exe`: it is the game's copyrighted program, and the mod only works on the player's own copy.
 - Stay on D3D9 unless a measurement shows a newer API would make the game meaningfully faster after D3D9's own fixes, or
   gives an effect we want (user, 2026-11-22). Measure after step 5: frame time across resolutions, and each part of the look code.
 - Sun is per level and placed for looks; baked vertex shadows are dropped.
