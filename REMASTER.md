@@ -24,12 +24,12 @@ zoo hub). It is loose reference: do what looks best for this game, never chase a
   grass under the player, scenery at the camera, and the game's own screens. Report: `extracted/look/reports/step3.md`.
 - Step 4 is done (2026-11-22): the city hub (scene 8) is a moonlit night city through the same pipeline, with street
   lamps, lit windows and signs. Report: `extracted/look/reports/step4.md`.
-- Step 5 is done (2026-11-22): the zoo has hard-edged cliffs, finished buildings, a wrinkled elephant, a stone moat bank
+- Step 5 is done (2026-11-22): the zoo has hard-edged cliffs, finished buildings, a creased elephant, real 3D barbed wire, a stone moat bank
   and a proper water bed. On-screen messages no longer drop the picture to the flat look, and the moat no longer breaks
   up when the camera skims it. Report: `extracted/look/reports/step5.md`.
 
 Measured on the desktop (RTX 4070, 2880x1800, 4x MSAA, vsync off, 3 runs of 600 frames, fixed view). Zoo hub: Remaster
-7.10-7.33 ms per frame, HD 1.52-1.64. City hub: Remaster 5.67-5.97, HD 1.54-1.59.
+7.18-7.44 ms per frame, HD 1.63-1.64. City hub: Remaster 5.58-5.67, HD 1.56-1.61.
 
 Memory, measured under Proton: Proton lifts the game's 2 GB limit by default, so normal test runs show about 3,500 MB free.
 With the real limit on (`STEAM_COMPAT_CONFIG=noforcelgadd`), 23 level loads across 8 levels never went below 1,435 MB free,
@@ -83,9 +83,9 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
   a `taz.exe`: it is the game's copyrighted program, and the mod only works on the player's own copy.
 - Stay on D3D9 unless a measurement shows a newer API would make the game meaningfully faster after D3D9's own fixes, or
   gives an effect we want (user, 2026-11-22).
-- Measured after step 5: frame time is the same from 1920x1200 to 2880x1800 (zoo 7.2-7.4 vs 7.1-7.3 ms, city 5.6-5.9 vs
-  5.7-6.0), so the CPU sets the frame rate. The Remaster code on the game's thread is 60-65% of the frame. In the city at
-  2880x1800 with 4x MSAA the GPU also reaches 97-100%. No case to switch API yet: cut that CPU work on D3D9 in step 6, then
+- Measured after step 5: frame time is the same from 1920x1200 to 2880x1800 (zoo 7.19-7.21 vs 7.18-7.44 ms, city 5.63-5.96
+  vs 5.58-5.67), so the CPU sets the frame rate. The Remaster code on the game's thread is 60-70% of the frame. In the city
+  at 2880x1800 with 4x MSAA the GPU also reaches 94-97%. No case to switch API yet: cut that CPU work on D3D9 in step 6, then
   measure again. How much of it is the API's own cost is not separated, and real Windows is not measured.
 - Hand work for the zoo art: 21 texture rules, 1 path change, no new assets, no hand exceptions, about 19 tuned numbers.
 - Sun is per level and placed for looks; baked vertex shadows are dropped.
@@ -126,10 +126,11 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
 - At level 0, 3.9% of pixels differ from the D3D8 build by more than 16 levels, on thin edges and foliage. It looks
   the same side by side; the cause is not isolated.
 - Zoo art: rock colour is flat up close and the moss on its ledges looks like green shards. Buildings keep their low-poly
-  shapes and the ice detail is subtle. The elephant is a smooth blob under its wrinkles, and the barbed wire is a flat
-  cut-out. The water bed barely reads.
-- The elephant's skin goes on every untextured character in the level. An 18-leg walk found only the elephant, but did not
-  cover the whole hub.
+  shapes and the ice detail is subtle. The elephant keeps its low-poly blob shape under its new hide. The water bed barely
+  reads.
+- The elephant's hide goes on any untextured character's mid-grey parts. An 18-leg walk found only the elephant, but did
+  not cover the whole hub.
+- Test runs load any shader files left in `taz-hd\shaders` over the built-in ones. `qa/fast.sh start` now clears them.
 
 ## Working rules for this branch
 
