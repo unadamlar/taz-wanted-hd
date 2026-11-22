@@ -1275,7 +1275,7 @@ void hd_world_material(hd_dev d, unsigned long long hash)
             emit[0] = glows[i].strength, emit[1] = glows[i].mask ? glows[i].lo : -1, emit[2] = glows[i].mask ? 1 / (fabsf(span) < 0.001f ? 0.001f : span) : 1;
         }
     IDirect3DDevice9_SetPixelShaderConstantF(d, 26, emit, 1);
-    float hold[4] = { lv.hold, lv.exposure, lv.contrast * 1.26f, lv.glass_c[1] + origin[1] - 900 };
+    float hold[4] = { lv.hold, lv.exposure, lv.contrast * 1.26f, lv.glass_c[1] + origin[1] - 815 };
     IDirect3DDevice9_SetPixelShaderConstantF(d, 28, hold, 1);
     for (UINT i = 0; i < nbinds && n < 2; i++)
         if (binds[i].hash == hash && (UINT)binds[i].mat < nmats) b[n++] = &binds[i];
