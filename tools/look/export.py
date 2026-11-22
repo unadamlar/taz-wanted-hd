@@ -636,6 +636,39 @@ if "chain" in LEVEL or "grill" in LEVEL:
         parts = [solid.on_card(P, N, pos, uv, np.ones_like(col) if kind == "chain" else col, size) for pos, uv, col in cards[h].values()]
         place_static(kind, *(np.concatenate(x) for x in zip(*parts)), mat)
 
+# Things the game may move: models in their own space, drawn at the game's transform in place of its draws (hd_swap_draw).
+swaps = {}
+if "swap" in LEVEL:
+    cfg = LEVEL["swap"]
+    card_h, labels = {tex_hash[l] for l in cfg["cards"]}, collections.defaultdict(list)
+    for l, h in tex_hash.items():
+        labels[h].append(l)
+    known = {dress.base_name(m.name.split(":", 1)[1]) for m in bpy.data.materials if m.name.startswith(("lit:", "lit+:"))}
+    found = solid.models(solid.capture([os.path.join(ext, "look", f) for f in ("world-hero.bin", "world-sweep.bin")],
+                                       card_h | {tex_hash[l] for l in cfg["soft"]}), card_h)
+    label_of = lambda h: next(l for l in labels[h] if l in known)
+    solid_tex = {h: game_rgba(label_of(h))[..., 3].mean() > 0.98 for h in {d[0] for ds in found.values() for d in ds}}
+    for keys, ds in sorted(found.items(), key=lambda kv: -len(kv[0])):  # a sweep frame can hold part of a model
+        ds = [d for d in ds if d[0] in card_h or solid_tex[d[0]]]  # see-through parts stay the game's own draws
+        if {solid.key_of(d[4]) for d in ds} <= swaps.keys():
+            continue
+        T = [solid.triangles(d[2], d[3], d[4]) for d in ds]
+        if all(d[0] in card_h for d in ds):
+            pos, uv, col = (np.concatenate(x) for x in zip(*T))
+            size = tuple(np.ptp(pos.reshape(-1, 3), axis=0)[[0, 1]]) if np.ptp(pos[..., 2]) < 1 else (560.0, 1128.0)
+            P, N = solid.plate(game_rgba(label_of(ds[0][0]))[..., 3], size, 5.0, tol=1.2, min_area=25.0)
+            p, n, u, _ = (np.concatenate(x) for x in zip(*(solid.on_card(P, N, pos[t], uv[t], col[t], size) for t in solid.islands(pos))))
+            m = np.full(len(p), MAT_ID["iron"])
+        else:
+            mats = [solid_mat(label_of(d[0])) for d in ds]
+            tex = np.concatenate([np.full(len(t[0]), i) for i, t in enumerate(T)])
+            p, n, u, mi = solid.rounded(np.concatenate([t[0] for t in T]), np.concatenate([t[1] for t in T]), tex)
+            m = np.array(mats)[mi]
+        pi = add_proto("swap%d" % len(protos), p.astype(np.float32), n.astype(np.float32), np.ones_like(p, np.float32), u.astype(np.float32), m)
+        print("export: replaces %d game draws, %s: %d triangles" % (len(ds), sorted({labels[d[0]][0].rsplit("/", 1)[1] for d in ds}), len(p) // 3))
+        for d in ds:
+            swaps.setdefault(solid.key_of(d[4]), (d[0], pi))
+
 # chunks: instance centre -> grid cell; each cell lists (proto, matrices), shuffled for thinning
 cells = collections.defaultdict(lambda: collections.defaultdict(list))
 boxes = {}
@@ -823,9 +856,11 @@ with open(os.path.join(tmp, "scene.bin"), "wb") as f:
         for pi, rows in sorted(runs.items()):
             f.write(struct.pack("<II", pi, len(rows)))
             f.write(np.stack(rows).astype("<f4").tobytes())
-    if lights or glows:  # optional sections, absent for a level without local lights
+    if lights or glows or swaps:  # optional sections, absent for a level without local lights
         f.write(struct.pack("<I", len(lights)) + b"".join(struct.pack("<8f", *l) for l in lights))
         f.write(struct.pack("<I", len(glows)) + b"".join(struct.pack("<Q3fI", h, *glows[h]) for h in sorted(glows)))
+    if swaps:
+        f.write(struct.pack("<I", len(swaps)) + b"".join(struct.pack("<QQI", k, *swaps[k]) for k in sorted(swaps)))
 
 # ---------------------------------------------------------------- level.ini
 sun, grade, sk = LV["sun"], LV["grade"], LV["sky"]

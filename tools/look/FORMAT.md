@@ -24,6 +24,7 @@ u32 nproto; proto protos[nproto]
 u32 nchunk; chunk chunks[nchunk]
 u32 nlight; light lights[nlight]   optional: a level without lamps or glows ends at the chunks
 u32 nglow;  glow glows[nglow]
+u32 nswap;  swap swaps[nswap]      optional, needs the two sections before it; sorted by key
 ```
 
 ```
@@ -71,6 +72,11 @@ glow (24 bytes): a game texture that emits, added after lighting
   u64 fingerprint
   f32 strength, lo, hi over the texture's own colour; lo, hi as a bind's smoothstep on brightness
   u32 mask             0 the whole texture, 2 by brightness
+
+swap (20 bytes): a game draw replaced by a prototype in that draw's own space, placed by the game's world matrix each frame
+  u64 key              FNV-1a 64 over the draw's vertices, position (12 bytes) and uv (8 bytes) of each
+  u64 texture          fingerprint of the draw's texture
+  u32 proto            has no instances; drawn once per transform and frame
 ```
 
 Conventions:

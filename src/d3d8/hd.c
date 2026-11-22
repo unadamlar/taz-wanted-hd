@@ -53,6 +53,9 @@ static struct bind *binds; static UINT nbinds;
 static UINT64 *hides; static UINT nhides, nshades; // the last nshades are baked shadow decals
 static struct light *lights; static UINT nlights;
 static struct file_glow *glows; static UINT nglows;
+static struct swap { UINT64 key, tex; UINT proto; } *swaps; static UINT nswaps;
+static UINT64 swap_tex[16]; static UINT nswap_tex;
+static struct { UINT proto; float world[12]; } swapped[64]; static UINT nswapped; // already drawn this frame
 static IDirect3DTexture9 *light_tex;
 static int skin_mat = -1;
 static float light_grid[4];
@@ -496,6 +499,16 @@ int hd_load(hd_dev d, int scene)
         memcpy(glows, p, nglows * sizeof *glows), p += nglows * sizeof *glows;
         build_lights(d);
     }
+    if (p + 4 <= file + n) { // optional, sorted by key: game draws replaced by a prototype at the game's transform
+        nswaps = U();
+        swaps = malloc((nswaps + 1) * sizeof *swaps);
+        for (UINT i = 0; i < nswaps; i++, p += 20) {
+            memcpy(&swaps[i].key, p, 8), memcpy(&swaps[i].tex, p + 8, 8), memcpy(&swaps[i].proto, p + 16, 4);
+            UINT k = 0;
+            while (k < nswap_tex && swap_tex[k] != swaps[i].tex) k++;
+            if (k == nswap_tex && k < 16) swap_tex[nswap_tex++] = swaps[i].tex;
+        }
+    }
     snprintf(path, sizeof path, "taz-hd\\look\\scene%02d\\sky.dds", scene);
     sky_tex = load_cube(d, path);
     free(file);
@@ -521,6 +534,7 @@ void hd_unload(void)
     if (light_tex) IDirect3DTexture9_Release(light_tex), light_tex = NULL;
     skin_mat = -1;
     free(lights), free(glows), lights = NULL, glows = NULL, nlights = nglows = 0, light_grid[3] = 0;
+    free(swaps), swaps = NULL, nswaps = nswap_tex = nswapped = 0;
     free(mats), free(binds), free(hides), free(protos), free(subs), free(runs), free(chunks), free(vis);
     mats = NULL, binds = NULL, hides = NULL, protos = NULL, subs = NULL, runs = NULL, chunks = NULL, vis = NULL;
     nmats = nbinds = nhides = nshades = nprotos = nchunks = 0;
@@ -1275,6 +1289,62 @@ void hd_world_quick_end(hd_dev d)
     IDirect3DDevice9_SetPixelShader(d, NULL);
 }
 
+int hd_swap_texture(unsigned long long h)
+{
+    for (UINT i = 0; i < nswap_tex; i++)
+        if (swap_tex[i] == h) return 1;
+    return 0;
+}
+
+int hd_swap_proto(unsigned long long key)
+{
+    UINT lo = 0, hi = nswaps;
+    while (lo < hi) {
+        UINT mid = (lo + hi) / 2;
+        if (swaps[mid].key == key) return swaps[mid].proto < nprotos ? (int)swaps[mid].proto : -1;
+        if (swaps[mid].key < key) lo = mid + 1;
+        else hi = mid;
+    }
+    return -1;
+}
+
+// A model is several game draws: the first one seen at a transform draws it all.
+int hd_swap_claim(int proto, const float *world)
+{
+    for (UINT i = 0; i < nswapped; i++)
+        if (swapped[i].proto == (UINT)proto && !memcmp(swapped[i].world, world, 48)) return 0;
+    if (nswapped < 64) swapped[nswapped].proto = proto, memcpy(swapped[nswapped++].world, world, 48);
+    return 1;
+}
+
+void hd_swap_draw(hd_dev d, int proto, const float *world)
+{
+    static const float no_fade[4] = { 0, 0, 0, 0 };
+    const struct proto *q = &protos[proto];
+    hd_camera(d);
+    save_state(d);
+    plain_states(d);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_ZENABLE, TRUE);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_ZWRITEENABLE, TRUE);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
+    vs_constants(d, clip_rows, world);
+    ps_constants(d);
+    bind_common(d);
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 32, no_fade, 1);
+    IDirect3DDevice9_SetVertexDeclaration(d, d_world);
+    IDirect3DDevice9_SetStreamSource(d, 0, vb, 0, 36);
+    IDirect3DDevice9_SetIndices(d, ib);
+    sampler(d, 0, D3DTEXF_ANISOTROPIC, D3DTEXF_LINEAR, D3DTADDRESS_WRAP);
+    for (UINT s = q->sub0; s < q->sub0 + q->nsub; s++) {
+        if (subs[s].mat >= nmats || !subs[s].count) continue;
+        bind_material(d, &mats[subs[s].mat], PASS_COLOUR);
+        IDirect3DDevice9_SetVertexShader(d, v_world);
+        IDirect3DDevice9_SetRenderState(d, D3DRS_CULLMODE, D3DCULL_NONE); // the game's transforms can mirror
+        IDirect3DDevice9_DrawIndexedPrimitive(d, D3DPT_TRIANGLELIST, q->base, 0, q->nv, subs[s].first, subs[s].count / 3);
+    }
+    restore_state(d);
+}
+
 void hd_merge_buffers(hd_dev d, struct IDirect3DVertexBuffer9 *v, struct IDirect3DIndexBuffer9 *i)
 {
     IDirect3DDevice9_SetStreamSource(d, 0, v, 0, 36);
@@ -1379,5 +1449,6 @@ void hd_frame_end(hd_dev d)
     if (redirected) hd_post(d);
     unbind_common(d);
     post_done = additions_done = prepass_done = sky_done = 0;
+    nswapped = 0;
     check_reload(d);
 }

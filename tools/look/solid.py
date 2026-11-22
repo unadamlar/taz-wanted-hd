@@ -208,6 +208,27 @@ def on_card(P, N, pos, uv, col, size):
     return [np.concatenate(x) for x in zip(*parts)]
 
 
+def islands(pos):
+    """Triangle indices of each connected piece: one game draw can hold two separate gates."""
+    _, ids = np.unique(np.round(pos.reshape(-1, 3), 1), axis=0, return_inverse=True)
+    ids = ids.reshape(-1, 3)
+    root = list(range(ids.max() + 1))
+
+    def find(a):
+        while root[a] != a:
+            root[a] = root[root[a]]
+            a = root[a]
+        return a
+
+    for a, b, c in ids.tolist():
+        root[find(b)] = find(a)
+        root[find(c)] = find(a)
+    groups = collections.defaultdict(list)
+    for t, f in enumerate(ids.tolist()):
+        groups[find(f[0])].append(t)
+    return [np.array(g) for g in groups.values()]
+
+
 def rounded(pos, uv, tex, levels=2):
     """A low-poly model subdivided smooth, resized to its old bounds: corner positions, normals, uvs, texture index."""
     vs, inv = np.unique(np.round(pos.reshape(-1, 3), 2), axis=0, return_inverse=True)
