@@ -30,7 +30,7 @@ u32 nswap;  swap swaps[nswap]      optional: placed game objects the look replac
 ```
 material (128 bytes)
   char name[32], albedo[32], normal[32]   texture names without .dds; empty = none
-  u16  kind    0 opaque, 1 card (alpha cut), 2 grass, 3 water
+  u16  kind    0 opaque, 1 card (alpha cut), 2 grass, 3 water, 4 glass (blended last), 5 sun-map caster (never drawn)
   u16  flags   1 triplanar, 2 two-sided, 4 wind
   f32  tile    game units per texture repeat; 0 = use the mesh UVs
   f32  tint[3] linear multiplier
@@ -104,6 +104,8 @@ sky_scale
 unbake     optional. Above 0 the game's vertex colours are baked light (a night level): their tint is dropped
            and their brightness v becomes v^unbake
 char_fill  optional, three numbers: extra ambient on characters only, so they read away from a night level's lamps
+glass_centre  optional, three numbers: the dome's middle; only the glass material's far half draws
+hold       optional. Above 0 game surfaces keep their painted colour through the tone curve; light only shades it
 ```
 
 - sun_dir points towards the sun, in game space. sun_color already includes the 1/pi: diffuse = albedo * sun_color * N.L.

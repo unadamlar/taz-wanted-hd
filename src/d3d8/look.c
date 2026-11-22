@@ -116,7 +116,7 @@ static void prepass(IDirect3DDevice8 *dev)
 {
     struct IDirect3DDevice9 *d = d3d9_device(dev);
     hd_camera(d);
-    if (hd_shadow_needed() && merge_ready()) {
+    if (hd_shadow_needed() && (merge_ready() || loaded_scene == PLANET_LOOK)) {
         hd_shadow_begin(d);
         merge_each(dev, depth_batch);
         hd_shadow_end(d);
@@ -567,6 +567,8 @@ void look_frame(IDirect3DDevice8 *dev)
     if (hd_loaded() && (scene != loaded_scene || !level)) hd_unload(), merge_reset(), loaded_scene = -1, nown = 0;
     if (level && !hd_loaded() && scene >= 2 && (scene != loaded_scene || hd_lost())) {
         loaded_scene = scene; // tried once per scene: a scene without data stays on HD
+        // Planet X's data is where it sits in the Taz hub
+        hd_set_origin(scene != PLANET_LOOK || SCENE == 18 ? 0 : 42619.57f, scene != PLANET_LOOK ? 0 : SCENE == 3 ? 81649.812f : SCENE == 8 ? 73662.359f : SCENE == 13 ? 51583.773f : 0, 0);
         if (hd_load(d, scene)) merge_reset();
     }
     if (scene < 2) loaded_scene = -1;

@@ -106,27 +106,30 @@ CITY_GLOW = [  # texture pattern, strength, brightness range that glows (None = 
     ("cityhub/textures/gladiatoons.gif", 1.1, None), ("cityhub/textures/marvinwash.gif", 1.1, None),
 ]
 
-# ---- Planet X, where the doors between hubs lead: one small model far below all four hubs' levels. Doors, signs and
-# the flag keep their paint; only the rock, turf and station get relief.
-PLANET_RULES = [("resTex/shadowsub", "hide")]
-PLANET_DETAIL = [
-    ("tazhub/textures/planetxgrass", "d_turf"), ("tazhub/textures/planetx*", "d_rock"),
-    ("tazhub/textures/spacestation", "d_metal"), ("tazhub/extras/snowbeam*", "d_metal"), ("tazhub/extras/aquasandcas2", "d_metal"),
-    ("tazhub/extras/metaledges", "d_metal"), ("tazhub/textures/chrome", "d_metal"), ("tazhub/textures/safarigrill01", "d_metal"),
+# ---- Planet X, where the doors between hubs lead: one small model far below all four hubs' levels. Exported where it sits
+# in the Taz hub; look.c shifts the additions to the hub it is entered from.
+PLANET_RULES = [
+    ("resTex/shadowsub", "hide"), ("tazhub/textures/spacestation", "dome"), ("tazhub/textures/safarigrill01", "dome"),
+    ("tazhub/textures/planetxgrass", "ground"),
+    ("tazhub/extras/*hubxdoor", "gameplay"), ("tazhub/extras/metaledges", "gameplay"), ("tazhub/extras/tazcage?*", "gameplay"),
+    ("tazhub/extras/safwarmwood*", "gameplay"), ("tazhub/textures/safwarmwood", "gameplay"), ("tazhub/extras/snowbeam*", "gameplay"),
+    ("tazhub/extras/spookystake05", "gameplay"), ("tazhub/textures/planetflag", "gameplay"), ("tazhub/textures/chrome", "gameplay"),
 ]
+PLANET_DETAIL = [("tazhub/textures/planetx?", "d_rock"), ("tazhub/textures/planetx", "d_rock"), ("tazhub/extras/aquasandcas2", "d_metal"), ("tazhub/extras/tazcage", "d_metal")]
 PLANET_TILES = {
     "d_rock": dict(set="rock061", period=2.4, px=1024, detail=0.6, triplanar=True, rough=0.8, normal=0.9),
-    "d_turf": dict(set="rocky_trail", period=1.6, px=1024, detail=0.3, rough=0.9, normal=0.5),
     "d_metal": dict(set="asphalt", period=1.2, px=1024, detail=0.1, triplanar=True, rough=0.32, normal=0.2),
+    "red_ground": dict(set="rock061", period=1.8, px=2048, sat=1.0, val=1.0, tint=(1.9, 0.2, 0.14), rough=0.86),
 }
-PLANET_GLOW = [  # the doors stand all around the planet, so some always face away from the sun: their paint must still read
-    ("*hubxdoor", 0.4, None), ("tazhub/textures/planetflag", 0.45, None), ("tazhub/textures/cross", 0.45, None),
-    ("tazhub/extras/tazcagelock*", 0.3, None),
-]
+PLANET_HAND = {
+    "camera_B": dict(loc=(19.5, -3.0, -703.2), look_at=(16.5, 1.4, -705.0), lens=16.0),
+    "camera_C": dict(loc=(13.0, 6.0, -703.5), look_at=(17.0, 1.0, -705.0), lens=16.0),
+    "taz_offset_B": (0.0, 0.0, 0.0), "elephant_offset_B": (0.0, 0.0, 0.0),
+}
 PLANET_LOOK = dict(
     sun=dict(sun_azimuth=215.0, sun_elevation=48.0, sun_strength=2.26, sun_color="#fff1e0"),
-    grade=dict(exposure=0.454, contrast=1.0, look="AgX - Punchy", saturation=1.3, bloom=0.5, fog=0.01, fog_start=400.0, fog_depth=400.0, ambient_strength=1.0),
-    sky=dict(ambient="#a29fb0"), cliff=dict(),
+    grade=dict(exposure=0.454, look="AgX - Punchy", saturation=1.3, bloom=0.5, fog=0.01, fog_start=400.0, fog_depth=400.0, ambient_strength=1.0),
+    sky=dict(zenith="#070a24", horizon="#141a48", horizon_warm="#1c2258", sky_strength=1.0, cloud_white=0.2, ambient="#a29fb0"), cliff=dict(),
 )
 
 LEVELS = {
@@ -147,7 +150,9 @@ LEVELS = {
                            "road": (("asphalt", 3, 0.42, 0.56), ("paint", 3, 0.86, 0.93))},
                     glow=CITY_GLOW, lamps=CITY_LAMPS, unbake=0.5, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
     "planetx": dict(scene=30, pak=("tazhub", "cityhub"),  # the city has its own copies of three door paintings
-                    blend="planet/planetx.blend", out="planet/pass1", rules=PLANET_RULES, hand={},
-                    look=PLANET_LOOK, hdri=None, hdri_rotation=0.0, game_sky=True, materials=tuple(PLANET_TILES),
-                    tiles=PLANET_TILES, detail=PLANET_DETAIL, glow=PLANET_GLOW, char_fill=(0.16, 0.16, 0.22)),
+                    blend="planet/planetx.blend", out="planet/pass2", rules=PLANET_RULES, hand=PLANET_HAND, look=PLANET_LOOK,
+                    hdri=None, hdri_rotation=0.0, hub=(11.2, -3.9, 21.8, 6.8), clutter=False, game_sky=True, clear_islands=True,
+                    materials=tuple(PLANET_TILES) + ("lawn", "grass"), tiles=PLANET_TILES, detail=PLANET_DETAIL,
+                    tints={"lawn": (0.16, 1.45, 0.4), "red_ground": (1.45, 1.2, 1.2)}, binds={"ground": (("lawn", 0, 0.0, 1.0), ("red_ground", 1, -0.14, -0.05))},
+                    grass_opts=dict(height=(0.09, 0.22), flowers=0.0, weeds=0.0), dome="dome", hold=1.0, contrast=1.0, bloom_threshold=25.0, char_fill=(0.16, 0.16, 0.22)),
 }

@@ -63,7 +63,7 @@ TILES = {
     "boulder": (lambda: kit.mat_boulder_dry(SC), 2 * 1.4 * SC, 1024, True),
 }
 TRIPLANAR, TWO_SIDED, WIND = 1, 2, 4
-OPAQUE, CARD, GRASS, WATER = 0, 1, 2, 3
+OPAQUE, CARD, GRASS, WATER, GLASS, CASTER = 0, 1, 2, 3, 4, 5
 # foliage tints stand in for the kit's small emission term, which has no slot here
 MATS = {  # name: albedo, has normal, kind, flags, tile (game units, 0 = mesh UVs), tint, rough, normal strength, alpha cut
     "dirt": ("dirt", True, OPAQUE, 0, TILES["dirt"][1] * K, (1, 1, 1), 0.88, 1.0, 0),
@@ -95,6 +95,11 @@ if "skin" in LEVEL:  # wrinkled hide for untextured characters, mapped on their 
     MATS["skin"] = ("skin", False, OPAQUE, 0, LEVEL["skin"]["tile"], (1, 1, 1), 0.6, 0, LEVEL["skin"]["grain"])
 for name, tint in LEVEL.get("tints", {}).items():
     MATS[name] = (*MATS[name][:5], tint, *MATS[name][6:])
+if "dome" in LEVEL:
+    MATS["glass"] = ("", False, GLASS, TWO_SIDED, 0.0, (1, 1, 1), 0.05, 0, 0)
+    MATS["caster"] = ("", False, CASTER, TWO_SIDED, 0.0, (1, 1, 1), 1.0, 0, 0)
+    MATS["dome_steel"] = ("", False, GLASS, TWO_SIDED, 0.0, (0.34, 0.37, 0.42), 0.28, 1, 0)
+    LEVEL["materials"] += ("glass", "dome_steel", "caster")
 if "materials" in LEVEL:  # a level loads only what it uses
     MATS["paint"] = ("", False, OPAQUE, 0, 1000.0, (0.86, 0.88, 0.92), 0.6, 0, 0)  # road markings, kept white
     MATS = {n: m for n, m in MATS.items() if n in LEVEL["materials"]}
@@ -509,15 +514,15 @@ for label, users in sorted(kept.items()):
     print("export: kept %s, %d triangles" % (name, len(k) // 3))
 
 
-def wire_tube(path, side, up, r):
-    """Three-sided tube along a path: triangles of positions and normals."""
-    a = np.arange(3) * 2 * np.pi / 3
+def wire_tube(path, side, up, r, sides=3):
+    """Tube along a path: triangles of positions and normals."""
+    a = np.arange(sides) * 2 * np.pi / sides
     spoke = np.cos(a)[:, None] * side + np.sin(a)[:, None] * up
     ring = path[:, None] + r * spoke
-    I, J = np.arange(len(path) - 1)[:, None], np.arange(3)[None]
-    corners = [(I + di, (J + dj) % 3) for di, dj in ((0, 0), (1, 0), (1, 1), (0, 0), (1, 1), (0, 1))]
+    I, J = np.arange(len(path) - 1)[:, None], np.arange(sides)[None]
+    corners = [(I + di, (J + dj) % sides) for di, dj in ((0, 0), (1, 0), (1, 1), (0, 0), (1, 1), (0, 1))]
     p = np.stack([ring[i, j] for i, j in corners], 2).reshape(-1, 3, 3)
-    n = np.stack([np.broadcast_to(spoke[j], (len(I), 3, 3)) for _, j in corners], 2).reshape(-1, 3, 3)
+    n = np.stack([np.broadcast_to(spoke[j], (len(I), sides, 3)) for _, j in corners], 2).reshape(-1, 3, 3)
     return p, n
 
 
@@ -569,16 +574,75 @@ def barbed_wire(o):
                 parts.append(wire_tube(mid + 1.6 * (np.cos(w)[:, None] * side + np.sin(w)[:, None] * up), side, up, 1.6))
             for s in np.arange(36, L - 12, 72):
                 parts += wire_barb(mid[int(s / L * (len(t) - 1))], axis, side, up, s)
+    print("export: barbed wire, %d strips" % len(quads))
+    return solid_proto("barbed_wire", parts, "steel")
+
+
+def solid_proto(name, parts, mat):
+    """A proto from (triangle positions, normals) parts, wound the way game space culls."""
     p, n = (np.concatenate(x).astype(np.float32) for x in zip(*parts))
-    flip = (np.cross(p[:, 1] - p[:, 0], p[:, 2] - p[:, 0]) * n.mean(1)).sum(1) > 0  # game space winding
+    flip = (np.cross(p[:, 1] - p[:, 0], p[:, 2] - p[:, 0]) * n.mean(1)).sum(1) > 0
     p[flip], n[flip] = p[flip][:, [0, 2, 1]], n[flip][:, [0, 2, 1]]
-    print("export: barbed wire, %d strips, %d triangles" % (len(quads), len(p)))
     p, n = p.reshape(-1, 3), n.reshape(-1, 3)
-    return add_proto("barbed_wire", p, n, np.ones_like(p), np.zeros((len(p), 2), np.float32), np.full(len(p), MAT_ID["steel"]))
+    return add_proto(name, p, n, np.ones_like(p), np.zeros((len(p), 2), np.float32), np.full(len(p), MAT_ID[mat]))
+
+
+def game_faces(wanted):
+    """Unique faces in game space, with their UVs, of the capture's surfaces whose role or texture passes `wanted`."""
+    faces = {}
+    for coll in dress.GAME_COLLS:
+        for o in (bpy.data.collections[coll].objects if coll in bpy.data.collections else []):
+            if o.type != "MESH":
+                continue
+            M = np.array(S @ o.matrix_world, np.float64)
+            uv = o.data.uv_layers[0].data
+            for f in o.data.polygons:
+                m = o.data.materials[f.material_index]
+                if m and wanted(dress.base_name(m.name.split(":", 1)[-1])):
+                    c = [(np.array(o.data.vertices[o.data.loops[l].vertex_index].co) @ M[:3, :3].T + M[:3, 3]) * K for l in f.loop_indices]
+                    faces[tuple(sorted(tuple(np.round(q, 1)) for q in c))] = (np.array(c), [tuple(np.round(uv[l].uv, 2)) for l in f.loop_indices])
+    return list(faces.values())
+
+
+def dome_protos():
+    """Glass panes on the game's dome faces, round bars along its panel edges (each pane's UV square; diagonals skipped)."""
+    faces = game_faces(lambda label: dress.role_of(label) == LEVEL["dome"] and label.endswith("spacestation"))
+    panes, bars, nodes = [], {}, {}
+    for c, uv in faces:
+        n = np.cross(c[1] - c[0], c[2] - c[0])
+        n /= np.linalg.norm(n)
+        panes.append((c[None], np.tile(n, (1, 3, 1))))
+        for i in range(3):
+            j = (i + 1) % 3
+            if uv[i][0] == uv[j][0] or uv[i][1] == uv[j][1]:
+                a, b = sorted((tuple(np.round(c[i], 1)), tuple(np.round(c[j], 1))))
+                bars[(a, b)] = (c[i], c[j])
+                nodes[a], nodes[b] = np.array(a), np.array(b)
+    parts = []
+    for a, b in bars.values():
+        axis = (b - a) / np.linalg.norm(b - a)
+        side = np.cross(axis, (0.3, 1, 0.2)); side /= np.linalg.norm(side)
+        parts.append(wire_tube(np.array([a, b]), side, np.cross(side, axis), 8.0, 8))
+    ball = ICO_V[ICO_T.ravel()].reshape(-1, 3, 3)
+    parts += [(q + ball * 10.0, ball) for q in nodes.values()]
+    LEVEL["glass_centre"] = tuple(np.mean(list(nodes.values()), 0))
+    print("export: dome, %d panes, %d bars, %d joints" % (len(panes), len(bars), len(nodes)))
+    return solid_proto("dome_glass", panes, "glass"), solid_proto("dome_frame", parts, "dome_steel")
+
+
+def caster_proto():
+    """Depth-only copies of the doors and the flag, for the sun map: the game draws them after it is built."""
+    x0, y0, x1, y1 = (v * K for v in LEVEL["hub"])
+    faces = [c for c, _ in game_faces(lambda label: dress.role_of(label) == "gameplay") if x0 < c[:, 0].mean() < x1 and y0 < c[:, 2].mean() < y1]
+    parts = [(c[[0, 1, 2]][None], np.tile(np.cross(c[1] - c[0], c[2] - c[0]), (1, 3, 1))) for c in faces]
+    parts += [(c[[0, 2, 3]][None], np.tile(np.cross(c[1] - c[0], c[2] - c[0]), (1, 3, 1))) for c in faces if len(c) == 4]
+    return solid_proto("shadow_casters", parts, "caster")
 
 
 if "wire" in LEVEL:
     place.append((barbed_wire(bpy.data.objects[LEVEL["wire"]]), None))
+if "dome" in LEVEL:
+    place += [(pi, None) for pi in (*dome_protos(), caster_proto())]
 
 # chunks: instance centre -> grid cell; each cell lists (proto, matrices), shuffled for thinning
 cells = collections.defaultdict(lambda: collections.defaultdict(list))
@@ -658,7 +722,7 @@ for line in list(open(os.path.join(ext, "textures", "index.tsv")))[1:]:
             break
     if "shadowsub" in label:
         shade.add(h)
-    elif role in HIDDEN_ROLES or label == LEVEL.get("wire"):
+    elif role in HIDDEN_ROLES or role == LEVEL.get("dome") or label == LEVEL.get("wire"):
         hide.add(h)
     elif h in binds:
         continue
@@ -795,11 +859,11 @@ vals = [
     ("shadow_softness", math.tan(math.radians(1.0))), ("ao_radius", 2.5 * SC * K), ("ao_strength", 1.0),
     ("fog_color", kit.srgb(LEVEL.get("fog_color", "#b8d6f2"))), ("fog_start", fog_start),
     ("fog_end", fog_start + grade["fog_depth"] * SC * K / grade["fog"]),  # Blender's fog tops out at this 7%
-    ("exposure", 2 ** grade["exposure"]), ("bloom_threshold", 0.9), ("bloom_strength", grade["bloom"]),
-    ("saturation", grade["saturation"]), ("contrast", grade.get("contrast", 1.15)),
+    ("exposure", 2 ** grade["exposure"]), ("bloom_threshold", LEVEL.get("bloom_threshold", 0.9)), ("bloom_strength", grade["bloom"]),
+    ("saturation", grade["saturation"]), ("contrast", LEVEL.get("contrast", 1.15)),
     ("water_height", water_y), ("water_color", kit.srgb("#2aa6c8")), ("water_clarity", 0.72),
     ("grass_fade_start", 5000.0), ("grass_fade_end", 10000.0), ("sky_scale", sky_scale * LEVEL.get("sky_gain", 1.0)),
-] + [(k, LEVEL[k]) for k in ("unbake", "char_fill") if k in LEVEL]
+] + [(k, LEVEL[k]) for k in ("unbake", "char_fill", "hold", "glass_centre") if k in LEVEL]
 with open(os.path.join(tmp, "level.ini"), "w") as f:
     f.write("[level]\n")
     for k, x in vals:
