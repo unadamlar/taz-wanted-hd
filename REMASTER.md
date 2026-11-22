@@ -112,7 +112,7 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
   at 2880x1800 with 4x MSAA the GPU also reaches 94-97%. No case to switch API yet: cut that CPU work on D3D9 in step 6, then
   measure again. How much of it is the API's own cost is not separated, and real Windows is not measured.
 - Hand work for the zoo art: 21 texture rules, 1 path change, no new assets, no hand exceptions, about 19 tuned numbers.
-- Hand work for Planet X: 3 hide rules, 11 gameplay rules, 3 relief rules, 5 material roles from existing CC0 sets, a generated
+- Hand work for Planet X: 1 hide rule, 2 dome rules, 1 ground rule, 9 gameplay rules, 4 relief rules, 5 material roles from existing CC0 sets, a generated
   glass dome with steel bars, nothing placed by hand, about 35 tuned numbers. Its painted space stays the game's own, unlit and
   brightened. Painted surfaces there keep their HD colour through the tone curve (`hold`), and light only shades them.
 - Sun is per level and placed for looks; baked vertex shadows are dropped.
