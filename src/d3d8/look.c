@@ -447,7 +447,8 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     UINT64 raw = textures_bound_hash(0);
     if (raw && hd_shade(raw)) return 1;
     UINT64 h = look_own_hash(dev, textures_bound(0), raw);
-    if (h && hd_hidden(h) && !moving_bark(dev, raw)) return 1;
+    int bark = moving_bark(dev, raw);
+    if (h && hd_hidden(h) && !bark) return 1;
     IDirect3DDevice8_GetRenderState(dev, D3DRS_ZWRITEENABLE, &zwrite);
     IDirect3DDevice8_GetRenderState(dev, D3DRS_FOGENABLE, &fog);
     if (!zwrite && !fog && !blend && hd_hidden(raw)) return 1; // its sky, also a cutscene pack's copy of it
@@ -464,6 +465,7 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     for (int i = 0; i < 3; i++)
         for (int j = 0; j < 4; j++) rows[i][j] = w[j][i];
     hd_world_quick(d, rows[0], h);
+    if (bark) hd_world_float(d, -4050); // the pond's surface
     draw_real(dev, type, start, count);
     hd_world_quick_end(d);
     IDirect3DDevice8_SetVertexShader(dev, shader);

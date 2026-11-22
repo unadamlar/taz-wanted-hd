@@ -62,11 +62,16 @@ float4 clip_of(float3 w)
     return float4(dot(VP[0], q), dot(VP[1], q), dot(VP[2], q), dot(VP[3], q));
 }
 
+float4 WATERLINE : register(c16);
+
 V2P vs_world(WorldIn i)
 {
     V2P o;
     float4 q = float4(i.p.xyz, 1);
     float3 w = float3(dot(WORLD[0], q), dot(WORLD[1], q), dot(WORLD[2], q));
+#ifdef AT_WATERLINE
+    w.y = max(w.y, WATERLINE.x);  // drawn after the water, so what floats below it would show through
+#endif
     o.n = float3(dot(WORLD[0].xyz, i.n), dot(WORLD[1].xyz, i.n), dot(WORLD[2].xyz, i.n));
     o.p = clip_of(w);
     o.wp = float4(w, o.p.w);

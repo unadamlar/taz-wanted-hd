@@ -15,6 +15,7 @@ c() { # file entry profile name [defines]
     grep -q "$n\[" "$out" || { cat "$T/$n.err" >&2; echo "failed: $n" >&2; exit 1; }
 }
 c scene.hlsl vs_world vs_3_0 vs_world
+c scene.hlsl vs_world vs_3_0 vs_world_float AT_WATERLINE
 c scene.hlsl vs_inst vs_3_0 vs_inst
 c scene.hlsl vs_inst vs_3_0 vs_water WATER_SURFACE
 c scene.hlsl vs_inst vs_3_0 vs_inst_wind WINDY

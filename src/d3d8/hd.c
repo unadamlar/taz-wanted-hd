@@ -69,7 +69,7 @@ static struct { char name[32]; IDirect3DTexture9 *t; } texs[MAX_TEX];
 static UINT ntexs;
 
 // Shaders, vertex declarations
-static IDirect3DVertexShader9 *v_world, *v_inst, *v_water, *v_wind, *v_grass, *v_world_z, *v_inst_z, *v_grass_z, *v_sky, *v_quad, *v_char_z;
+static IDirect3DVertexShader9 *v_world, *v_inst, *v_water, *v_world_float, *v_wind, *v_grass, *v_world_z, *v_inst_z, *v_grass_z, *v_sky, *v_quad, *v_char_z;
 static IDirect3DPixelShader9 *p_depth, *p_world, *p_mat, *p_mat2, *p_tiled, *p_inst, *p_card, *p_grass, *p_water, *p_sky, *p_char, *p_glow;
 static IDirect3DPixelShader9 *p_bright, *p_down, *p_up, *p_final, *p_ao, *p_blur;
 static IDirect3DVertexDeclaration9 *d_world, *d_inst, *d_quad, *d_char;
@@ -272,7 +272,7 @@ static int load_shaders(hd_dev d)
     free(f); }
 #define VS(var, code) MAKE(Vertex, var, code)
 #define PS(var, code) MAKE(Pixel, var, code)
-    VS(v_world, vs_world); VS(v_inst, vs_inst); VS(v_water, vs_water); VS(v_wind, vs_inst_wind); VS(v_grass, vs_grass);
+    VS(v_world, vs_world); VS(v_inst, vs_inst); VS(v_water, vs_water); VS(v_world_float, vs_world_float); VS(v_wind, vs_inst_wind); VS(v_grass, vs_grass);
     VS(v_world_z, vs_world_depth); VS(v_inst_z, vs_inst_depth); VS(v_grass_z, vs_grass_depth); VS(v_sky, vs_sky); VS(v_quad, vs_quad); VS(v_char_z, vs_char_depth);
     PS(p_depth, ps_depth); PS(p_world, ps_world); PS(p_mat, ps_world_mat); PS(p_mat2, ps_world_mat2); PS(p_tiled, ps_inst_tiled); PS(p_inst, ps_inst); PS(p_card, ps_card);
     PS(p_grass, ps_grass); PS(p_water, ps_water); PS(p_sky, ps_sky); PS(p_char, ps_char); PS(p_glow, ps_glow);
@@ -1268,6 +1268,13 @@ void hd_world_quick(hd_dev d, const float *world, unsigned long long hash)
     IDirect3DDevice9_SetVertexDeclaration(d, d_world);
     IDirect3DDevice9_SetVertexShader(d, v_world);
     hd_world_material(d, hash);
+}
+
+void hd_world_float(hd_dev d, float y)
+{
+    float c[4] = { y, 0, 0, 0 };
+    IDirect3DDevice9_SetVertexShaderConstantF(d, 16, c, 1);
+    IDirect3DDevice9_SetVertexShader(d, v_world_float);
 }
 
 void hd_world_quick_end(hd_dev d)
