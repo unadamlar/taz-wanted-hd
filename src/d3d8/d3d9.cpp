@@ -21,3 +21,8 @@ extern "C" IDirect3DIndexBuffer9 *d3d9_ib(IDirect3DIndexBuffer8 *ib)
 {
     return static_cast<Direct3DIndexBuffer8 *>(ib)->GetProxyInterface();
 }
+
+extern "C" IDirect3DTexture9 *d3d9_texture(IDirect3DTexture8 *t)
+{
+    return t ? static_cast<Direct3DTexture8 *>(t)->GetProxyInterface() : nullptr;
+}

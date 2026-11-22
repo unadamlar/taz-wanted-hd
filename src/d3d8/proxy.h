@@ -6,6 +6,7 @@ IDirect3D8 *d3d8to9_create(void);
 struct IDirect3DDevice9 *d3d9_device(IDirect3DDevice8 *dev); // the real device under d3d8to9
 struct IDirect3DVertexBuffer9 *d3d9_vb(IDirect3DVertexBuffer8 *vb);
 struct IDirect3DIndexBuffer9 *d3d9_ib(IDirect3DIndexBuffer8 *ib);
+struct IDirect3DTexture9 *d3d9_texture(IDirect3DTexture8 *t);
 #define IS_VERTEX_SHADER(handle) ((handle) & 0x80000000) // otherwise an FVF code
 void log_line(const char *fmt, ...);
 void patch(void **slot, void *hook, void **orig);
@@ -141,5 +142,6 @@ extern int style_player;
 void style_shader_created(DWORD h, const DWORD *fn);
 void style_shader_deleted(DWORD h);
 int style_is_player(IDirect3DVertexBuffer8 *vb);
+IDirect3DTexture8 *style_look(IDirect3DDevice8 *dev, float out[4]);
 HRESULT style_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
                    HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT));

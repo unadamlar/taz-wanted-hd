@@ -24,7 +24,7 @@ enum { OPAQUE_KIND, CARD, GRASS, WATER_KIND };
 enum { F_TRIPLANAR = 1, F_TWOSIDED = 2, F_WIND = 4 };
 enum { PASS_COLOUR, PASS_DEPTH, PASS_SHADOW };
 // Our samplers sit above the stages the game uses (it never enables stage 7), so its state caching never sees them.
-enum { SMP_LIGHTS = 6, SMP_DEPTH = 7, SMP_NORMAL, SMP_ALBEDO, SMP_SKY, SMP_SHADOW, SMP_CMAP, SMP_AO, SMP_ALBEDO2, SMP_NORMAL2 };
+enum { SMP_FUR = 5, SMP_LIGHTS = 6, SMP_DEPTH = 7, SMP_NORMAL, SMP_ALBEDO, SMP_SKY, SMP_SHADOW, SMP_CMAP, SMP_AO, SMP_ALBEDO2, SMP_NORMAL2 };
 
 #pragma pack(push, 1)
 struct file_mat { char name[32], albedo[32], normal[32]; WORD kind, flags; float tile, tint[3], rough, nstrength, cut; };
@@ -1209,7 +1209,7 @@ void hd_merge_draw(hd_dev d, unsigned nverts, unsigned first, unsigned tris)
     IDirect3DDevice9_DrawIndexedPrimitive(d, D3DPT_TRIANGLELIST, 0, 0, nverts, first, tris);
 }
 
-void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_colour, float scale)
+void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_colour, float scale, const float *style, struct IDirect3DTexture9 *fur)
 {
     float k[4] = { use_tex, use_colour, scale, 0 }, two[4][4] = { { 0 } };
     IDirect3DDevice9_SetVertexShaderConstantF(d, 60, model_rows, 3);
@@ -1226,13 +1226,17 @@ void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_c
     IDirect3DDevice9_SetPixelShaderConstantF(d, 26, two[0], 4);
     float fill[4] = { lv.char_fill[0], lv.char_fill[1], lv.char_fill[2], 0 };
     IDirect3DDevice9_SetPixelShaderConstantF(d, 30, fill, 1);
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 31, style, 1);
     bind_common(d);
+    IDirect3DDevice9_SetTexture(d, SMP_FUR, (IDirect3DBaseTexture9 *)fur);
+    sampler(d, SMP_FUR, D3DTEXF_LINEAR, D3DTEXF_LINEAR, D3DTADDRESS_WRAP);
     IDirect3DDevice9_SetPixelShader(d, p_char);
     quick_ok = 0;
 }
 
 void hd_char_end(hd_dev d)
 {
+    IDirect3DDevice9_SetTexture(d, SMP_FUR, NULL);
     IDirect3DDevice9_SetPixelShader(d, NULL);
 }
 

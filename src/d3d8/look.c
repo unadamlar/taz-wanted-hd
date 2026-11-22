@@ -190,6 +190,8 @@ void look_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *fn)
     for (int row = 0; row < 3; row++) {
         out[n++] = DP3, out[n++] = D(oT(3), 1 << row), out[n++] = S(r(nor)), out[n++] = S(c(60 + row));
     }
+    out[n++] = MOV, out[n++] = D(oT(4), 7), out[n++] = S(REG(RT_INPUT, 0));   // bind pose, for the fur
+    out[n++] = MOV, out[n++] = D(oT(5), 7), out[n++] = S(REG(RT_INPUT, 3));
     out[n] = 0xffff;
     DWORD size = 0;
     if (FAILED(IDirect3DDevice8_GetVertexShaderDeclaration(dev, h, NULL, &size)) || size > sizeof decl
@@ -267,7 +269,9 @@ int look_char_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UIN
         struct IDirect3DDevice9 *d = d3d9_device(dev);
         DWORD op;
         IDirect3DDevice8_GetTextureStageState(dev, 0, D3DTSS_COLOROP, &op);
-        hd_char_begin(d, rows[0], op == D3DTOP_SELECTARG2 || !textures_bound(0) ? 0 : 1, op == D3DTOP_SELECTARG1 ? 0 : 1, op == D3DTOP_MODULATE2X ? 2 : 1);
+        float style[4];
+        IDirect3DTexture8 *fur = style_look(dev, style);
+        hd_char_begin(d, rows[0], op == D3DTOP_SELECTARG2 || !textures_bound(0) ? 0 : 1, op == D3DTOP_SELECTARG1 ? 0 : 1, op == D3DTOP_MODULATE2X ? 2 : 1, style, d3d9_texture(fur));
         if (cam_on) { // the test camera: place the character through it
             float vp[4][4], clip[4][4], moved[4][4];
             mul4(vp, (const float (*)[4])hd_view(), (const float (*)[4])hd_proj());

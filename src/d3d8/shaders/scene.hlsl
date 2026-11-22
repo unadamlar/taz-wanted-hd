@@ -415,25 +415,35 @@ float4 vs_char_depth(float3 p : POSITION, float3 weight : TEXCOORD1, float4 pale
 }
 
 // Characters: the game's vs_1_1 skinning, patched to also output world position (oT2) and normal (oT3).
-struct CharIn { float2 uv : TEXCOORD0; float3 w : TEXCOORD2; float3 n : TEXCOORD3; float4 c : COLOR0; };
+struct CharIn { float2 uv : TEXCOORD0; float3 w : TEXCOORD2; float3 n : TEXCOORD3; float3 bp : TEXCOORD4; float3 bn : TEXCOORD5; float4 c : COLOR0; };
 float4 CHAR_LIGHT[4] : register(c26);  // the two nearest lamps: position, 1 / r^2; colour
+float4 CHAR_STYLE    : register(c31);  // shading band offset, slope, fur strength, highlight
+sampler2D FUR : register(s5);
 float4 CHAR_FILL     : register(c30);  // keeps characters readable away from the lamps of a night level
 
 float4 ps_char(CharIn i) : COLOR
 {
     float4 tex = lerp(1, tex2D(BASE, i.uv), CHARK.x), col = lerp(1, i.c, CHARK.y);
     float3 albedo = to_linear(saturate(tex.rgb * col.rgb * CHARK.z));
-    float3 n = normalize(i.n);
-    float nl = dot(n, SUN.xyz);
+    // Fur from the bind pose, so it sticks to the body: front and side maps, mixed in a narrow band.
+    float side = saturate(normalize(i.bn).z * i.bn.z * 4 - 1.5);
+    float tuft = lerp(tex2D(FUR, float2(i.bp.z / 36, (i.bp.y + i.bp.x / 2) / 40)).r, tex2D(FUR, i.bp.xy / float2(36, 40)).r, side);
+    albedo *= 1 + (tuft - 0.5) * 3.5 * CHAR_STYLE.z;
+    float3 n = normalize(i.n), v = normalize(EYE.xyz - i.w);
+    float nl = dot(n, SUN.xyz), nv = saturate(dot(n, v));
     // A soft cartoon step: the shadow side stays colourful.
-    float band = saturate((nl + 0.22) * 1.9);
+    float band = saturate((nl + CHAR_STYLE.x) * CHAR_STYLE.y);
     band = band * band * (3 - 2 * band);
+    // A soft key from over the camera's left shoulder: a back turned to the player stays round when the sun can't shape it.
+    float3 across = normalize(cross(float3(0, 1, 0), v));
+    float shoulder = saturate(dot(n, normalize(v * 0.85 - across * 0.5 + float3(0, 0.55, 0))));
+    shoulder *= shoulder;
     float4 q = float4(i.w, 1);
     float3 s = float3(dot(SROW[0], q), dot(SROW[1], q), dot(SROW[2], q));
     float2 d = 1.5 * TEXEL.x;
     float sh = (tex2Dproj(SHADOW, float4(s.xy + d, s.z, 1)).r + tex2Dproj(SHADOW, float4(s.xy - d, s.z, 1)).r
               + tex2Dproj(SHADOW, float4(s.xy + float2(d.x, -d.y), s.z, 1)).r + tex2Dproj(SHADOW, float4(s.xy + float2(-d.x, d.y), s.z, 1)).r) / 4;
-    float3 amb = lerp(GND_AMB.rgb, SKY_AMB.rgb, n.y * 0.5 + 0.5) * (0.62 + 0.3 * saturate(n.y + 0.4));  // form in the shade
+    float3 amb = lerp(GND_AMB.rgb, SKY_AMB.rgb, n.y * 0.5 + 0.5) * (0.5 + 0.25 * saturate(n.y + 0.4) + 1.45 * shoulder);
     // Character paint is authored brighter and more saturated than the world's albedo. Pulled towards a warm
     // grey: a neutral one turned the brown fur magenta.
     float3 lamp = 0;
@@ -442,7 +452,12 @@ float4 ps_char(CharIn i) : COLOR
         float fall = saturate(1 - dot(d, d) * CHAR_LIGHT[k * 2].w);
         lamp += CHAR_LIGHT[k * 2 + 1].rgb * fall * fall * saturate(dot(n, normalize(d)) * 0.7 + 0.3);
     }
-    float3 c = albedo * 0.7 * (amb + CHAR_FILL.rgb + 0.85 * SUN_COL.rgb * band * sh + lamp);
+    float edge = 1 - nv;
+    float3 rim = (SKY_AMB.rgb + CHAR_FILL.rgb + 0.5 * SUN_COL.rgb * sh) * edge * edge * edge * edge * 1.1;
+    float3 c = albedo * 0.7 * (amb + CHAR_FILL.rgb * (0.55 + 0.75 * shoulder) + 0.85 * SUN_COL.rgb * band * sh * (0.55 + 0.45 * shoulder) + lamp + rim);
     c = lerp(dot(c, float3(0.3, 0.59, 0.11)) * float3(1.08, 0.94, 0.72), c, 0.62) * float3(1.02, 0.93, 0.76);
+    float nh = saturate(dot(n, normalize(v + SUN.xyz)));
+    float gloss = nh * nh; gloss *= gloss; gloss *= gloss; gloss *= gloss; gloss *= gloss; gloss *= gloss;   // ^64
+    c += CHAR_STYLE.w * gloss * sh * saturate(1 - dot(tex.rgb, 0.45)) * (SUN_COL.rgb + CHAR_FILL.rgb);       // on dark paint: eyes, nose
     return float4(to_gamma(c), saturate(tex.a * col.a * CHARK.z));
 }

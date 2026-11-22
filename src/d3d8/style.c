@@ -320,7 +320,7 @@ static int ready(IDirect3DDevice8 *dev)
             }
         looks[s].shine = make_texture(dev, LW, 16, 1, px);
     }
-    fur = make_fur(dev);
+    if (!fur) fur = make_fur(dev);
     eye = make_eye(dev);
     failed = 0;
     log_line("style: shaders and lookups ready");
@@ -406,13 +406,37 @@ static void set_tufts(IDirect3DDevice8 *dev, float height)
 
 #define TUFT 24.0f
 
+// How the Remaster look shades this draw: the band's offset and slope, fur strength and highlight, by Taz Style and
+// which of Taz's textures is bound (other characters have none of them, so no fur). Returns the fur map.
+IDirect3DTexture8 *style_look(IDirect3DDevice8 *dev, float out[4])
+{
+    static const float band[STYLES][2] = { { 0.22f, 1.9f }, { 0.02f, 9 }, { 0.5f, 0.85f }, { 0.22f, 1.9f } };
+    static const float furry[STYLES] = { 0.8f, 0, 0.2f, 1.25f };
+    int s = style_player ? settings.taz_style : CURRENT, kind = texture_kind(textures_bound_hash(0));
+    if (s < 0 || s >= STYLES) s = CURRENT;
+    out[0] = band[s][0], out[1] = band[s][1];
+    out[2] = (kind == 2 || kind == 4 ? 1 : kind == 3 ? 0.4f : 0) * furry[s];
+    out[3] = kind == 5 || (kind == 1 && s == SOFT) ? 1.0f : s == SOFT && kind ? 0.06f : 0;
+    if (!fur) fur = make_fur(dev); // not ready(): its shaders would register as the game's character shaders
+    return fur;
+}
+
 HRESULT style_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
                    HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT))
 {
     int s = settings.taz_style;
     DWORD vs = 0;
     HRESULT lit;
-    if (!(style_player && s > CURRENT && s < STYLES) && look_char_draw(dev, type, start, count, draw, &lit)) return lit;
+    int styled = style_player && s > CURRENT && s < STYLES;
+    IDirect3DDevice8_GetVertexShader(dev, &vs);
+    if (look_redirected() && !(styled && vs == outline_shader)) { // the world's light, in every style; the eye keeps its redrawn catchlight
+        IDirect3DBaseTexture8 *game = textures_bound(0);
+        int swap = styled && texture_kind(textures_bound_hash(0)) == 5 && ready(dev);
+        if (swap) textures_bind_own(dev, 0, (IDirect3DBaseTexture8 *)eye);
+        int done = look_char_draw(dev, type, start, count, draw, &lit);
+        if (swap) IDirect3DDevice8_SetTexture(dev, 0, game);
+        if (done) return lit;
+    }
     if (!style_player || s <= CURRENT || s >= STYLES || FAILED(IDirect3DDevice8_GetVertexShader(dev, &vs))
         || (vs != lit_shader && vs != outline_shader) || !ready(dev))
         return draw(dev, type, start, count);
@@ -421,6 +445,8 @@ HRESULT style_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UIN
         float c[3][4] = { { light[0], light[1], light[2], 0 } };
         if (s == SOFT) memcpy(c[1], (float[4]){ -0.15f, 0.35f, 0.2f, 0 }, 16), memcpy(c[2], (float[4]){ 0.12f, 0.06f, 0.05f, 1 }, 16);
         else memcpy(c[1], (float[4]){ -0.4f, 0.8f, 0.45f, 0 }, 16), memcpy(c[2], (float[4]){ 0.05f, 0.02f, 0.02f, 1 }, 16);
+        if (look_redirected()) // in the world's light the ink is a thin dark brown, not black
+            memcpy(c[1], (float[4]){ -0.2f, 0.42f, 0.26f, 0 }, 16), memcpy(c[2], (float[4]){ 0.16f, 0.08f, 0.05f, 1 }, 16);
         IDirect3DDevice8_SetVertexShaderConstant(dev, 80, c, 3);
         set_tufts(dev, s == FUR && *kind_of(dev, start, count) == 2 ? TUFT : 0);
         IDirect3DDevice8_SetVertexShader(dev, outline_vs);
