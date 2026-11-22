@@ -20,9 +20,10 @@ void log_line(const char *fmt, ...);
 #define NBLOOM 5
 #define INST_STRIDE 48
 #define MAX_TEX 512
+#define NEAR_END 175 // scenery closer than this fades towards the camera (scene.hlsl)
 enum { OPAQUE_KIND, CARD, GRASS, WATER_KIND };
 enum { F_TRIPLANAR = 1, F_TWOSIDED = 2, F_WIND = 4 };
-enum { PASS_COLOUR, PASS_DEPTH, PASS_SHADOW };
+enum { PASS_COLOUR, PASS_DEPTH, PASS_SHADOW, PASS_NEAR_Z, PASS_NEAR };
 // Our samplers sit above the stages the game uses (it never enables stage 7), so its state caching never sees them.
 enum { SMP_FUR = 5, SMP_LIGHTS = 6, SMP_DEPTH = 7, SMP_NORMAL, SMP_ALBEDO, SMP_SKY, SMP_SHADOW, SMP_CMAP, SMP_AO, SMP_ALBEDO2, SMP_NORMAL2 };
 
@@ -757,6 +758,7 @@ static void cull(const float rows[4][4], const float *from, float reach)
                 dd += e * e;
             }
             if (dd < reach * reach) vis[i] |= 2;
+            if (dd < NEAR_END * NEAR_END) vis[i] |= 4;
         }
     }
 }
@@ -767,18 +769,32 @@ static void bind_material(hd_dev d, const struct mat *m, int pass)
                       { m->tint[0], m->tint[1], m->tint[2], 1 }, { 0, 0, 1, m->flags & F_TRIPLANAR ? 1.0f : 0 } };
     IDirect3DDevice9_SetPixelShaderConstantF(d, 16, c[0], 3);
     IDirect3DDevice9_SetTexture(d, 0, m->albedo ? (IDirect3DBaseTexture9 *)m->albedo : (IDirect3DBaseTexture9 *)white);
-    if (pass != PASS_COLOUR) {
+    IDirect3DVertexShader9 *vs = m->kind == GRASS ? v_grass : m->flags & F_WIND ? v_wind : v_inst;
+    if (pass == PASS_NEAR_Z) { // the colour pass's vertex shaders, so its depth matches exactly
+        IDirect3DDevice9_SetVertexShader(d, vs);
+        IDirect3DDevice9_SetPixelShader(d, p_depth);
+        IDirect3DDevice9_SetRenderState(d, D3DRS_CULLMODE, m->flags & F_TWOSIDED || m->kind == GRASS || m->kind == CARD ? D3DCULL_NONE : D3DCULL_CW);
+        return;
+    }
+    if (pass != PASS_COLOUR && pass != PASS_NEAR) {
         IDirect3DDevice9_SetVertexShader(d, m->kind == GRASS ? v_grass_z : v_inst_z);
         IDirect3DDevice9_SetPixelShader(d, p_depth);
         return;
     }
     IDirect3DDevice9_SetTexture(d, SMP_NORMAL, m->normal ? (IDirect3DBaseTexture9 *)m->normal : (IDirect3DBaseTexture9 *)flat);
     IDirect3DDevice9_SetTexture(d, SMP_ALBEDO, m->albedo ? (IDirect3DBaseTexture9 *)m->albedo : (IDirect3DBaseTexture9 *)white);
-    IDirect3DDevice9_SetVertexShader(d, m->kind == GRASS ? v_grass : m->flags & F_WIND ? v_wind : v_inst);
+    IDirect3DDevice9_SetVertexShader(d, vs);
     IDirect3DDevice9_SetPixelShader(d, m->kind == GRASS ? p_grass : m->kind == CARD ? p_card : m->tile > 0 ? p_tiled : p_inst);
     IDirect3DDevice9_SetRenderState(d, D3DRS_CULLMODE, m->flags & F_TWOSIDED || m->kind == GRASS || m->kind == CARD ? D3DCULL_NONE : D3DCULL_CW);
-    int cov = atoc && tms && (m->kind == CARD || m->kind == GRASS);
+    int cov = atoc && tms && pass == PASS_COLOUR && (m->kind == CARD || m->kind == GRASS);
     IDirect3DDevice9_SetRenderState(d, D3DRS_ADAPTIVETESS_Y, cov ? MAKEFOURCC('A', 'T', 'O', 'C') : 0);
+}
+
+static int chunk_on(UINT chunk, int pass, int kind)
+{
+    if (pass == PASS_SHADOW) return 1;
+    if (pass >= PASS_NEAR_Z) return vis[chunk] & 4;
+    return vis[chunk] & (kind == GRASS ? 2 : 1);
 }
 
 static void draw_instances(hd_dev d, int pass)
@@ -801,11 +817,11 @@ static void draw_instances(hd_dev d, int pass)
             bind_material(d, m, pass);
             for (UINT r = q->run0; r < q->run0 + q->nrun; ) {
                 const struct run *a = &runs[r];
-                int on = pass == PASS_SHADOW ? 1 : m->kind == GRASS ? vis[a->chunk] & 2 : vis[a->chunk] & 1;
+                int on = chunk_on(a->chunk, pass, m->kind);
                 if (!on) { r++; continue; }
                 UINT n = a->n, e2 = r + 1;
                 for (; e2 < q->run0 + q->nrun; e2++) { // neighbouring visible chunks go in one draw
-                    int on2 = pass == PASS_SHADOW ? 1 : m->kind == GRASS ? vis[runs[e2].chunk] & 2 : vis[runs[e2].chunk] & 1;
+                    int on2 = chunk_on(runs[e2].chunk, pass, m->kind);
                     if (!on2 || runs[e2].first != a->first + n) break;
                     n += runs[e2].n;
                 }
@@ -914,9 +930,39 @@ void hd_additions(hd_dev d)
     ps_constants(d);
     bind_common(d);
     cull(clip_rows, eye, lv.fade1);
+    float fade[4] = { 0, 1, 0, 0 };
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 32, fade, 1);
     draw_instances(d, PASS_COLOUR);
     IDirect3DDevice9_SetRenderState(d, D3DRS_ALPHATESTENABLE, FALSE);
     draw_water(d);
+    restore_state(d);
+    quick_ok = 0;
+}
+
+// Scenery by the camera, faded: its nearest surface only (depth first), over everything else the 3D pass drew.
+static void draw_near(hd_dev d)
+{
+    UINT any = 0;
+    for (UINT i = 0; i < nchunks; i++) any |= vis[i] & 4;
+    if (!any) return;
+    save_state(d);
+    plain_states(d);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_ZENABLE, TRUE);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_ZWRITEENABLE, TRUE);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
+    vs_constants(d, clip_rows, NULL);
+    ps_constants(d);
+    bind_common(d);
+    float fade[4] = { 1, -1, 0, 0 };
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 32, fade, 1);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_COLORWRITEENABLE, 0);
+    draw_instances(d, PASS_NEAR_Z);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_COLORWRITEENABLE, 15);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_ZWRITEENABLE, FALSE);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_ALPHABLENDENABLE, TRUE);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+    draw_instances(d, PASS_NEAR);
     restore_state(d);
     quick_ok = 0;
 }
@@ -1266,6 +1312,7 @@ void hd_post(hd_dev d)
     IDirect3DDevice9_GetViewport(d, &v);
     IDirect3DDevice9_GetDepthStencilSurface(d, &ds);
     if (FAILED(IDirect3DDevice9_GetBackBuffer(d, 0, 0, D3DBACKBUFFER_TYPE_MONO, &bb))) return;
+    if (additions_done) draw_near(d);
     if (hdr_ms) IDirect3DDevice9_StretchRect(d, hdr_ms, NULL, hdr.s, NULL, D3DTEXF_NONE);
     save_state(d);
     quad_states(d);

@@ -34,6 +34,8 @@ float4 CHARK     : register(c24);   // characters: texture on, colour on, scale,
 float4 EMIT      : register(c26);   // glow: strength, lo, 1 / (hi - lo); w: baked-light exponent, 0 keeps vertex colours
 float4 LGRID     : register(c27);   // lights: grid x0, z0, 1 / cell, 1 if the level has any
 
+float4 NEAR      : register(c32);   // x: 1 in the blended near pass; y: 1 keep far side, -1 keep near side
+
 sampler2D BASE     : register(s0);
 sampler2D TNORMAL  : register(s8);
 sampler2D TALBEDO  : register(s9);
@@ -293,8 +295,10 @@ float4 ps_world(V2P i, float2 vpos : VPOS) : COLOR
 // Additions: card, grass or solid.
 float4 ps_inst(V2P i, float2 vpos : VPOS, float face : VFACE) : COLOR
 {
-    // Dissolve whatever the camera is about to pass through, so it never fills the view.
-    clip(saturate((distance(EYE.xyz, i.wp.xyz) - 45) / 130) - frac(52.9829 * frac(dot(vpos, float2(0.0671, 0.00584)))));
+    // What the camera is about to pass through fades out. The normal pass keeps the far side of the fade (NEAR.y 1),
+    // a blended pass at the end of the 3D draws the near side (NEAR.y -1), so no dots show.
+    float closeness = saturate((distance(EYE.xyz, i.wp.xyz) - 45) / 130);
+    clip((closeness - 0.999) * NEAR.y);
 #ifdef TILED
     float3 tiled, tn;
     float3 fn = normalize(i.n);
@@ -334,7 +338,7 @@ float4 ps_inst(V2P i, float2 vpos : VPOS, float face : VFACE) : COLOR
     float ao = lerp(1, tex2D(AO, (vpos + 0.5) * SCREEN.xy).r, SCREEN.z);
     float3 c = shade(albedo, n, i.wp.xyz, vpos, ao, 0);
     c += albedo * SUN_COL.rgb * through * sun_shadow(i.wp.xyz, vpos);
-    return float4(to_gamma(fogged(c, i.wp.xyz)), cut);
+    return float4(to_gamma(fogged(c, i.wp.xyz)), cut * lerp(1, closeness, NEAR.x));
 }
 
 // Water on the game's own surface: depth colour over the bed, sky reflection, soft shore.
