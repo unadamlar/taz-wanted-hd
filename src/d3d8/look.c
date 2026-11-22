@@ -152,12 +152,12 @@ static struct { DWORD game, lit; int outline, bones; } chars[NCHAR];
 static int ncopying;
 int look_copying_shader(void) { return ncopying; }
 
-void look_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *fn)
+void look_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *decl, const DWORD *fn)
 {
     static const DWORD ramp[] = { MOV, 0xe0020001, 0xa0ff0030 };             // mov oT1.y, c48.w
     static const DWORD push[] = { MAD, 0x80070000, 0x80e40002, 0xa0ff0031 }; // mad r0.xyz, r2, c49.w, r0
-    DWORD out[1200], decl[16];
-    int n = 0, lit = 0, outline = 0, k = 0;
+    DWORD out[1200];
+    int n = 0, lit = 0, outline = 0;
     int skin = 0, pos = 0, nor = 2;
     for (; n < 1024 && fn[n] != 0xffff; n++) {
         out[n] = fn[n];
@@ -193,14 +193,6 @@ void look_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *fn)
     out[n++] = MOV, out[n++] = D(oT(4), 7), out[n++] = S(REG(RT_INPUT, 0));   // bind pose, for the fur
     out[n++] = MOV, out[n++] = D(oT(5), 7), out[n++] = S(REG(RT_INPUT, 3));
     out[n] = 0xffff;
-    DWORD size = 0;
-    if (FAILED(IDirect3DDevice8_GetVertexShaderDeclaration(dev, h, NULL, &size)) || size > sizeof decl
-        || FAILED(IDirect3DDevice8_GetVertexShaderDeclaration(dev, h, decl, &size))) {
-        extern const DWORD smooth_decl[8];
-        memcpy(decl, smooth_decl, sizeof smooth_decl);
-        for (k = 0; k < 7 && decl[k] != 0xffffffff; k++) {}
-        if (fn[0] && k == 7) decl[7] = 0xffffffff;
-    }
     ncopying++;
     if (FAILED(IDirect3DDevice8_CreateVertexShader(dev, decl, out, &chars[slot].lit, 0))) chars[slot].lit = 0, log_line("look: no lit copy of shader %#lx", h);
     ncopying--;

@@ -8,8 +8,6 @@
 # BUFFER=n builds the n-th biggest captured character instead of the biggest (Taz).
 # SPRINGS=<file.json> gives the springs listed there (see tools/springs.py) instead of Taz's.
 # NOSPRINGS=1 adds none (other characters that only need the dense surface).
-# PERBONE=1 makes the dense surface follow the bones exactly as the original does (see tools/subdivide.py);
-# for rigidly skinned characters, which is everyone but Taz.
 # LEVELS=n subdivides n times (default 2; 0 skips it).
 set -e
 cd "$(dirname "$0")/.."
