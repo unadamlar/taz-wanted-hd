@@ -54,6 +54,7 @@ static UINT64 *hides; static UINT nhides, nshades; // the last nshades are baked
 static struct light *lights; static UINT nlights;
 static struct file_glow *glows; static UINT nglows;
 static IDirect3DTexture9 *light_tex;
+static int skin_mat = -1;
 static float light_grid[4];
 static struct proto *protos; static UINT nprotos;
 static struct sub *subs;
@@ -403,6 +404,7 @@ int hd_load(hd_dev d, int scene)
         m->albedo = named_tex(d, f->albedo), m->normal = named_tex(d, f->normal);
         m->kind = f->kind, m->flags = f->flags, m->tile = f->tile, m->rough = f->rough, m->nstrength = f->nstrength, m->cut = f->cut;
         memcpy(m->tint, f->tint, 12);
+        if (!strncmp(f->name, "skin", 32)) skin_mat = (int)i;
     }
     nbinds = U();
     binds = calloc(nbinds + 1, sizeof *binds);
@@ -517,6 +519,7 @@ void hd_unload(void)
     if (ib) IDirect3DIndexBuffer9_Release(ib), ib = NULL;
     if (sky_tex) IDirect3DCubeTexture9_Release(sky_tex), sky_tex = NULL;
     if (light_tex) IDirect3DTexture9_Release(light_tex), light_tex = NULL;
+    skin_mat = -1;
     free(lights), free(glows), lights = NULL, glows = NULL, nlights = nglows = 0, light_grid[3] = 0;
     free(mats), free(binds), free(hides), free(protos), free(subs), free(runs), free(chunks), free(vis);
     mats = NULL, binds = NULL, hides = NULL, protos = NULL, subs = NULL, runs = NULL, chunks = NULL, vis = NULL;
@@ -1283,7 +1286,11 @@ void hd_merge_draw(hd_dev d, unsigned nverts, unsigned first, unsigned tris)
 
 void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_colour, float scale, const float *style, struct IDirect3DTexture9 *fur)
 {
-    float k[4] = { use_tex, use_colour, scale, 0 }, two[4][4] = { { 0 } };
+    float k[4] = { use_tex, use_colour, scale, 0 }, two[4][4] = { { 0 } }, hide[4];
+    if (skin_mat >= 0 && !use_tex) { // no paint of its own: the level's hide goes through the fur path
+        memcpy(hide, style, 16), hide[2] = mats[skin_mat].cut, style = hide;
+        k[3] = mats[skin_mat].tile / 36, fur = (struct IDirect3DTexture9 *)mats[skin_mat].albedo;
+    }
     IDirect3DDevice9_SetVertexShaderConstantF(d, 60, model_rows, 3);
     ps_constants(d);
     IDirect3DDevice9_SetPixelShaderConstantF(d, 24, k, 1);

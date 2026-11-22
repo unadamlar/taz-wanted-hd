@@ -12,6 +12,7 @@ ZOO_RULES = [
     # ground: path strips carry the lawn's jagged fringe painted in their texture
     ("zoohub/textures/zoohubpathaqua", "lit"), ("zoohub/textures/zoohubpathice", "lit"),
     ("zoohub/textures/zoohubpathisaf", "lit"),
+    ("zoohub/textures/zoohubbankedge", "ground"),   # the moat's zigzag bank is the same paint as the path strips
     ("zoohub/textures/zoohubpath*", "ground"), ("zoohub/textures/zoopathjoiner", "ground"),
     ("zoohub/textures/hubpath02", "ground"),
     ("zoohub/textures/zoohubgrass*", "lawn"), ("zoohub/textures/hubflowers04", "lawn"),
@@ -21,7 +22,7 @@ ZOO_RULES = [
     ("zoohub/textures/safrock[0-9]*", "lit"),       # the lilac mountain keeps its own lilac look
     ("zoohub/textures/zoohubwall2", "lit"),         # cream lamp globes / caps: not brick, not trim
     ("zoohub/textures/zoohubpiller*", "brick"), ("zoohub/textures/zoohubwall*", "brick"),
-    ("zoohub/textures/hutbrick*", "brick"),
+    ("zoohub/textures/hutbrick*", "brick"), ("zoohub/textures/tower", "brick"),
     ("zoohub/textures/safariwater", "water"), ("zoohub/textures/water", "water"),
     # replaced: cards and props swapped for kit geometry
     ("zoohub/textures/grassy", "hide"),            # drip cards -> kit vines along cliff tops
@@ -55,6 +56,23 @@ ZOO_HDRI = "polyhaven/ph-kloofendal_48d_partly_cloudy_puresky/content/kloofendal
 ZOO_PASS1 = dict(sun=dict(sun_azimuth=280.0, sun_elevation=40.0),
              grade=dict(exposure=0.3, ambient_strength=1.1, fog_start=22.0, fog_depth=120.0), sky={})
 
+# Game paint kept, with a tiling material's relief and grain multiplied in: scenery no rule replaces.
+ZOO_DETAIL = [
+    ("zoohub/textures/orangerock*", "d_rock"), ("zoohub/textures/orangeextra*", "d_rock"),
+    ("zoohub/textures/safrock[0-9]*", "d_rock"), ("zoohub/textures/sharprock*", "d_rock"),
+    ("zoohub/textures/safaritemple*", "d_stone"), ("zoohub/extras/aquasandcas*", "d_stone"),
+    ("zoohub/textures/aquasandcas*", "d_stone"), ("zoohub/textures/aquaseawall*", "d_stone"),
+    ("zoohub/textures/icecubed*", "d_ice"), ("zoohub/textures/igloo*", "d_ice"),
+    ("zoohub/textures/sdomestrip*", "d_ice"), ("zoohub/textures/snowxmas*", "d_ice"), ("zoohub/textures/icewalkway", "d_ice"),
+    ("zoohub/textures/aquasandjoiner*", "d_stone"), ("zoohub/textures/snowbeam*", "d_stone"), ("zoohub/textures/zoohubwall2", "d_stone"),
+    ("zoohub/textures/tower*", "d_stone"), ("zoohub/textures/electricfencewall*", "d_stone"),
+]
+ZOO_TILES = {
+    "d_rock": dict(set="rock061", period=3.0, px=1024, detail=0.75, triplanar=True, rough=0.85),
+    "d_stone": dict(set="old_sandstone", period=2.6, px=1024, detail=0.7, triplanar=True, rough=0.8),
+    "d_ice": dict(set="boulder_dry", period=4.5, px=1024, detail=0.12, triplanar=True, rough=0.35, normal=0.35),
+}
+
 # ---- city hub (scene 8): night. The game's colour is blue light baked into vertices over pale textures.
 CITY_RULES = [
     ("resobjs/*", "gameplay"), ("cityhub/textures/tazbook*", "gameplay"), ("cityhub/textures/tazcage*", "gameplay"),
@@ -87,8 +105,11 @@ CITY_GLOW = [  # texture pattern, strength, brightness range that glows (None = 
 ]
 
 LEVELS = {
-    "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass3", rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
-                   hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True),
+    "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
+                   hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
+                   tiles=ZOO_TILES, detail=ZOO_DETAIL, skin=dict(tile=430.0, grain=0.3),
+                   binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05))},
+                   flats={"steel": ((0.20, 0.17, 0.15), 0.4)}, material_rules=(("zoohub/textures/barbed_wire", "steel"),)),
     "cityhub": dict(scene=8, pak="cityhub", blend="city/cityhub.blend", out="city/pass1", rules=CITY_RULES, hand=CITY_HAND,
                     look=CITY_LOOK, hdri=None, hdri_rotation=0.0, hub=(-66.0, -50.0, 72.0, 82.0), sky_panels=True, clutter=False,
                     materials=("lawn", "asphalt", "paving", "paint", "grass", "flat", "flat_wind"),

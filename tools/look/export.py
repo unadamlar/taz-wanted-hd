@@ -82,9 +82,14 @@ MATS = {  # name: albedo, has normal, kind, flags, tile (game units, 0 = mesh UV
     "flat_wind": ("", False, OPAQUE, TWO_SIDED | WIND, 0.0, (1, 1, 1), 0.7, 0, 0),
 }
 for name, t in LEVEL.get("tiles", {}).items():
-    TILES[name] = ((lambda n=name, t=t: kit.mat_texset(n, SC, t["period"], t["sat"], t["val"], t["tint"], t["rough"])),
-                   t["period"] * SC, t["px"], False)
-    MATS[name] = (name, True, OPAQUE, 0, TILES[name][1] * K, (1, 1, 1), t["rough"], 1.0, 0)
+    TILES[name] = ((lambda n=name, t=t: kit.mat_texset(t.get("set", n), SC, t["period"], t.get("sat", 1.0), t.get("val", 1.0),
+                                                       t.get("tint", (1.0, 1.0, 1.0)), t["rough"])), t["period"] * SC, t["px"], False)
+    MATS[name] = (name, True, OPAQUE, TRIPLANAR if t.get("triplanar") else 0, TILES[name][1] * K, (2, 2, 2) if "detail" in t else (1, 1, 1),
+                  t["rough"], t.get("normal", 1.0), 0)
+for name, (tint, rough) in LEVEL.get("flats", {}).items():
+    MATS[name] = ("", False, OPAQUE, 0, 1000.0, tint, rough, 0, 0)
+if "skin" in LEVEL:  # wrinkled hide for untextured characters, mapped on their bind pose
+    MATS["skin"] = ("skin", False, OPAQUE, 0, LEVEL["skin"]["tile"], (1, 1, 1), 0.6, 0, LEVEL["skin"]["grain"])
 if "materials" in LEVEL:  # a level loads only what it uses
     MATS["paint"] = ("", False, OPAQUE, 0, 1000.0, (0.86, 0.88, 0.92), 0.6, 0, 0)  # road markings, kept white
     MATS = {n: m for n, m in MATS.items() if n in LEVEL["materials"]}
@@ -157,6 +162,10 @@ for name, (graph, tile, px, vertical) in TILES.items():
     alb, nor = bake.bake_tile(cache, name, graph(), tile, px, vertical, z0=z0)
     alb, nor = np.asarray(alb, np.float32), np.asarray(nor, np.float32)
     tile_mean[name] = dds.to_linear(alb).reshape(-1, 3).mean(0)
+    grain = LEVEL.get("tiles", {}).get(name, {}).get("detail")
+    if grain:  # grey around 0.5, so the material's tint of 2 leaves the game's colour on average
+        lin = dds.to_linear(alb).mean(2)
+        alb = np.repeat(dds.to_srgb(np.clip(0.5 * (1 + grain * (lin / lin.mean() - 1)), 0, 1))[..., None], 3, 2).astype(np.float32)
     put_tex(name, dds.mips(np.dstack([alb, np.ones(alb.shape[:2])])), b"DXT1")
     put_normal(name + "_n", nor)
 for name, mat, folder in (("leaves", kit._cards_mat, "leaves024"), ("ivy", kit._ivy_mat, "ivy017")):
@@ -171,6 +180,15 @@ if "water" in MATS:
     fade = np.linspace(0, 1, 256)[:, None]  # shore at v = 1
     foam_a = np.clip(fade * 1.6 * (0.35 + foam_u), 0, 1)
     put_tex("foam", dds.mips(np.dstack([np.full((256, 256, 3), 0.97), foam_a]).astype(np.float32), cut=0.5), b"DXT5")
+if "skin" in MATS:
+    f = np.fft.fftfreq(512)
+    r = np.sqrt((f[None, :] * 3.2) ** 2 + f[:, None] ** 2)  # folds run around the body, along u
+    r[0, 0] = 1
+    h = np.fft.ifft2(np.fft.fft2(np.random.default_rng(9).normal(size=(512, 512))) / r ** 2.7).real
+    h = np.sin((h - h.mean()) / h.std() * 7)  # contour lines of smooth noise: long folds that never cross
+    h = 1 - 0.55 * np.clip(h, 0, 1) ** 5 + 0.12 * (periodic_noise(512, 1.3, 10) - 0.5)
+    shade = np.clip(0.5 * (1 + 0.9 * (h / h.mean() - 1)), 0, 1)  # read raw by the character shader
+    put_tex("skin", dds.mips_data(np.dstack([shade, shade, shade, np.ones((512, 512))]).astype(np.float32)), b"DXT1")
 print("export: textures %.1fs, %.1f MB" % (time.time() - t0, sum(tex_bytes.values()) / 1e6))
 
 # ---------------------------------------------------------------- instances and prototypes
@@ -552,6 +570,10 @@ for line in list(open(os.path.join(ext, "textures", "index.tsv")))[1:]:
         hide.add(h)
     elif h in binds:
         continue
+    elif any(fnmatch.fnmatch(label, pat) for pat, _ in LEVEL.get("material_rules", ())):
+        binds[h] = [(h, MAT_ID[next(m for pat, m in LEVEL["material_rules"] if fnmatch.fnmatch(label, pat))], 0, 0.0, 1.0)]
+    elif role == "lit" and any(fnmatch.fnmatch(label, pat) for pat, _ in LEVEL.get("detail", ())):
+        binds[h] = [(h, MAT_ID[next(m for pat, m in LEVEL["detail"] if fnmatch.fnmatch(label, pat))], 4, -1.0, 0.0)]
     elif role in LEVEL.get("binds", ()):
         binds[h] = [(h, MAT_ID[m], mask, lo, hi) for m, mask, lo, hi in LEVEL["binds"][role]]
     elif role == "ground":

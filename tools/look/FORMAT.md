@@ -44,6 +44,7 @@ bind (24 bytes): how a game texture's world surface gets a material
                1 where the game texture is redder than green (painted dirt; grass paint stays)
                2 where its brightness is above the threshold (brick faces, not mortar)
                3 where its lowest channel is above the threshold (pale trim painted on brick)
+               4 whole surface, the game's colour multiplied by the material (lo -1, hi 0), to add grain and relief
   f32 lo, hi   smoothstep range for the mask
                x = r - g (mask 1), 0.3r + 0.59g + 0.11b (mask 2) or min(r, g, b) (mask 3), on the game texture's raw sRGB values
                t = saturate((x - lo) / (hi - lo)); m = t * t * (3 - 2 * t). lo > hi inverts the mask.
@@ -79,6 +80,8 @@ Conventions:
   the image and v runs down, so on walls v = -y / tile keeps a texture upright. Mesh UVs are already in this convention.
 - Normal maps are tangent space with +x along +u and +y towards the top of the image (OpenGL style).
 - sky.dds is sampled with the game-space view direction as is.
+- A material named `skin` is the hide of untextured characters: a raw grey tile on their bind pose, `tile` game units per
+  repeat, `alpha_cut` its strength.
 
 ## level.ini
 

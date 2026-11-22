@@ -272,13 +272,13 @@ float4 ps_world(V2P i, float2 vpos : VPOS) : COLOR
     float m = bind_mask(tex.rgb, MWEIGHT, MASK);
     float3 ma, mn;
     material(i.wp.xyz, n, ma, mn);
-    albedo = lerp(game, ma * TINT.rgb, m);
+    albedo = lerp(game, ma * TINT.rgb * (MASK.x > 3.5 ? game : 1), m);  // mask 4: the game's paint with this grain
     nor = normalize(lerp(n, mn, m));
     spec = m * (1 - MAT.z);
 #ifdef MATERIAL2
     float m2 = bind_mask(tex.rgb, MWEIGHT2, MASK2);
     material2(i.wp.xyz, n, ma, mn);
-    albedo = lerp(albedo, ma * TINT2.rgb, m2);
+    albedo = lerp(albedo, ma * TINT2.rgb * (MASK2.x > 3.5 ? game : 1), m2);
     nor = normalize(lerp(nor, mn, m2));
     spec = lerp(spec, 1 - MAT2.z, m2);
 #endif
@@ -341,6 +341,17 @@ float4 ps_inst(V2P i, float2 vpos : VPOS, float face : VFACE) : COLOR
     return float4(to_gamma(fogged(c, i.wp.xyz)), cut * lerp(1, closeness, NEAR.x));
 }
 
+// Short white dashes on the water: at most one per grid cell, each lying along the current and glinting in its own time.
+float dashes(float2 p, float t)
+{
+    p = float2(p.x * 0.91 + p.y * 0.42, p.y * 0.91 - p.x * 0.42) + float2(0.018, 0.006) * t;
+    float2 cell = floor(p);
+    float r = frac(sin(dot(cell, float2(12.9898, 78.233))) * 43758.5453);
+    float2 d = (frac(p) - float2(0.2 + 0.6 * r, 0.2 + 0.6 * frac(r * 7.3))) / float2(0.1, 0.028);
+    float soft = max(fwidth(p.y) / 0.028, 0.25);
+    return saturate((1 - length(d)) / soft) * saturate(sin(t * (0.5 + r) + r * 40) * 2.6 - 0.7);
+}
+
 // Water on the game's own surface: depth colour over the bed, sky reflection, soft shore.
 float4 ps_water(V2P i, float2 vpos : VPOS) : COLOR
 {
@@ -362,9 +373,7 @@ float4 ps_water(V2P i, float2 vpos : VPOS) : COLOR
     float3 body = WATER.rgb * (1.5 * SKY_AMB.rgb + 1.2 * SUN_COL.rgb * nl * lit);
     float3 h = normalize(v + SUN.xyz);
     float3 glint = SUN_COL.rgb * pow(saturate(dot(n, h)), 400) * 2;
-    // White flecks where two drifting copies of the ripples peak together.
-    float peak = tex2D(TNORMAL, p * float2(0.7, 2.2) + float2(0.05, -0.03) * t).g * tex2D(TNORMAL, p * float2(1.1, 3) - float2(0.04, 0.06) * t).g;
-    float fleck = saturate((peak - 0.345) * 30) * lit * shore;
+    float fleck = saturate(dashes(i.wp.xz / 210, t) + dashes(i.wp.zx / 330 + 0.37, t * 0.8)) * lit * shore;
     float alpha = saturate((1 - clear) * 0.62 + fres) * shore;
     float3 c = lerp(body, sky, fres) + glint * shore + (1.5 * SUN_COL.rgb + SKY_AMB.rgb) * fleck;
     return float4(to_gamma(fogged(c, i.wp.xyz)), saturate(max(alpha, 0.04 * shore) + fleck));
@@ -436,9 +445,16 @@ float4 ps_char(CharIn i) : COLOR
     float3 albedo = to_linear(saturate(tex.rgb * col.rgb * CHARK.z));
     // Fur from the bind pose, so it sticks to the body: front and side maps, mixed in a narrow band.
     float side = saturate(normalize(i.bn).z * i.bn.z * 4 - 1.5);
-    float tuft = lerp(tex2D(FUR, float2(i.bp.z / 36, (i.bp.y + i.bp.x / 2) / 40)).r, tex2D(FUR, i.bp.xy / float2(36, 40)).r, side);
+    float size = CHARK.w > 0 ? CHARK.w : 1;  // an untextured character wears the level's hide here, at its own scale
+    float2 uvs = float2(i.bp.z / 36, (i.bp.y + i.bp.x / 2) / 40) / size, uvf = i.bp.xy / float2(36, 40) / size;
+    float tuft = lerp(tex2D(FUR, uvs).r, tex2D(FUR, uvf).r, side);
     albedo *= 1 + (tuft - 0.5) * 3.5 * CHAR_STYLE.z;
     float3 n = normalize(i.n), v = normalize(EYE.xyz - i.w);
+    if (CHARK.w > 0) {  // its folds catch the light, and it stays slate grey through the warm character grade below
+        albedo *= float3(0.96, 1.04, 1.26);
+        float above = lerp(tex2D(FUR, uvs + float2(0, 0.01)).r, tex2D(FUR, uvf + float2(0, 0.01)).r, side);
+        n = normalize(n + float3(0, (above - tuft) * 3.5, 0));
+    }
     float nl = dot(n, SUN.xyz), nv = saturate(dot(n, v));
     // A soft cartoon step: the shadow side stays colourful.
     float band = saturate((nl + CHAR_STYLE.x) * CHAR_STYLE.y);
