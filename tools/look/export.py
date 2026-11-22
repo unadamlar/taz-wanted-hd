@@ -600,7 +600,7 @@ def game_rgba(label):
     return px.reshape(h, w, 4)[::-1].copy()
 
 
-def solid_mat(label):
+def solid_mat(label, tint=(1, 1, 1)):
     """A game texture as an opaque material for real geometry: colour bled past the cut-out's edge."""
     name = "game_" + label.rsplit("/", 1)[1][:26]
     if name not in MAT_ID:
@@ -608,7 +608,7 @@ def solid_mat(label):
         rgba[..., :3] = dds.bleed(rgba[..., :3], rgba[..., 3])
         rgba[..., 3] = 1
         put_tex(name, dds.mips(rgba), b"DXT1")
-        MATS[name] = (name, False, OPAQUE, TWO_SIDED, 0.0, (1, 1, 1), 0.6, 0, 0)
+        MATS[name] = (name, False, OPAQUE, TWO_SIDED, 0.0, tint, 0.6, 0, 0)
         MAT_ID[name] = len(MAT_ID)
     return MAT_ID[name]
 
@@ -645,7 +645,7 @@ if "chain" in LEVEL or "grill" in LEVEL:
             P, N = solid.link(rgba[..., 3], size)
         else:
             size, mat = (90.0, 345.0), solid_mat(LEVEL[kind])
-            P, N = solid.plate(rgba[..., 3], size, 4.5, tol=1.4, min_area=30.0)
+            P, N = solid.plate(rgba[..., 3], size, 4.5, tol=1.4, min_area=30.0, repeat=2)
         parts = [solid.on_card(P, N, pos, uv, np.ones_like(col) if kind == "chain" else col, size) for pos, uv, col in cards[h].values()]
         place_static(kind, *(np.concatenate(x) for x in zip(*parts)), mat)
 
@@ -674,12 +674,13 @@ if "solids" in LEVEL:
             else:
                 # the same thickness in the world, whatever scale the game places this model at
                 P, N = solid.plate(game_rgba(label_of(ds[0][0]))[..., 3], spec["size"], spec["depth"] / np.linalg.norm(ds[0][1][:3]),
-                                   tol=spec["tol"], min_area=spec["area"])
-                p, n, u, c = (np.concatenate(x) for x in zip(*(solid.on_card(P, N, pos[t], uv[t], col[t], spec["size"]) for t in solid.islands(pos))))
-            if spec.get("lift"):  # a night level bakes its light into these: keep the hue, the moon does the shading
-                c = c / np.maximum(c.max(1, keepdims=True), 1e-3)
+                                   tol=spec["tol"], min_area=spec["area"], repeat=spec.get("repeat", 1))
+                pieces = T if spec.get("each_draw") else [(pos[t], uv[t], col[t]) for t in solid.islands(pos)]  # a railing's sides touch but each repeats the paint
+                p, n, u, c = (np.concatenate(x) for x in zip(*(solid.on_card(P, N, *q, spec["size"]) for q in pieces)))
+            if "unbake" in LEVEL:  # a night level bakes its light into these: the moon does the shading now
+                c = c ** LEVEL["unbake"]
             vc = dds.to_linear(c) if spec.get("mat") is None else np.ones_like(p)
-            m = np.full(len(p), solid_mat(label_of(ds[0][0])) if spec.get("mat") is None else MAT_ID[spec["mat"]])
+            m = np.full(len(p), solid_mat(label_of(ds[0][0]), spec.get("tint", (1, 1, 1))) if spec.get("mat") is None else MAT_ID[spec["mat"]])
         else:
             mats = [solid_mat(label_of(d[0])) for d in ds]
             tex = np.concatenate([np.full(len(t[0]), i) for i, t in enumerate(T)])

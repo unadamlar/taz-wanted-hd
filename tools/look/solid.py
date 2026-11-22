@@ -118,13 +118,16 @@ def outlines(alpha, tol, min_area):
     return rings
 
 
-def plate(alpha, size, depth, tol=1.0, min_area=8.0):
+def plate(alpha, size, depth, tol=1.0, min_area=8.0, repeat=1):
     """The opaque shape of a cut-out as a solid: corners (u, v, side offset) and normals in (size x, size y, 1) units.
-    Face normals lean towards the outline, so a thin bar shades round without extra triangles."""
+    Face normals lean towards the outline, so a thin bar shades round without extra triangles.
+    repeat traces that many copies side by side, so a post painted across the texture's edge stays one post."""
+    alpha = np.tile(alpha, (1, repeat))
     h, w = alpha.shape
+    texels = np.array([w / repeat, h])
     rings = outlines(alpha, tol, min_area)
     xy = np.concatenate(rings)
-    scale = np.array([size[0] / w, size[1] / h])
+    scale = np.array(size) / texels
     out, edges, at = [], [], 0
     for r in rings:
         d = (np.roll(r, -1, 0) - r) * scale
@@ -140,7 +143,7 @@ def plate(alpha, size, depth, tol=1.0, min_area=8.0):
     c = np.rint(v[t].mean(1)).astype(int)
     t = t[alpha[c[:, 1].clip(0, h - 1), c[:, 0].clip(0, w - 1)] > 0.5]
     vo = np.array([out[o[0]] if len(o) else (0.0, 0.0) for o in orig])
-    uv = (v + 0.5) / [w, h]
+    uv = (v + 0.5) / texels
     lean = 0.8
     parts = []
     for z, flip in ((depth, False), (-depth, True)):
@@ -153,7 +156,7 @@ def plate(alpha, size, depth, tol=1.0, min_area=8.0):
         j = at + (np.arange(len(r)) + 1) % len(r)
         at += len(r)
         order = ((i, depth), (j, depth), (j, -depth), (i, depth), (j, -depth), (i, -depth))
-        wall = np.stack([np.column_stack([(xy[k] + 0.5) / [w, h], np.full(len(k), z)]) for k, z in order], 1)
+        wall = np.stack([np.column_stack([(xy[k] + 0.5) / texels, np.full(len(k), z)]) for k, z in order], 1)
         nor = np.stack([np.column_stack([out[k], np.zeros(len(k))]) for k, _ in order], 1)
         parts.append((wall.reshape(-1, 3), nor.reshape(-1, 3)))
     return np.concatenate([x for x, _ in parts]), np.concatenate([x for _, x in parts])
@@ -206,7 +209,8 @@ def chain_on_cards(pos, uv, col):
 def on_card(P, N, pos, uv, col, size):
     """Moves plate() corners onto a game card given as triangles; the texture repeats where the card's uvs do."""
     parts = []
-    for k in range(int(math.floor(uv[..., 0].min() + 1e-6)), int(math.ceil(uv[..., 0].max() - 1e-6))):
+    copies = range(int(math.floor(uv[..., 0].min() + 1e-6)), int(math.ceil(uv[..., 0].max() - 1e-6))) if P[:, 0].max() <= 1.001 else (0,)
+    for k in copies:
         q = P[:, :2] + [k, 0]
         a, e1, e2 = uv[:, 0], uv[:, 1] - uv[:, 0], uv[:, 2] - uv[:, 0]
         det = e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]
