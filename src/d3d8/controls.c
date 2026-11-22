@@ -23,7 +23,6 @@
 #define COLLISION_CACHE ((void *)0x7054e8)
 #define ARM_MARGIN 70.f         // kept between the camera and a wall (near plane is 50)
 #define ARM_MIN 180.f           // closest the camera is placed to Taz
-#define ARM_CLOSE 250.f         // with less clear line than this it rises over him
 #define KEY_TABLE ((const DWORD *)0x658770) // key code -> DIK
 #define MOUSE_DX (*(const LONG *)0x751548)
 #define MOUSE_DY (*(const LONG *)0x75154c)
@@ -81,9 +80,8 @@ static BYTE *tilt_cam;          // camera whose tilt the mouse holds this frame
 static BYTE *mouse_cam;         // camera the mouse last turned...
 static DWORD mouse_time;        // ...and when (ms)
 static int mouse_led;           // that last turn came from the mouse, not the gamepad's stick
-static float arm;               // camera's distance from Taz, shortened by walls
+static float arm;               // room for the camera behind Taz, shortened by walls
 static float rise;              // extra camera elevation with a wall right behind Taz (radians)
-static float blocked_for;       // seconds the line from Taz to the camera has been blocked
 static DWORD camera_frame, now; // frames: last camera control call, current
 static int held;                // mouse held exclusively
 static BYTE *p1_pad;            // player 1's pad as set up for the keyboard...
@@ -468,53 +466,56 @@ static float clear_part(const float *o, const float *end)
     return lo;
 }
 
-// Walls shorten the camera's distance from Taz and never turn it: in quickly once the line to him
-// has been blocked for a moment (so a passing pole doesn't pop it), back out slowly. With a wall
-// right behind him there's no room to stay level, so the camera rises to look down over him.
+// Walls shorten the camera's distance from Taz and never turn it. A fan of lines from Taz toward the
+// camera finds the room: the outer ones see a wall coming while the view turns, so the camera eases
+// in ahead of it, and something only one line wide (a pole) is looked past. In quickly, back out
+// slowly. With too little room to stay at ARM_MIN the camera keeps that distance and rises just
+// enough to fit in front of the wall.
 static void pull_in(float *c, float full)
 {
     const float zero[3] = { 0 };
-    float d[3] = { c[8] - c[12], c[9] - c[13], c[10] - c[14] }, e[3] = { c[0] - c[12], c[1] - c[13], c[2] - c[14] }, u[3];
-    float len = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]), el = sqrtf(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]);
+    float d[3] = { c[8] - c[12], c[9] - c[13], c[10] - c[14] }, room[9] = { 0 };
+    float len = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
     if (len < 1) return;
     for (int k = 0; k < 3; k++) d[k] /= len;
-    float want = 0, room = -1;
-    for (int i = 0; i < 4 && room < ARM_CLOSE; i++) {
-        float end[4] = { 0, 0, 0, 1 };
-        memcpy(u, d, sizeof u);
-        lift(u, zero, i * 0.4f);
+    for (int i = 1; i <= 7; i++) {
+        float u[3] = { d[0], d[1], d[2] }, end[4] = { 0, 0, 0, 1 };
+        spin(u, zero, (i - 4) * 0.1f);
         for (int k = 0; k < 3; k++) end[k] = c[12 + k] + u[k] * full;
-        float r = clear_part(c + 12, end) * full;
-        if (r > room) room = r, want = i * 0.4f;
+        room[i] = clear_part(c + 12, end) * full;
     }
-    int hit = room < full;
-    blocked_for = hit ? blocked_for + 1 / FPS : 0;
-    if (hit) room = room - ARM_MARGIN < ARM_MIN ? ARM_MIN : room - ARM_MARGIN;
-    if (hit && blocked_for < 0.1f) {
-        if (room < arm) room = arm;
-        want = rise;
+    float reach = full, hard = full; // eased toward, and the limit on the line straight to Taz
+    for (int i = 1; i <= 7; i++) {
+        float r = room[i] > ARM_MARGIN + 1 ? room[i] - ARM_MARGIN : 1;
+        if (room[i] >= full || (room[i - 1] >= full && room[i + 1] >= full)) continue;
+        if (i == 4) hard = r;
+        r += abs(i - 4) * 100;
+        if (r < reach) reach = r;
     }
-    float rate = (room < arm ? 18 : 3) / FPS, up = (want > rise ? 10 : 2) / FPS;
-    arm += (room - arm) * (rate > 1 ? 1 : rate);
-    rise += (want - rise) * (up > 1 ? 1 : up);
-    for (int k = 0; k < 3; k++) c[8 + k] = c[12 + k] + d[k] * arm;
-    if (el > arm) for (int k = 0; k < 3; k++) c[k] = c[12 + k] + e[k] * arm / el;
-    if (rise > 0.01f) {
-        float mix = rise / 0.2f > 1 ? 1 : rise / 0.2f;
-        memcpy(u, d, sizeof u);
-        lift(u, zero, rise);
-        for (int k = 0; k < 3; k++) c[k] += (c[12 + k] + u[k] * arm - c[k]) * mix;
-    }
-    // The eased eye can still trail behind a corner.
-    float part = clear_part(c + 12, c);
-    if (part < 1) {
-        for (int k = 0; k < 3; k++) e[k] = c[k] - c[12 + k];
-        el = sqrtf(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]);
-        float safe = part * el - ARM_MARGIN < 40 ? 40 : part * el - ARM_MARGIN;
-        if (el > safe) for (int k = 0; k < 3; k++) c[k] = c[12 + k] + e[k] * safe / el;
-    }
+    float rate = (reach < arm ? 10 : 3) / FPS;
+    arm += (reach - arm) * (rate > 1 ? 1 : rate);
+    rate = 30 / FPS;
+    if (hard < arm) arm += (hard - arm) * (rate > 1 ? 1 : rate);
+    float dist = arm < ARM_MIN ? ARM_MIN : arm, flat = sqrtf(d[0] * d[0] + d[2] * d[2]);
+    float tilt = atan2f(d[1], flat), up = dist > arm ? acosf(arm * flat / dist) - fabsf(tilt) : 0;
+    up = up > 1 ? 1 : up;
+    rate = (up > rise ? 8 : 3) / FPS;
+    rise += (up - rise) * (rate > 1 ? 1 : rate);
+    for (int k = 0; k < 3; k++) c[8 + k] = c[12 + k] + d[k] * dist;
+    // Until it has risen the eye comes closer than ARM_MIN rather than sit in the wall.
+    float eye = arm * flat / cosf(tilt + rise);
+    eye = eye > dist ? dist : eye < 100 ? 100 : eye;
+    // The game lets the eye trail its destination, which near a wall leaves it inside the wall or lets
+    // Taz run under it. The less room, the more firmly it is held in place.
+    float w = full > ARM_MIN ? (full - dist) / (full - ARM_MIN) : 1;
+    w = w >= 1 ? 1 : 1 - powf(1 - w * w, 60 / FPS);
+    lift(d, zero, rise);
+    for (int k = 0; k < 3; k++) c[k] += (c[12 + k] + d[k] * eye - c[k]) * w;
+    float e[3] = { c[0] - c[12], c[1] - c[13], c[2] - c[14] };
+    float el = sqrtf(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]);
+    if (el > dist) for (int k = 0; k < 3; k++) c[k] = c[12 + k] + e[k] * dist / el;
     // Close up, a trailing look-at could end up on the far side of the eye and flip the view.
-    if (arm < full) for (int k = 0; k < 3; k++) c[4 + k] = c[12 + k] + (c[4 + k] - c[12 + k]) * arm / full;
+    if (dist < full) for (int k = 0; k < 3; k++) c[4 + k] = c[12 + k] + (c[4 + k] - c[12 + k]) * dist / full;
 }
 
 // The camera trails Taz on a leash (and in some states swings behind him), so running anywhere but
@@ -534,8 +535,9 @@ static void __cdecl camera_update(BYTE *cam)
     int tilt = cam == tilt_cam && now - camera_frame <= 1 && !*(void **)(cam + 0xac);
     if (tilt) c[0x19] = TILT_REST - pitch * TILT_SWING, *(DWORD *)(cam + 0x74) |= 1;
     float full = c[0x18];
+    if (!follow) rise = 0;
     if (!follow || arm <= 0 || arm > full) arm = full;
-    c[0x18] = arm;
+    c[0x18] = arm < ARM_MIN ? ARM_MIN : arm;
     void *body = *(void **)(cam + 0x278); // the game's collision ball, which would fight pull_in
     if (follow) *(void **)(cam + 0x278) = NULL;
     CAMERA_UPDATE(cam);
