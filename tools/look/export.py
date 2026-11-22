@@ -430,6 +430,8 @@ for o in bpy.data.objects:
     co = np.empty(len(me.vertices) * 3, np.float32); me.vertices.foreach_get("co", co)
     M = np.array(S @ o.matrix_world, np.float32)
     w = (co.reshape(-1, 3)[tv.reshape(-1, 3)[slot_water[mi]].ravel()] @ M[:3, :3].T + M[:3, 3]) * K
+    if "@placed" in o.name and np.ptp(w[:, 1]) > 10:  # a floating log's wet underside, not a water surface
+        continue
     water.append(w)
 if water:
     wp = np.concatenate(water)

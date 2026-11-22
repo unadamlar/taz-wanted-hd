@@ -465,7 +465,7 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     for (int i = 0; i < 3; i++)
         for (int j = 0; j < 4; j++) rows[i][j] = w[j][i];
     hd_world_quick(d, rows[0], h);
-    if (bark) hd_world_float(d, -4050); // the pond's surface
+    if (bark) hd_world_float(d, -4055.5f); // the pond's surface
     draw_real(dev, type, start, count);
     hd_world_quick_end(d);
     IDirect3DDevice8_SetVertexShader(dev, shader);
