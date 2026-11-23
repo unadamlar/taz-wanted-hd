@@ -91,6 +91,8 @@ void look_after_draw(IDirect3DDevice8 *dev);
 void look_present_ms(double ms);
 const D3DMATRIX *look_camera(D3DTRANSFORMSTATETYPE t, const D3DMATRIX *m, D3DMATRIX *tmp);
 int look_remaster_available(void);
+int look_enabled(void);
+int settings_remaster_chosen(void);
 void look_set_remaster(int on);
 void look_bb_restored(IDirect3DDevice8 *dev);
 int look_redirected(void);

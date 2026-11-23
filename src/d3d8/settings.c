@@ -237,9 +237,12 @@ void setting_step(int i, int dir)
 // shows HD for Remaster and keeps the choice for the next scene that has it.
 enum { REMASTER, HD, ORIGINAL };
 
+static int chosen = REMASTER;
+int settings_remaster_chosen(void) { return chosen == REMASTER && look_enabled(); }
+
 void settings_frame(void)
 {
-    static int chosen = REMASTER, shown = HD, hd_textures, smooth, hd_models, taz_style, draw;
+    static int shown = HD, hd_textures, smooth, hd_models, taz_style, draw;
     int can = look_remaster_available(), now = chosen == REMASTER && !can ? HD : chosen, pressed = key_pressed(VK_F11);
     if (pressed) chosen = now = now == REMASTER ? HD : now == HD ? ORIGINAL : can ? REMASTER : HD;
     if (now != shown) {

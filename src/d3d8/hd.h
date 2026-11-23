@@ -22,6 +22,7 @@ int hd_redirected(void);
 int hd_post_done(void);
 void hd_post(hd_dev d);                 // resolve, bloom, tone map to the back buffer
 void hd_frame_end(hd_dev d);
+void hd_set_paused(int on);             // the level goes soft and dim behind the pause menu
 
 void hd_camera(hd_dev d);               // reads the game's view and projection
 const float *hd_view(void);             // 4x4

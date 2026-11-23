@@ -1494,6 +1494,9 @@ void hd_glow_end(hd_dev d, unsigned long dest_blend)
 }
 
 // --- post ---------------------------------------------------------------------------------------
+static int paused;
+void hd_set_paused(int on) { paused = on; }
+
 void hd_post(hd_dev d)
 {
     if (!redirected) return;
@@ -1510,6 +1513,7 @@ void hd_post(hd_dev d)
     for (DWORD s = 0; s < 2; s++) sampler(d, s, D3DTEXF_LINEAR, D3DTEXF_NONE, D3DTADDRESS_CLAMP);
     // The ini's numbers are Blender's: its glow is subtler and its AgX curve punchier than ours at the same values.
     float b[3][4] = { { 0 }, { lv.bloom_t, lv.bloom_t * 0.5f, lv.bloom_s * 0.3f, lv.exposure }, { lv.sat * 1.17f, lv.contrast * 1.26f, 0, 0 } };
+    if (paused) b[1][0] = b[1][1] = 0, b[1][2] = 1.0f / NBLOOM, b[2][2] = 1, b[2][3] = 0.36f; // the bloom chain, unthresholded, is a blur of the picture
     IDirect3DDevice9_SetPixelShaderConstantF(d, 1, b[1], 2);
     fullscreen(d, &bloom[0], p_bright, hdr.t, NULL, 1.0f / hdr.w, 1.0f / hdr.h);
     for (int i = 1; i < NBLOOM; i++)
