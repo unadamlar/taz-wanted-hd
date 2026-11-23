@@ -98,6 +98,7 @@ static struct rec *add_rec(void)
 static int suspended;              // F11 is on HD or Original: everything stays loaded, nothing of ours draws
 static int remaster(void) { return level && !suspended && hd_loaded(); }
 int look_remaster_available(void) { return level && hd_loaded(); }
+int look_enabled(void) { return level; }
 void look_set_remaster(int on) { suspended = !on; }
 int look_redirected(void) { return remaster() && hd_redirected(); }
 
