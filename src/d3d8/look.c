@@ -598,6 +598,7 @@ void look_frame(IDirect3DDevice8 *dev)
         m.frames = -30, m.want = n;
     }
     double t0 = now_ms();
+    hd_set_paused(settings.exe_known && GAME_STATE == 3);
     merge_frame(dev);
     int scene = settings.exe_known ? look_scene(SCENE) : -1;
     struct IDirect3DDevice9 *d = d3d9_device(dev);

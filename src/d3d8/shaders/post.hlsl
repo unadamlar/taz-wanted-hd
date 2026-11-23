@@ -1,7 +1,7 @@
 // Look level 4, full-screen passes: AO, bloom, tone mapping and grade.
 float4 TEXEL_SRC : register(c0);    // 1 / w, 1 / h of the source
 float4 BLOOM     : register(c1);    // threshold, knee, strength, exposure
-float4 GRADE     : register(c2);    // saturation, contrast
+float4 GRADE     : register(c2);    // saturation, contrast, 1 = show only the blur, dimming
 float4 PROJ      : register(c3);    // view-space x, y from uv: x scale, y scale, ao radius, ao strength
 
 sampler2D SRC   : register(s0);
@@ -64,11 +64,12 @@ float3 film(float3 c)
 
 float4 ps_final(Quad i) : COLOR
 {
-    float3 c = decode(tex2D(SRC, i.uv).rgb) * BLOOM.w + tex2D(SRC2, i.uv).rgb * BLOOM.z;
+    float3 glow = tex2D(SRC2, i.uv).rgb * BLOOM.z;
+    float3 c = lerp(decode(tex2D(SRC, i.uv).rgb) * BLOOM.w + glow, glow, GRADE.z);
     c = pow(film(c), GRADE.y);
     c.g = lerp(c.g, c.r, 0.07);  // strong reds lean to orange, as in the Blender look
     float l = dot(c, float3(0.2126, 0.7152, 0.0722));
-    return float4(saturate(lerp(l, c, GRADE.x)), 1);
+    return float4(saturate(lerp(l, c, GRADE.x)) * (1 - GRADE.w), 1);
 }
 
 // Ambient occlusion from linear depth: eight directions, two radii, bent by distance.
