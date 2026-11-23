@@ -174,6 +174,37 @@ ICE_LOOK = dict(
     sky=dict(zenith="#3f8fe8", horizon="#cfeaff", horizon_warm="#f2f8ff", sky_strength=1.2, cloud_white=1.2, ambient="#c7dfff"), cliff=dict(),
 )
 
+# ---- safari (scene 5): jungle islands in a river, a hot bright day. Same grass, dirt and water as the zoo hub.
+SAFARI_RULES = [
+    ("resobjs/*", "gameplay"), ("safari/extras/*", "gameplay"), ("safari/textures/tazbook*", "gameplay"), ("safari/textures/tazwanted", "gameplay"),
+    ("safari/textures/tazanted02", "gameplay"), ("safari/textures/*crate*", "gameplay"), ("safari/textures/sign*", "gameplay"),
+    ("safari/textures/safsign*", "gameplay"), ("safari/textures/samdoor*", "gameplay"), ("safari/textures/samgates*", "gameplay"),
+    ("safari/textures/trunkwanted", "gameplay"), ("safari/textures/monkeytyre", "gameplay"), ("safari/textures/safhelipad", "gameplay"),
+    ("safari/skybox/*", "sky"), ("resTex/shadowsub", "hide"), ("safari/textures/safariwater", "water"),
+    ("safari/textures/pestsaf01", "lawn"), ("safari/textures/pestsaf02", "lawn"), ("safari/textures/tazfern02", "lawn"), ("safari/textures/tazfern06", "lawn"),
+    ("safari/textures/pestsaf03", "ground"), ("safari/textures/pestsaf06", "ground"), ("safari/textures/pestsaf07", "ground"),
+    ("safari/textures/grassedge*", "ground"), ("safari/textures/grassjoiner*", "ground"),
+]
+SAFARI_DETAIL = [
+    ("safari/textures/safrock*", "d_rock"), ("safari/textures/sharprock*", "d_rock"), ("safari/textures/cagewall", "d_rock"),
+    ("safari/textures/safaritemple*", "d_stone"), ("safari/textures/safwall*", "d_stone"), ("safari/textures/bunker*", "d_stone"),
+    ("safari/textures/electricfencewall*", "d_stone"), ("safari/textures/guardtower*", "d_stone"), ("safari/textures/bridgepiller", "d_stone"),
+    ("safari/textures/trunk*", "d_bark"), ("safari/textures/safwarmwood*", "d_bark"), ("safari/textures/tazwood*", "d_bark"),
+    ("safari/textures/treeinternal", "d_bark"), ("safari/textures/palmbark", "d_bark"), ("safari/textures/hutwood", "d_bark"),
+]
+SAFARI_TILES = dict(d_rock=dict(ZOO_TILES["d_rock"], detail=0.38), d_stone=dict(ZOO_TILES["d_stone"], detail=0.45),
+                    d_bark=dict(set="bark", period=1.6, px=1024, detail=0.6, triplanar=True, rough=0.8))
+SAFARI_HAND = {
+    "camera_B": dict(loc=(0.0, -20.0, 2.0), look_at=(0.0, 0.0, -2.0), lens=16.0),
+    "camera_C": dict(loc=(20.0, 0.0, 2.0), look_at=(0.0, 0.0, -2.0), lens=16.0),
+    "taz_offset_B": (0.0, 0.0, 0.0), "elephant_offset_B": (0.0, 0.0, 0.0),
+}
+SAFARI_LOOK = dict(
+    sun=dict(sun_azimuth=130.0, sun_elevation=48.0, sun_strength=5.2, sun_color="#ffedcf"),
+    grade=dict(exposure=0.45, look="AgX - Punchy", saturation=1.28, bloom=0.4, fog=0.06, fog_start=50.0, fog_depth=240.0, ambient_strength=1.0),
+    sky=dict(zenith="#1257e6", horizon="#8fd0ff", horizon_warm="#fff4e2", sky_strength=1.3, cloud_white=1.35, ambient="#cdd8ea"), cliff=dict(),
+)
+
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", captures=("world-hero.bin", "world-sweep.bin"), rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
@@ -212,4 +243,9 @@ LEVELS = {
                     materials=tuple(ICE_TILES) + ("flat",), tiles=ICE_TILES, detail=ICE_DETAIL, fog_color="#cfe6fb",
                     binds={"snow": (("d_ice", 4, -1.0, 0.0), ("snowfield", 3, 0.66, 0.82))},
                     lumps=dict(roles=("snow",), density=0.2, colour="#f4f9ff"), island_boxes=True, sky_gain=1.35, night_sky=False, ground_tint=(0.74, 0.67, 0.59), tints={"snowfield": (0.88, 0.9, 0.94)}),
+    "safari": dict(scene=5, pak="safari", blend="zoo-levels/safari/safari.blend", out="zoo-levels/safari/pass1", rules=SAFARI_RULES, hand=SAFARI_HAND,
+                   look=SAFARI_LOOK, hdri=None, hdri_rotation=0.0, hub=(-79.0, -64.0, 71.0, 80.0), sky_panels=True, night_sky=False, grass_density=30.0, island_boxes=True,
+                   captures=("zoo-levels/safari/world-hero.bin", "zoo-levels/safari/world-sweep-a.bin", "zoo-levels/safari/world-sweep-b.bin"),
+                   materials=tuple(SAFARI_TILES) + ("lawn", "dirt", "grass", "flat", "flat_wind", "water", "water_bed", "foam"), tiles=SAFARI_TILES,
+                   detail=SAFARI_DETAIL, binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05))}, sky_gain=1.3),
 }
