@@ -143,8 +143,39 @@ PLANET_SPACE = {
     "space03": [dict(c=(577, 356), r=143, atm=_BLUE, reach=1.42, paint=1.42, gloss=0.3), dict(c=(790, 507), r=44, paint=1.12, freq=6)],
 }
 
+# ---- ice dome (scene 4): a Christmas shop frozen inside a dome. Its snow is painted white with blue zigzag edges.
+ICE_RULES = [
+    ("resobjs/*", "gameplay"), ("icedome/extras/*", "gameplay"), ("icedome/textures/tazbook*", "gameplay"),
+    ("icedome/textures/tazwanted", "gameplay"), ("icedome/textures/tazanted02", "gameplay"), ("icedome/textures/icetreetaz*", "gameplay"),
+    ("icedome/textures/sign*", "gameplay"), ("icedome/textures/xmaspressie*", "gameplay"), ("icedome/textures/cheesemouse*", "gameplay"),
+    ("icedome/textures/snowboard*", "gameplay"), ("icedome/textures/electricfencesign", "gameplay"),
+    ("icedome/skybox/*", "sky"), ("resTex/shadowsub", "hide"),
+    ("icedome/textures/snowturf*", "snow"), ("icedome/textures/snowpud*", "snow"), ("icedome/textures/snowtile", "snow"),
+    ("icedome/textures/snowdecal*", "snow"), ("icedome/textures/snowfoot*", "snow"),
+]
+ICE_DETAIL = [
+    ("icedome/textures/icecubed*", "d_ice"), ("icedome/textures/igloo*", "d_ice"), ("icedome/textures/sdomestrip*", "d_ice"),
+    ("icedome/textures/snowxmas*", "d_ice"), ("icedome/textures/bluetree*", "d_ice"), ("icedome/textures/purptree*", "d_ice"),
+    ("icedome/textures/snowtree", "d_ice"), ("icedome/textures/frozentreats*", "d_ice"), ("icedome/textures/snowplant*", "d_ice"),
+    ("icedome/textures/snowbeam*", "d_stone"), ("icedome/textures/palmbark", "d_stone"), ("icedome/textures/trunk*", "d_stone"),
+]
+ICE_TILES = dict(
+    snowfield=dict(made="snow", period=3.2, px=1024, triplanar=True, rough=0.55, normal=0.8),
+    d_ice=ZOO_TILES["d_ice"], d_stone=ZOO_TILES["d_stone"],
+)
+ICE_HAND = {
+    "camera_B": dict(loc=(0.0, -20.0, -4.0), look_at=(0.0, 0.0, -8.0), lens=16.0),
+    "camera_C": dict(loc=(20.0, 0.0, -4.0), look_at=(0.0, 0.0, -8.0), lens=16.0),
+    "taz_offset_B": (0.0, 0.0, 0.0), "elephant_offset_B": (0.0, 0.0, 0.0),
+}
+ICE_LOOK = dict(
+    sun=dict(sun_azimuth=62.0, sun_elevation=52.0, sun_strength=3.5, sun_color="#fff4e6"),
+    grade=dict(exposure=0.2, look="AgX - Punchy", saturation=1.3, bloom=0.3, fog=0.05, fog_start=70.0, fog_depth=320.0, ambient_strength=1.05),
+    sky=dict(zenith="#3f8fe8", horizon="#cfeaff", horizon_warm="#f2f8ff", sky_strength=1.2, cloud_white=1.2, ambient="#c7dfff"), cliff=dict(),
+)
+
 LEVELS = {
-    "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
+    "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", captures=("world-hero.bin", "world-sweep.bin"), rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
                    tiles=ZOO_TILES, detail=ZOO_DETAIL, skin=dict(tile=520.0, grain=0.18),
                    binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05))},
@@ -175,4 +206,10 @@ LEVELS = {
                     materials=tuple(PLANET_TILES) + ("lawn", "grass"), tiles=PLANET_TILES, detail=PLANET_DETAIL,
                     tints={"lawn": (0.16, 1.45, 0.4), "red_ground": (1.45, 1.2, 1.2)}, binds={"ground": (("lawn", 0, 0.0, 1.0), ("red_ground", 1, -0.14, -0.05))},
                     grass_opts=dict(height=(0.09, 0.22), flowers=0.0, weeds=0.0), dome="dome", space=PLANET_SPACE, flats={"hull": ((3.2, 3.2, 3.25), 0.42)}, hold=1.0, contrast=1.0, bloom_threshold=25.0, char_fill=(0.16, 0.16, 0.22)),
+    "icedome": dict(scene=4, pak="icedome", blend="zoo-levels/icedome/icedome.blend", out="zoo-levels/icedome/pass1", rules=ICE_RULES, hand=ICE_HAND,
+                    look=ICE_LOOK, hdri=None, hdri_rotation=0.0, hub=(-71.0, -58.0, 71.0, 50.0), sky_panels=True, clutter=False,
+                    captures=("zoo-levels/icedome/world-hero.bin", "zoo-levels/icedome/world-sweep-a.bin", "zoo-levels/icedome/world-sweep-b.bin"),
+                    materials=tuple(ICE_TILES) + ("flat",), tiles=ICE_TILES, detail=ICE_DETAIL, fog_color="#cfe6fb",
+                    binds={"snow": (("d_ice", 4, -1.0, 0.0), ("snowfield", 3, 0.66, 0.82))},
+                    lumps=dict(roles=("snow",), density=0.3, colour="#f4f9ff"), sky_gain=1.35, ground_tint=(0.74, 0.67, 0.59), tints={"snowfield": (0.8, 0.82, 0.86)}),
 }

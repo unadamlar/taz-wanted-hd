@@ -629,7 +629,7 @@ def blender_main(argv):
         if overlay:
             covers.append(overlay)
         grass = kit.scatter_grass(live, SCALE, points=(P, N, hm), blockers=None if L.get("clear_islands") else covers, exclude=gameplay_boxes, seed=3,
-                                  **L.get("grass_opts", {}))
+                                  **L.get("grass_opts", {})) if len(P) else []
 
         def clutter_sampler(density, seed):
             r, g = ground_info(density, seed)
@@ -644,7 +644,11 @@ def blender_main(argv):
             edges = mass_edges
         vines = [v for v in (kit.scatter_vines(edges, SCALE, seed=5, per_m=3.0 if overlay else 5.0),
                              kit.scatter_ledge_moss(edges, SCALE, seed=6)) if v] if edges else []
-        scat = grass + clutter + vines
+        lumps = []
+        if "lumps" in L:
+            lp = kit.sample_surface_ex(live, lambda o: poly_mask(o, L["lumps"]["roles"]) & _up(o, 0.8), L["lumps"]["density"], 13, hub)["P"]
+            lumps = [kit.scatter_lumps(lp[kit.outside_boxes(lp, gameplay_boxes, 0.6 * SCALE)], SCALE, L["lumps"]["colour"])]
+        scat = grass + clutter + vines + lumps
         stats["scatter"] = {o.name: (o["kit_instances"], o["kit_tris"]) for o in scat}
         stats["instances"] = sum(o["kit_instances"] for o in scat)
         stats["scatter_tris"] = sum(o["kit_tris"] for o in scat)

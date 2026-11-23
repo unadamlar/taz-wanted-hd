@@ -10,7 +10,7 @@ from mathutils import Matrix, Vector, noise as mnoise
 
 here = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, here)
-import bake, dds, dress, kit, space, solid
+import bake, dds, dress, kit, made, space, solid
 
 a = argparse.ArgumentParser()
 a.add_argument("--level", default="zoohub")
@@ -112,6 +112,7 @@ BLENDER_MAT = {
     "kit_water_bed": "water_bed", "kit_foam": "foam", "kit_pebble": "flat", "kit_stem": "flat_wind",
     "kit_petal_pink": "flat_wind", "kit_petal_white": "flat_wind", "kit_petal_blue": "flat_wind",
     "kit_flower_center": "flat_wind", "kit_weed_leaf": "flat_wind",
+    "kit_snow_lump": "flat",
 }
 
 
@@ -170,7 +171,8 @@ tile_mean = {}
 for name, (graph, tile, px, vertical) in TILES.items():
     # the cliff graph's strata depend on height: bake it where the rock actually stands
     z0 = kit.world_bbox(bpy.data.objects["kit_cliff_mass"])[0].z if name == "cliff" else 0.0
-    alb, nor = bake.bake_tile(cache, name, graph(), tile, px, vertical, z0=z0)
+    spec = LEVEL.get("tiles", {}).get(name, {})
+    alb, nor = made.tile(spec["made"], px) if "made" in spec else bake.bake_tile(cache, name, graph(), tile, px, vertical, z0=z0)
     alb, nor = np.asarray(alb, np.float32), np.asarray(nor, np.float32)
     tile_mean[name] = dds.to_linear(alb).reshape(-1, 3).mean(0)
     grain = LEVEL.get("tiles", {}).get(name, {}).get("detail")
@@ -777,7 +779,7 @@ def place_static(name, p, n, uv, c, mat):
     print("export: %s, %d triangles" % (name, len(p) // 3))
 
 
-captures = [os.path.join(ext, "look", f) for f in LEVEL.get("captures", ("world-hero.bin", "world-sweep.bin"))]
+captures = [os.path.join(ext, "look", f) for f in LEVEL.get("captures", ())]
 if "chain" in LEVEL or "grill" in LEVEL:
     want = {tex_hash[LEVEL[k]]: k for k in ("chain", "grill") if k in LEVEL}
     cards = {h: {} for h in want}
@@ -1046,7 +1048,7 @@ fog_start = grade["fog_start"] * SC * K
 vals = [
     ("sun_dir", (math.cos(az) * math.cos(el), math.sin(el), math.sin(az) * math.cos(el))),
     ("sun_color", np.array(kit.srgb(sun["sun_color"])) * sun["sun_strength"] / math.pi),
-    ("sky_ambient", amb), ("ground_ambient", amb * np.array((0.55, 0.47, 0.38))),
+    ("sky_ambient", amb), ("ground_ambient", amb * np.array(LEVEL.get("ground_tint", (0.55, 0.47, 0.38)))),
     ("shadow_softness", math.tan(math.radians(1.0))), ("ao_radius", 2.5 * SC * K), ("ao_strength", 1.0),
     ("fog_color", kit.srgb(LEVEL.get("fog_color", "#b8d6f2"))), ("fog_start", fog_start),
     ("fog_end", fog_start + grade["fog_depth"] * SC * K / grade["fog"]),  # Blender's fog tops out at this 7%

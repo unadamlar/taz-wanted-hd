@@ -2052,6 +2052,19 @@ def scatter_clutter(objects, scale=1.0, *, select_roles=("dirt",), roles=None, p
     return out
 
 
+def scatter_lumps(P, scale, colour, *, size=(0.14, 0.42), squash=0.42, seed=8, name="kit_clutter_lumps"):
+    """Soft low mounds at points P, gathered in patches."""
+    rng = np.random.default_rng(seed)
+    mat = _flat("kit_snow_lump", colour, 0.8)
+    vs = _variants("kit_v_lump", [_rock_mesh(f"kit_lump_{i}", np.random.default_rng(700 + i), mat, 2, squash, 0.2) for i in range(5)])
+    P = P[rng.random(len(P)) < np.clip(0.45 + 1.6 * _noise2(P / scale, 0.18, seed), 0.02, 1)].copy()
+    m = len(P)
+    sz = rng.uniform(*size, m) * scale * np.where(rng.random(m) < 0.12, 1.9, 1.0)
+    P[:, 2] -= sz * 0.1
+    rot = np.stack([rng.normal(0, 0.06, m), rng.normal(0, 0.06, m), rng.uniform(0, 2 * np.pi, m)], 1)
+    return _instancer(name, P, rot, np.stack([sz, sz, sz], 1), rng.integers(0, 5, m), vs, _coll("kit_clutter"))
+
+
 def top_edges(objects, select_roles=("cliff",), roles=None, min_len=0.05):
     """Convex edges where an up-facing face meets a near-vertical face.
     Returns list of (p0, p1, outward_normal) in world space."""
