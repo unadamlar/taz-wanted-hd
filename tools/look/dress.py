@@ -614,7 +614,7 @@ def blender_main(argv):
             nz = nz[:, 2] / np.maximum(np.linalg.norm(nz, axis=1), 1e-9)
             return nz > t
 
-        dens = 95.0 / SCALE ** 2
+        dens = L.get("grass_density", 95.0) / SCALE ** 2
         rng = np.random.default_rng(7)
         lawn = kit.sample_surface_ex(live, lambda o: poly_mask(o, ("lawn",)) & _up(o, 0.35), dens, 11, hub)
         gr, gg = ground_info(dens, 12)
