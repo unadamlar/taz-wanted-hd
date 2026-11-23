@@ -205,6 +205,38 @@ SAFARI_LOOK = dict(
     sky=dict(zenith="#1257e6", horizon="#8fd0ff", horizon_warm="#fff4e2", sky_strength=1.3, cloud_white=1.35, ambient="#cdd8ea"), cliff=dict(),
 )
 
+# ---- aquarium (scene 6): a beach and water park on islands in the sea, entered down a long slide.
+AQUA_RULES = [
+    ("resobjs/*", "gameplay"), ("aqua/extras/*", "gameplay"), ("aqua/textures/tazbook*", "gameplay"), ("aqua/textures/tazwanted", "gameplay"),
+    ("aqua/textures/tazanted02", "gameplay"), ("aqua/textures/*crate*", "gameplay"), ("aqua/textures/treasurechest*", "gameplay"),
+    ("aqua/textures/stopbarrier*", "gameplay"), ("aqua/textures/pyratesign", "gameplay"), ("aqua/textures/aquaarrow*", "gameplay"),
+    ("aqua/textures/aquaslidesign", "gameplay"), ("aqua/textures/sign*", "gameplay"), ("aqua/textures/target*", "gameplay"),
+    ("aqua/skybox/*", "sky"), ("resTex/shadowsub", "hide"), ("aqua/textures/safariwater", "water"),
+]
+AQUA_DETAIL = [
+    ("aqua/textures/pestisand*", "d_sand"), ("aqua/textures/aquasandjoiner*", "d_sand"),
+    ("aqua/textures/orangerock*", "d_rock"), ("aqua/textures/orangeyelle*", "d_rock"), ("aqua/textures/orangeextra*", "d_rock"),
+    ("aqua/textures/orangesandbase*", "d_rock"), ("aqua/textures/aquasandcas*", "d_stone"), ("aqua/textures/aquaseawall*", "d_stone"),
+    ("aqua/textures/lighthouse*", "d_stone"), ("aqua/textures/lifehut*", "d_stone"), ("aqua/textures/marbtiles*", "d_stone"),
+    ("aqua/textures/pyrateship*", "d_bark"), ("aqua/textures/aquaplanks", "d_bark"), ("aqua/textures/aquadecking*", "d_bark"),
+    ("aqua/textures/beachhut*", "d_bark"), ("aqua/textures/palmbark", "d_bark"), ("aqua/textures/woodblock*", "d_bark"),
+    ("aqua/textures/slide*", "d_gloss"), ("aqua/textures/wastepipes*", "d_gloss"), ("aqua/textures/aquapoles*", "d_gloss"),
+    ("aqua/textures/washcase*", "d_gloss"), ("aqua/textures/sinkedge", "d_gloss"),
+]
+AQUA_TILES = dict(d_rock=SAFARI_TILES["d_rock"], d_stone=SAFARI_TILES["d_stone"], d_bark=SAFARI_TILES["d_bark"],
+                  d_sand=dict(made="sand", period=2.4, px=1024, detail=0.8, triplanar=True, rough=0.9, normal=0.7),
+                  d_gloss=dict(made="smooth", period=4.0, px=64, detail=0.01, rough=0.16, normal=0.0))
+AQUA_HAND = {
+    "camera_B": dict(loc=(20.0, -20.0, -8.0), look_at=(30.0, 20.0, -14.0), lens=16.0),
+    "camera_C": dict(loc=(60.0, 20.0, -8.0), look_at=(30.0, 20.0, -14.0), lens=16.0),
+    "taz_offset_B": (0.0, 0.0, 0.0), "elephant_offset_B": (0.0, 0.0, 0.0),
+}
+AQUA_LOOK = dict(
+    sun=dict(sun_azimuth=150.0, sun_elevation=55.0, sun_strength=5.0, sun_color="#fff2dc"),
+    grade=dict(exposure=0.42, look="AgX - Punchy", saturation=1.28, bloom=0.4, fog=0.05, fog_start=70.0, fog_depth=340.0, ambient_strength=1.0),
+    sky=dict(zenith="#1257e6", horizon="#8fd0ff", horizon_warm="#fff4e2", sky_strength=1.3, cloud_white=1.35, ambient="#dedad7"), cliff=dict(),
+)
+
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", captures=("world-hero.bin", "world-sweep.bin"), rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
@@ -248,4 +280,8 @@ LEVELS = {
                    captures=("zoo-levels/safari/world-hero.bin", "zoo-levels/safari/world-sweep-a.bin", "zoo-levels/safari/world-sweep-b.bin"),
                    materials=tuple(SAFARI_TILES) + ("lawn", "dirt", "grass", "flat", "flat_wind", "water", "water_bed", "foam"), tiles=SAFARI_TILES,
                    detail=SAFARI_DETAIL, binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05))}, sky_gain=1.3),
+    "aqua": dict(scene=6, pak="aqua", blend="zoo-levels/aqua/aqua.blend", out="zoo-levels/aqua/pass1", rules=AQUA_RULES, hand=AQUA_HAND,
+                 look=AQUA_LOOK, hdri=None, hdri_rotation=0.0, hub=(-96.0, -79.0, 116.0, 127.0), sky_panels=True, night_sky=False, clutter=False, island_boxes=True,
+                 captures=("zoo-levels/aqua/world-hero.bin", "zoo-levels/aqua/world-sweep-a.bin", "zoo-levels/aqua/world-sweep-b.bin"),
+                 materials=tuple(AQUA_TILES) + ("dirt", "water", "water_bed"), tiles=AQUA_TILES, detail=AQUA_DETAIL, sky_gain=1.3, foam=0, water_walls=False, ground_tint=(0.69, 0.6, 0.47)),
 }

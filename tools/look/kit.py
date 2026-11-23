@@ -1581,7 +1581,7 @@ def mat_water_bed(water_z, depth, scale=1.0):
     return m
 
 
-def water_dress(objects, select, scale=1.0, *, depth=0.7, foam=0.35, region=None, coll=None, name="kit_water"):
+def water_dress(objects, select, scale=1.0, *, depth=0.7, foam=0.35, walls=True, region=None, coll=None, name="kit_water"):
     """Under each selected (horizontal) water face: a tub (walls + bed) `depth` deep, so
     see-through water has something to show; plus a soft foam ribbon inside the shore."""
     bm = bmesh.new()
@@ -1625,13 +1625,14 @@ def water_dress(objects, select, scale=1.0, *, depth=0.7, foam=0.35, region=None
                 ta, ba = vmap[a]
                 tc, bc = vmap[c]
                 try:
-                    bm.faces.new([ta, tc, bc, ba])  # wall
+                    if walls:
+                        bm.faces.new([ta, tc, bc, ba])
                 except ValueError:
                     pass
                 # foam ribbon, from the shore inward
                 mid = (a.co + c.co) / 2
                 inward = Vector((cen.x - mid.x, cen.y - mid.y, 0))
-                if inward.length < 1e-6:
+                if inward.length < 1e-6 or not foam:
                     continue
                 inward.normalize()
                 up = Vector((0, 0, 0.01 * scale))
