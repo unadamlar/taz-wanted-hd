@@ -143,6 +143,22 @@ PLANET_SPACE = {
     "space03": [dict(c=(577, 356), r=143, atm=_BLUE, reach=1.42, paint=1.42, gloss=0.3), dict(c=(790, 507), r=44, paint=1.12, freq=6)],
 }
 
+# ---- the frontend (scene 1): the diorama behind the menus. Its flat poster colours are the point, so they are held.
+FRONT_RULES = [
+    ("resTex/shadowsub", "hide"), ("resobjs/*", "gameplay"), ("frontend/skybox/*", "sky"),
+    ("frontend/textures/safariwater", "water"), ("frontend/textures/tazfern0[1289]*", "ground"), ("frontend/textures/path*", "ground"),
+]
+FRONT_HAND = {
+    "camera_B": dict(loc=(-5.5, -7.2, -1.3), look_at=(4.0, 8.0, 0.0), lens=16.0),
+    "camera_C": dict(loc=(20.0, 2.0, 2.0), look_at=(10.0, 16.0, 0.0), lens=16.0),
+    "taz_offset_B": (0.0, 0.0, 0.0), "elephant_offset_B": (0.0, 0.0, 0.0),
+}
+FRONT_LOOK = dict(
+    sun=dict(sun_azimuth=75.0, sun_elevation=42.0, sun_strength=3.4, sun_color="#fff0d6"),  # from the painted sun's side
+    grade=dict(exposure=0.4, look="AgX - Punchy", saturation=1.2, bloom=0.35, fog=0.01, fog_start=200.0, fog_depth=400.0, ambient_strength=1.0),
+    sky=dict(zenith="#1257e6", horizon="#8fd0ff", horizon_warm="#fff4e2", sky_strength=1.3, cloud_white=1.0, ambient="#cdd8ea"), cliff=dict(),
+)
+
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
@@ -175,4 +191,9 @@ LEVELS = {
                     materials=tuple(PLANET_TILES) + ("lawn", "grass"), tiles=PLANET_TILES, detail=PLANET_DETAIL,
                     tints={"lawn": (0.16, 1.45, 0.4), "red_ground": (1.45, 1.2, 1.2)}, binds={"ground": (("lawn", 0, 0.0, 1.0), ("red_ground", 1, -0.14, -0.05))},
                     grass_opts=dict(height=(0.09, 0.22), flowers=0.0, weeds=0.0), dome="dome", space=PLANET_SPACE, flats={"hull": ((3.2, 3.2, 3.25), 0.42)}, hold=1.0, contrast=1.0, bloom_threshold=25.0, char_fill=(0.16, 0.16, 0.22)),
+    "frontend": dict(scene=1, pak="frontend", blend="screens/capture/frontend.blend", out="screens/pass1", rules=FRONT_RULES, hand=FRONT_HAND,
+                     look=FRONT_LOOK, hdri=None, hdri_rotation=0.0, hub=(-25.0, -10.0, 62.0, 42.0), clutter=False, game_sky=True,
+                     captures=("screens/capture/world-sweep.bin",), materials=("lawn", "dirt", "grass", "flat", "flat_wind", "water", "water_bed", "foam"),
+                     binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05))}, grass_opts=dict(height=(0.08, 0.2), flowers=0.0, weeds=0.0),
+                     hold=0.8, char_fill=(0.12, 0.12, 0.14)),
 }
