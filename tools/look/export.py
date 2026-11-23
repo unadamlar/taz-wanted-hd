@@ -972,7 +972,7 @@ def level_lights(cfg):
         for i, q in enumerate(np.floor(p[:, :2] / 5).astype(int)):
             cells[tuple(q)].append(i)
         for ix in cells.values():
-            if w[ix].sum() < 2.0:   # a stray warm vertex is not a light
+            if w[ix].sum() < 2.0 or not cfg["pool_power"]:   # a stray warm vertex is not a light
                 continue
             q = np.average(p[ix], 0, weights=w[ix])
             out.append(((q[0], q[2] + cfg["pool_height"], q[1]), cfg["pool_radius"], colour * cfg["pool_power"], cfg["pool_cone"]))

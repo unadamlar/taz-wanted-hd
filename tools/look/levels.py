@@ -159,6 +159,60 @@ FRONT_LOOK = dict(
     sky=dict(zenith="#1257e6", horizon="#8fd0ff", horizon_warm="#fff4e2", sky_strength=1.3, cloud_white=1.0, ambient="#cdd8ea"), cliff=dict(),
 )
 
+# ---- department store (scene 9): a shop at night. Like the city, its colour is blue light baked over pale paint.
+DEPT_RULES = [
+    ("resobjs/*", "gameplay"), ("deptstr/extras/*", "gameplay"), ("deptstr/textures/tazbook*", "gameplay"), ("deptstr/textures/tazcage*", "gameplay"),
+    ("deptstr/textures/tazwanted", "gameplay"), ("deptstr/textures/tazanted02", "gameplay"), ("deptstr/textures/bombbit*", "transient"),
+    ("resTex/shadowsub", "hide"),
+]
+DEPT_HAND = {
+    "camera_B": dict(loc=(20.0, 0.0, -10.0), look_at=(40.0, 10.0, -12.0), lens=16.0),
+    "camera_C": dict(loc=(60.0, 0.0, -10.0), look_at=(40.0, 10.0, -12.0), lens=16.0),
+    "taz_offset_B": (0.0, 0.0, 0.0), "elephant_offset_B": (0.0, 0.0, 0.0),
+}
+DEPT_LOOK = dict(
+    sun=dict(sun_azimuth=242.0, sun_elevation=52.0, sun_strength=1.1, sun_color="#a9c0ff"),
+    grade=dict(exposure=0.3, look="AgX - Punchy", saturation=1.2, bloom=0.4, fog=0.1, fog_start=80.0, fog_depth=300.0, ambient_strength=1.0),
+    sky=CITY_LOOK["sky"], cliff=dict(),
+)
+DEPT_GLOW = [(f"deptstr/textures/{p}", g, r) for p, g, r in (
+    ("*neon*", 2.0, None), ("winstar*", 1.6, (0.3, 0.6)), ("deptlight*", 0.45, (0.55, 0.8)), ("light.frame*", 2.2, (0.45, 0.7)), ("lightstrip", 1.6, (0.45, 0.7)),
+    ("road_barrier_light*", 2.2, (0.4, 0.65)), ("racecarheadlight", 1.8, None), ("shoptvflash*", 0.9, None), ("tvsnow*", 0.8, None), ("tv0*", 0.8, None),
+    ("littletv*", 0.8, None), ("blackholemonitors*", 0.8, None), ("scoreboardanim*", 1.3, None))]
+# Paint kept, with a fine relief: glazed floor tile, painted plaster on the walls and fittings.
+DEPT_DETAIL = [(f"deptstr/textures/{p}", m) for p, m in (
+    ("ceramictile*", "d_tile"), ("shopblackfloor*", "d_tile"), ("citypave*", "d_tile"), ("leading*", "d_wall"), ("walljoiner*", "d_wall"), ("toywall*", "d_wall"),
+    ("barsblue*", "d_wall"), ("shopbowl*", "d_wall"), ("shopbed*", "d_wall"), ("shopdanger*", "d_wall"), ("racetrak*", "d_wall"), ("sportsnfl*", "d_wall"),
+    ("pestmart*", "d_wall"), ("toybricks", "d_wall"), ("toycastle*", "d_wall"), ("shopdough*", "d_wall"))]
+DEPT_TILES = {
+    "d_tile": dict(set="paving", period=2.2, px=1024, detail=0.14, triplanar=True, rough=0.34, normal=0.22),
+    "d_wall": dict(set="old_sandstone", period=2.6, px=1024, detail=0.22, triplanar=True, rough=0.72, normal=0.4),
+}
+
+
+def room_lamps(rooms, height, radius, color, power):
+    """Indoor light: rows of ceiling lamps over each room (game x0, z0, x1, z1, floor y, columns, rows), as `extra` lamps.
+    Lamps ignore floors, and a grid cell keeps its four nearest, so don't stack rooms' lamps over each other."""
+    out = []
+    for x0, z0, x1, z1, floor, nx, nz in rooms:
+        for i in range(nx):
+            for k in range(nz):
+                out.append(((x0 + (x1 - x0) * (i + 0.5) / nx) / 250, (z0 + (z1 - z0) * (k + 0.5) / nz) / 250, (floor + height) / 250, radius, color, power))
+    return tuple(out)
+
+
+DEPT_ROOMS = (
+    (-11800, -5200, 1000, 6200, -2800, 4, 4), (-10500, 4200, 1000, 6400, -300, 3, 1),  # main hall and its balcony
+    (-1000, -6000, 10000, 8000, -800, 3, 4),    # the upper floor: start, toys
+    (12500, -3500, 19500, 7000, -1300, 2, 3),   # round room
+    (20000, 500, 40000, 4500, -1300, 5, 1),     # long gallery
+    (-22000, -6000, -14000, 7000, -2800, 2, 3), # sports arena
+    (-12000, 6600, 1500, 12500, -2800, 3, 1),   # back of the hall
+    (2000, -8600, 11000, -6800, -1800, 3, 1), (12500, -6200, 17500, -4600, -1800, 2, 1),  # service street
+)
+DEPT_LAMPS = dict(color="#ffd9a8", power=0.0, radius=13.0, drop=0.7, cone=0.8, pool_power=0.0, pool_radius=8.0, pool_height=3.2, pool_cone=-0.2,
+                  extra=room_lamps(DEPT_ROOMS, 1700, 13.0, "#ffd9a8", 2.1))
+
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
@@ -196,4 +250,8 @@ LEVELS = {
                      captures=("screens/capture/world-sweep.bin",), materials=("lawn", "dirt", "grass", "flat", "flat_wind", "water", "water_bed", "foam"),
                      binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05))}, grass_opts=dict(height=(0.08, 0.2), flowers=0.0, weeds=0.0), grass_min=0.7, tints={"dirt": (1.75, 1.2, 0.62)},
                      hold=1.0, contrast=1.0, bloom_threshold=3.0, char_fill=(0.12, 0.12, 0.14)),
+    "deptstr": dict(scene=9, pak="deptstr", blend="city-levels/deptstr/deptstr.blend", out="city-levels/deptstr/pass1", rules=DEPT_RULES, hand=DEPT_HAND,
+                    look=DEPT_LOOK, hdri=None, hdri_rotation=0.0, hub=(-90.0, -44.0, 162.0, 53.0), game_sky=True, clutter=False,
+                    materials=tuple(DEPT_TILES) + ("flat",), tiles=DEPT_TILES, detail=DEPT_DETAIL, tints={"d_tile": (1.5, 1.5, 1.58)}, captures=("city-levels/deptstr/world-hero.bin", "city-levels/deptstr/world-sweep.bin"),
+                    fog_color="#20366f", glow=DEPT_GLOW, lamps=DEPT_LAMPS, unbake=0.5, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
 }
