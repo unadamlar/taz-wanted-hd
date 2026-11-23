@@ -61,6 +61,15 @@ crane chains, and Planet X (`scene30`) with grass, rock, a round dome, a smooth 
   Uncapped at 2880x1800, 4x MSAA: zoo 7.56-7.57 ms, city 6.00-6.30 ms. Report: `extracted/look/reports/step7/rig/`.
 - Not checked on the merged build: level-complete cutscenes (they could leave static 3D chains or fences behind).
 
+## Step 7 in progress (2026-11-24)
+
+Rolling out the look, two tracks at a time. Track state and resume steps: `extracted/look/reports/step7/RESUME.md`.
+
+- Main menu, loading screens and pause menu have a Remaster version (`extracted/look/reports/step7/screens/`). Copy `scene01` and `screens`
+  from `extracted/look/screens/runtime/` into `<game>/taz-hd/look/`. Not yet in the user's playable copy.
+- For the user to judge: the deep blue loading screens, and the menu's brown dirt path where the original is flat orange.
+- Not done: the level intro page, map and game-over screens. Not checked: bonus-level loading art, a gamepad in these menus.
+
 ## How the pieces fit
 
 1. `taz-hd\world` trigger records the level (`capture.c`).
@@ -168,6 +177,11 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
   swings open. Coming back from it reloads the hub's look, a pause of about 0.5 s in the zoo.
 - The elephant's hide goes on any untextured character's mid-grey parts. An 18-leg walk found only the elephant, but did
   not cover the whole hub.
+- One test visit to the city drew no grass, trees or other added scenery (`extracted/look/checks/screens-ab1`), in a session using live
+  shader reloads. It did not repeat in about 16 later checks or 25 clean zoo-to-city visits. Cause unknown.
+- Requesting screenshots about every 90 ms through level changes crashes the game after 4-5 changes, on the build before the screens too.
+- The pause menu's Exit Game prompt draws over the Exit Game row. Not compared with the build before the screens.
+- Main menu: the shore's orange looks salmon, the water is duller than the original, and the alarm clock and fridge are very bright.
 - Test runs load any shader files left in `taz-hd\shaders` over the built-in ones. `qa/fast.sh start` now clears them.
 
 ## Working rules for this branch
