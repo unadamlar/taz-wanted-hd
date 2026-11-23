@@ -154,8 +154,8 @@ FRONT_HAND = {
     "taz_offset_B": (0.0, 0.0, 0.0), "elephant_offset_B": (0.0, 0.0, 0.0),
 }
 FRONT_LOOK = dict(
-    sun=dict(sun_azimuth=75.0, sun_elevation=42.0, sun_strength=3.0, sun_color="#fff0d6"),  # from the painted sun's side
-    grade=dict(exposure=0.1, look="AgX - Punchy", saturation=1.05, bloom=0.2, fog=0.01, fog_start=200.0, fog_depth=400.0, ambient_strength=1.0),
+    sun=dict(sun_azimuth=75.0, sun_elevation=42.0, sun_strength=2.25, sun_color="#fff0d6"),  # from the painted sun's side
+    grade=dict(exposure=-0.134, look="AgX - Punchy", saturation=1.05, bloom=0.2, fog=0.01, fog_start=200.0, fog_depth=400.0, ambient_strength=1.0),
     sky=dict(zenith="#1257e6", horizon="#8fd0ff", horizon_warm="#fff4e2", sky_strength=1.3, cloud_white=1.0, ambient="#cdd8ea"), cliff=dict(),
 )
 
