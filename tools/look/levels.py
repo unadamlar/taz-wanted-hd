@@ -154,8 +154,8 @@ FRONT_HAND = {
     "taz_offset_B": (0.0, 0.0, 0.0), "elephant_offset_B": (0.0, 0.0, 0.0),
 }
 FRONT_LOOK = dict(
-    sun=dict(sun_azimuth=75.0, sun_elevation=42.0, sun_strength=3.4, sun_color="#fff0d6"),  # from the painted sun's side
-    grade=dict(exposure=0.4, look="AgX - Punchy", saturation=1.2, bloom=0.35, fog=0.01, fog_start=200.0, fog_depth=400.0, ambient_strength=1.0),
+    sun=dict(sun_azimuth=75.0, sun_elevation=42.0, sun_strength=3.0, sun_color="#fff0d6"),  # from the painted sun's side
+    grade=dict(exposure=0.1, look="AgX - Punchy", saturation=1.05, bloom=0.2, fog=0.01, fog_start=200.0, fog_depth=400.0, ambient_strength=1.0),
     sky=dict(zenith="#1257e6", horizon="#8fd0ff", horizon_warm="#fff4e2", sky_strength=1.3, cloud_white=1.0, ambient="#cdd8ea"), cliff=dict(),
 )
 
@@ -194,6 +194,6 @@ LEVELS = {
     "frontend": dict(scene=1, pak="frontend", blend="screens/capture/frontend.blend", out="screens/pass1", rules=FRONT_RULES, hand=FRONT_HAND,
                      look=FRONT_LOOK, hdri=None, hdri_rotation=0.0, hub=(-25.0, -10.0, 62.0, 42.0), clutter=False, game_sky=True,
                      captures=("screens/capture/world-sweep.bin",), materials=("lawn", "dirt", "grass", "flat", "flat_wind", "water", "water_bed", "foam"),
-                     binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05))}, grass_opts=dict(height=(0.08, 0.2), flowers=0.0, weeds=0.0),
-                     hold=0.8, char_fill=(0.12, 0.12, 0.14)),
+                     binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05))}, grass_opts=dict(height=(0.08, 0.2), flowers=0.0, weeds=0.0), grass_min=0.7, tints={"dirt": (1.75, 1.2, 0.62)},
+                     hold=1.0, contrast=1.0, bloom_threshold=3.0, char_fill=(0.12, 0.12, 0.14)),
 }

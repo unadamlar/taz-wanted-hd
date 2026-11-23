@@ -25,6 +25,7 @@ static IDirect3DBaseTexture8 *own_tex[NOWN];
 static UINT nown;
 static int level, loaded_scene = -1;
 #define PLANET_LOOK 30 // an unused scene number: Planet X's own look data
+#define FRONTEND 1
 static struct rec *recs; static UINT nrecs, cap_recs;     // this frame's character draws, for their sun map
 static HRESULT (WINAPI *draw_real)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT);
 static struct { int frames, want; double look_ms, frame_ms, present_ms; UINT world, game, pieces, merged; LARGE_INTEGER last; } m;
@@ -436,6 +437,10 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     struct IDirect3DDevice9 *d = d3d9_device(dev);
     if (!merge_on_backbuffer() || hd_post_done()) return 0;
     if (merge_is_2d(dev)) { // the HUD and menus: finish the 3D picture under them
+        if (loaded_scene == FRONTEND && !api && !hd_post_done() && hd_hidden(textures_bound_hash(0))) { // its painted sky, drawn with no depth test
+            hd_redirect(d);
+            return 0;
+        }
         if (!hd_redirected()) { // no 3D yet: a paused frame's sky, or a screen the game composes itself (a paper book)
             UINT64 h2 = textures_bound_hash(0);
             backdrop |= h2 && !hd_hidden(h2);
