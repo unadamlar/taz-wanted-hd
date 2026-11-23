@@ -45,9 +45,10 @@ for img in bpy.data.images:  # blends saved on another machine keep that machine
     if img.source == "FILE" and "/personal-games/" in img.filepath:
         img.filepath = os.path.join(os.path.dirname(kit.ASSET_LIB), img.filepath.split("/personal-games/", 1)[1])
         img.reload()
-bake.use_gpu(sc)
 if args.cpu:
-    sc.cycles.device = "CPU"
+    sc.render.engine, sc.cycles.device = "CYCLES", "CPU"  # listing devices would open the GPU
+else:
+    bake.use_gpu(sc)
 LV = LEVEL["look"]
 
 # ---------------------------------------------------------------- materials

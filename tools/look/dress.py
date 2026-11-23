@@ -18,6 +18,7 @@ sys.path.insert(0, str(HERE))
 import levels
 
 SCALE = 1.05  # Taz ~1.26 BU standing vs the kit's 1.2 m hero
+MAX_SCATTER_TRIS = 8_000_000  # the zoo has 5.6M; a 36.6M draft was rendering when the GPU driver hung
 
 RULES = []  # the selected level's texture -> role table
 
@@ -55,7 +56,7 @@ def blender_main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("version", choices=["game", "lit", "dressed"])
     ap.add_argument("--level", default="zoohub", choices=sorted(levels.LEVELS))
-    ap.add_argument("--camera", default="AB")
+    ap.add_argument("--camera", default="", help="preview renders, A and/or B; Eevee needs the GPU, so none by default")
     ap.add_argument("--samples", type=int, default=64)
     ap.add_argument("--res", type=int, default=100)
     ap.add_argument("--out", default=None, help="subfolder of extracted/look (default: the level's; '' = pass 1 location)")
@@ -647,6 +648,8 @@ def blender_main(argv):
         stats["scatter"] = {o.name: (o["kit_instances"], o["kit_tris"]) for o in scat}
         stats["instances"] = sum(o["kit_instances"] for o in scat)
         stats["scatter_tris"] = sum(o["kit_tris"] for o in scat)
+        if stats["scatter_tris"] > MAX_SCATTER_TRIS:
+            raise RuntimeError(f"{stats['scatter_tris']:,} scatter triangles, limit {MAX_SCATTER_TRIS:,}: lower this level's density")
         stats["prop_tris"] = tri_props
         stats["top_edges"] = len(edges)
         stats["dress_seconds"] = round(time.time() - t0, 1)
