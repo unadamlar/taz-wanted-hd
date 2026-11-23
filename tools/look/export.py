@@ -989,7 +989,9 @@ lights = level_lights(LEVEL["lamps"]) if "lamps" in LEVEL else []
 sky_scale, sky_bytes = 1.0, 0
 if not LEVEL.get("game_sky"):  # otherwise the game's own painted backdrop stays
     eye = bpy.data.objects["hero camera"].matrix_world.translation.copy() if "hero camera" in bpy.data.objects else Vector()
-    sky = np.asarray(bake.bake_sky(cache, sc, eye, panels=LEVEL.get("sky_panels", False)), np.float32)
+    sky = np.asarray(bake.bake_sky(cache, sc, eye, panels=LEVEL.get("sky_panels", False), night=LEVEL.get("night_sky", True)), np.float32)
+    if not LEVEL.get("night_sky", True):
+        sky = bake.fill_ceiling(sky)
     sky_scale = max(1.0, float(np.quantile(sky, 0.9999)))
     faces = [np.asarray(dds.to_srgb(f / sky_scale), np.float32) for f in bake.cube_faces(sky, 1024)]
     sky_bytes = dds.write_cube(os.path.join(tmp, "sky.dds"), faces)

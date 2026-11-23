@@ -211,5 +211,5 @@ LEVELS = {
                     captures=("zoo-levels/icedome/world-hero.bin", "zoo-levels/icedome/world-sweep-a.bin", "zoo-levels/icedome/world-sweep-b.bin"),
                     materials=tuple(ICE_TILES) + ("flat",), tiles=ICE_TILES, detail=ICE_DETAIL, fog_color="#cfe6fb",
                     binds={"snow": (("d_ice", 4, -1.0, 0.0), ("snowfield", 3, 0.66, 0.82))},
-                    lumps=dict(roles=("snow",), density=0.3, colour="#f4f9ff"), sky_gain=1.35, ground_tint=(0.74, 0.67, 0.59), tints={"snowfield": (0.8, 0.82, 0.86)}),
+                    lumps=dict(roles=("snow",), density=0.2, colour="#f4f9ff"), island_boxes=True, sky_gain=1.35, night_sky=False, ground_tint=(0.74, 0.67, 0.59), tints={"snowfield": (0.88, 0.9, 0.94)}),
 }

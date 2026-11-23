@@ -575,10 +575,10 @@ def blender_main(argv):
         # 4. scatter
         gameplay_boxes = []
         for ob in live if L.get("clear_islands") else live + chars:  # there, characters walk and props share objects with scenery
-            if ob in chars or poly_mask(ob, ("gameplay",)).all():
+            if ob in chars or (poly_mask(ob, ("gameplay",)).all() and not L.get("island_boxes")):
                 lo, hi = kit.world_bbox(ob)
                 gameplay_boxes.append((lo, hi))
-            elif L.get("clear_islands") and poly_mask(ob, ("gameplay",)).any():
+            elif (L.get("clear_islands") or L.get("island_boxes")) and poly_mask(ob, ("gameplay",)).any():  # one object can hold pickups all over a level
                 gameplay_boxes += [(lo, hi) for _, lo, hi in kit.islands(ob, poly_mask(ob, ("gameplay",)))]
         hub = L["hub"]
         masks = {}
@@ -615,7 +615,7 @@ def blender_main(argv):
             nz = nz[:, 2] / np.maximum(np.linalg.norm(nz, axis=1), 1e-9)
             return nz > t
 
-        dens = 95.0 / SCALE ** 2
+        dens = L.get("grass_density", 95.0) / SCALE ** 2
         rng = np.random.default_rng(7)
         lawn = kit.sample_surface_ex(live, lambda o: poly_mask(o, ("lawn",)) & _up(o, 0.35), dens, 11, hub)
         gr, gg = ground_info(dens, 12)
