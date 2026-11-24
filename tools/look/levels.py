@@ -776,3 +776,5 @@ LEVELS["rcsafari"] = _bonus("safari", "rcsafari", 29, ("hero", "sweep-0", "sweep
                             first=[(f"rcsafari/textures/{p}", "gameplay") for p in _RACE_SIGNS] + [
                                 ("rcsafari/textures/sunsetwater", "water"), ("rcsafari/textures/grassblue*", "lawn"), ("rcsafari/textures/hubflowers04", "lawn"),
                                 ("rcsafari/textures/grassjoiner*", "ground"), ("rcsafari/textures/pathrock", "ground")], grass_density=24.0)
+LEVELS["rcicedome"] = _bonus("icedome", "rcicedome", 27, ("hero", "sweep-0", "sweep-1", "sweep-2"), hub=(-68.0, -53.0, 64.0, 39.0),
+                             first=[(f"rcicedome/textures/{p}", "gameplay") for p in _RACE_SIGNS])
