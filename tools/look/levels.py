@@ -414,7 +414,7 @@ WEST_DETAIL = [(f"westhub/textures/{p}", m) for p, m in (
     ("train0*", "d_iron"), ("train1*", "d_iron"), ("train2*", "d_iron"), ("train3*", "d_iron"), ("track", "d_iron"), ("kannon*", "d_iron"), ("bearing*", "d_iron"))]
 WEST_TILES = dict(
     d_sand=dict(made="sand", period=2.6, px=1024, detail=0.7, triplanar=True, rough=0.92, normal=0.65),
-    d_canyon=dict(set="rock061", period=3.4, px=1024, detail=0.5, triplanar=True, rough=0.88, normal=0.9),
+    d_canyon=dict(set="old_sandstone", period=4.2, px=1024, detail=0.55, triplanar=True, rough=0.88, normal=0.9),
     d_road=dict(set="asphalt", period=3.0, px=1024, detail=0.3, triplanar=True, rough=0.85, normal=0.5),
     d_plank=dict(set="bark", period=1.6, px=1024, detail=0.45, triplanar=True, rough=0.78, normal=0.7),
     d_iron=dict(set="asphalt", period=1.2, px=1024, detail=0.1, triplanar=True, rough=0.38, normal=0.2),
@@ -422,7 +422,7 @@ WEST_TILES = dict(
 WEST_HAND = dict(DEPT_HAND, camera_B=dict(loc=(10.0, 40.0, 16.0), look_at=(20.0, 60.0, 14.0), lens=16.0), camera_C=dict(loc=(-20.0, 10.0, 16.0), look_at=(10.0, 30.0, 14.0), lens=16.0))
 WEST_LOOK = dict(
     sun=dict(sun_azimuth=250.0, sun_elevation=52.0, sun_strength=5.0, sun_color="#fff0d8"),
-    grade=dict(exposure=0.3, look="AgX - Punchy", saturation=1.25, bloom=0.35, fog=0.05, fog_start=80.0, fog_depth=380.0, ambient_strength=1.0),
+    grade=dict(exposure=0.26, look="AgX - Punchy", saturation=1.25, bloom=0.35, fog=0.05, fog_start=80.0, fog_depth=380.0, ambient_strength=1.22),
     sky=dict(zenith="#1a68e0", horizon="#a6dcff", horizon_warm="#ffe9c8", sky_strength=1.3, cloud_white=1.3, ambient="#e8d8cc"), cliff=dict(),
 )
 
@@ -501,8 +501,9 @@ LEVELS = {
                      materials=tuple(DEPT_TILES) + ("flat",), tiles=DEPT_TILES, detail=BOSS_DETAIL, tints={"d_tile": (1.7, 1.7, 1.7)},
                      captures=("city-levels/cityboss/world-hero.bin",), glow=BOSS_GLOW, hold=0.75, contrast=1.0, bloom_threshold=14.0),
     "westhub": dict(scene=13, pak="westhub", blend="westhub/westhub.blend", out="westhub/pass1", rules=WEST_RULES, hand=WEST_HAND,
-                    look=WEST_LOOK, hdri=None, hdri_rotation=0.0, hub=(-70.0, -35.0, 72.0, 95.0), sky_panels=True, night_sky=False, fallen_leaves=0.0, island_boxes=True,
+                    look=WEST_LOOK, hdri=None, hdri_rotation=0.0, hub=(-70.0, -35.0, 72.0, 95.0), sky_panels=True, night_sky=False, clutter_opts=dict(leaves=0.0, pebbles=5.0, stones=0.7), island_boxes=True,
                     captures=("westhub/world-hero.bin", "westhub/world-sweep-a.bin", "westhub/world-sweep-b.bin", "westhub/world-sweep-c.bin"),
                     materials=tuple(WEST_TILES) + ("flat",), tiles=WEST_TILES, detail=WEST_DETAIL, binds={"ground": (("d_sand", 4, -1.0, 0.0),)},
-                    fog_color="#f4d8b0", ground_tint=(0.82, 0.62, 0.42), sky_gain=1.3, tints={"d_canyon": (1.8, 2.15, 2.5)}),
+                    solids=dict(cards={}, soft=tuple(f"westhub/textures/{n}" for n in ("cactus07", "cactus_bit", "cactus_bit2"))),
+                    fog_color="#f4d8b0", ground_tint=(0.82, 0.62, 0.42), sky_gain=1.3, tints={"d_canyon": (1.8, 2.15, 2.5), "flat": (1.3, 0.86, 0.7)}),
 }
