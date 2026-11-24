@@ -13,7 +13,6 @@ void hd_reset(void);                    // before a device Reset
 int capture_tests(void);                // tests=1 in the ini
 int hd_lost(void);                      // since the last call, a Reset dropped the scene's data
 int hd_hidden(unsigned long long hash); // a game texture whose world draws are dropped
-int hd_has_bind(unsigned long long hash);
 int hd_shade(unsigned long long hash);  // a baked shadow decal, dropped everywhere
 
 void hd_redirect(hd_dev d);             // the game's next 3D draws land in our HDR target

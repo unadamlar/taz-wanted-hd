@@ -22,7 +22,7 @@
 #define UPLOADS_PER_FRAME 16
 #define MAX_LEVELS 16
 
-struct tex_entry { IDirect3DTexture8 *tex; UINT64 hash; BYTE *bits; INT pitch; int updates, counted; };
+struct tex_entry { IDirect3DTexture8 *tex; UINT64 hash; BYTE *bits; INT pitch; int updates, counted, cutscene; };
 struct rep_entry { UINT64 hash; IDirect3DTexture8 *rep, *own; int users, asked; }; // own: a loading screen's Remaster version; users: live game textures with this fingerprint
 // A name can point at part of a bigger image (splash screens are split into tiles).
 struct name_entry { UINT64 hash; char *path; UINT x, y, w, h, full_w, full_h; };
@@ -550,6 +550,33 @@ static ULONG WINAPI hook_Release(IDirect3DTexture8 *t)
     return n;
 }
 
+// The game reads paks one after another on its main thread, so the last one opened owns the textures being created.
+static HANDLE (WINAPI *real_CreateFileA)(LPCSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE);
+static DWORD load_thread;
+static int cutscene_pak;
+
+static HANDLE WINAPI hook_CreateFileA(LPCSTR name, DWORD access, DWORD share, LPSECURITY_ATTRIBUTES sec, DWORD how, DWORD flags, HANDLE tmpl)
+{
+    const char *dot = name ? strrchr(name, '.') : NULL;
+    if (dot && !_stricmp(dot, ".pc") && GetCurrentThreadId() == load_thread) {
+        const char *slash = strrchr(name, '\\');
+        char pak[64];
+        lstrcpynA(pak, slash ? slash + 1 : name, sizeof pak);
+        _strlwr(pak);
+        cutscene_pak = strstr(pak, "intro") || strstr(pak, "outro") || strstr(pak, "startgame");
+    }
+    return real_CreateFileA(name, access, share, sec, how, flags, tmpl);
+}
+
+int textures_from_cutscene(IDirect3DBaseTexture8 *t)
+{
+    EnterCriticalSection(&lock);
+    struct tex_entry *e = t ? tex_lookup((IDirect3DTexture8 *)t, 0) : NULL;
+    int cut = e && e->cutscene;
+    LeaveCriticalSection(&lock);
+    return cut;
+}
+
 static HRESULT WINAPI hook_CreateTexture(IDirect3DDevice8 *dev, UINT w, UINT h, UINT levels, DWORD usage,
                                          D3DFORMAT fmt, D3DPOOL pool, IDirect3DTexture8 **tex)
 {
@@ -568,7 +595,7 @@ static HRESULT WINAPI hook_CreateTexture(IDirect3DDevice8 *dev, UINT w, UINT h, 
         EnterCriticalSection(&lock);
         struct tex_entry *e = tex_lookup(*tex, 0);
         if (e) unuse(e), tex_remove(e); // a freed texture's address can be reused; forget what was there
-        if (game) tex_lookup(*tex, 1);
+        if (game && (e = tex_lookup(*tex, 1))) e->cutscene = cutscene_pak;
         LeaveCriticalSection(&lock);
     }
     return hr;
@@ -871,6 +898,8 @@ void textures_install(IDirect3DDevice8 *dev)
     if (n < 6) log_line("paper book pages: %d of 6 render target sites patched (unknown exe)", n);
     start_worker();
     device = dev;
+    load_thread = GetCurrentThreadId();
+    real_CreateFileA = patch_import("KERNEL32.dll", "CreateFileA", hook_CreateFileA);
     DWORD attr = GetFileAttributesA(DUMP_DIR);
     dumping = attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY);
     log_line("texture dump %s", dumping ? "on (" DUMP_DIR ")" : "off (create " DUMP_DIR " to enable)");

@@ -47,7 +47,7 @@ static UINT cur_stride;
 static DWORD cur_shader, cur_rs[NKEY];
 static UINT cur_rs_id;
 
-static IDirect3DVertexBuffer8 *banned[32], *sources[64], *hub_vb; // hub_vb: the buffer holding most of the level's static world
+static IDirect3DVertexBuffer8 *banned[32], *sources[64];
 static UINT nbanned, nsources;
 
 int merge_stat_pieces, merge_stat_draws;
@@ -79,7 +79,6 @@ void merge_reset(void)
 {
     if (slots) memset(slots, 0, SLOTS * sizeof *slots);
     npieces = nbatches = nverts = nidx = uploaded = issued = nrs = nsources = 0;
-    hub_vb = NULL;
     dirty = 1;
 }
 
@@ -211,10 +210,6 @@ static int upload(IDirect3DDevice8 *dev)
     memcpy(p, idx, nidx * 4);
     IDirect3DIndexBuffer8_Unlock(ib_gpu);
     uploaded = npieces;
-    UINT best = 0, count[64] = { 0 };
-    for (UINT i = 0; i < npieces; i++)
-        for (UINT k = 0; k < nsources; k++)
-            if (pieces[i].vb == sources[k] && ++count[k] > best) best = count[k], hub_vb = sources[k];
     log_line("merge: %u pieces, %u textures runs, %u vertices, %u triangles", npieces, nbatches, nverts, nidx / 3);
     return 1;
 }
@@ -280,16 +275,10 @@ int merge_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start
         return 1;
     }
     merge_flush(dev);
-    UINT64 hash = look_own_hash(dev, tex, textures_bound_hash(0));
+    if (cutscene_playing() && textures_from_cutscene(tex)) return 0; // its set comes and goes with its pack
+    UINT64 hash = textures_bound_hash(0);
     if (hash && !look_hidden(hash)) add_piece(h, cur_vb, tex, hash, type, start, count, rs);
     return 0;
-}
-
-// The draw about to happen is the level's own static world, not a cutscene's prop sharing its textures.
-int merge_hub_draw(IDirect3DDevice8 *dev)
-{
-    if (dirty) refresh(dev);
-    return hub_vb && cur_vb == hub_vb && world_id;
 }
 
 int merge_ready(void) { return npieces && uploaded == npieces; }
@@ -323,7 +312,6 @@ void merge_frame(IDirect3DDevice8 *dev)
 
 void merge_texture_gone(IDirect3DBaseTexture8 *t)
 {
-    look_texture_gone(t);
     for (UINT b = 0; b < nbatches; b++)
         if (batches[b].tex == t) { merge_flush(device), merge_reset(); return; }
 }
