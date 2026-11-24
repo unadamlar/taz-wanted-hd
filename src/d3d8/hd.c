@@ -50,6 +50,9 @@ static struct level {
 static int scene_no = -1;
 static struct mat *mats; static UINT nmats;
 static struct bind *binds; static UINT nbinds;
+// A game texture's binds in file order (the data has at most two), each over the last, and its glow. Worked out once
+// per texture and scene: scanning every bind and glow per world draw was the look's biggest cost per draw.
+static struct wmat { UINT64 hash; int n; float emit[4], c[6][4], w[2][4]; IDirect3DBaseTexture9 *t[4]; } wmats[1024];
 static UINT64 *hides; static UINT nhides, nshades; // the last nshades are baked shadow decals
 static struct light *lights; static UINT nlights;
 static struct file_glow *glows; static UINT nglows;
@@ -564,6 +567,7 @@ void hd_unload(void)
     free(mats), free(binds), free(hides), free(protos), free(subs), free(runs), free(chunks), free(vis);
     mats = NULL, binds = NULL, hides = NULL, protos = NULL, subs = NULL, runs = NULL, chunks = NULL, vis = NULL;
     nmats = nbinds = nhides = nshades = nprotos = nchunks = 0;
+    memset(wmats, 0, sizeof wmats);
     scene_no = -1, shadow_built = 0;
 }
 
@@ -821,7 +825,9 @@ static void ps_constants(hd_dev d)
     c[14][0] = 1.0f / SMAP, c[14][1] = 1.0f / CMAP;
     memcpy(c[15], lv.water, 12);
     IDirect3DDevice9_SetPixelShaderConstantF(d, 0, c[0], 16);
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 27, light_grid, 1);
+    float lit[3][4] = { { light_grid[0], light_grid[1], light_grid[2], light_grid[3] }, { lv.hold, lv.exposure, lv.contrast * 1.26f, lv.shadow_y + origin[1] },
+                        { lv.unbake_keep, 0, 0, 0 } }; // c27 lights, c28 hold, c29 unbake (the world's; characters overwrite them)
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 27, lit[0], 3);
 }
 
 void hd_invalidate(void) { quick_ok = 0; }
@@ -1336,44 +1342,54 @@ void hd_cmap_draw(hd_dev d, struct IDirect3DVertexBuffer9 *v, unsigned stride, i
 void hd_cmap_end(hd_dev d) { shadow_done(d); }
 
 // --- game surfaces ------------------------------------------------------------------------------
-// A game texture's binds in file order (the data has at most two), each over the last.
-void hd_world_material(hd_dev d, unsigned long long hash)
+static void make_wmat(struct wmat *e, UINT64 hash)
 {
     const struct bind *b[2] = { NULL, NULL };
     int n = 0;
-    float emit[4] = { 0, 0, 1, lv.unbake };
+    memset(e, 0, sizeof *e);
+    e->hash = hash;
+    memcpy(e->emit, (float[4]){ 0, 0, 1, lv.unbake }, 16);
     for (UINT i = 0; i < nglows; i++)
         if (glows[i].hash == hash) {
             float span = glows[i].hi - glows[i].lo;
-            emit[0] = glows[i].strength, emit[1] = glows[i].mask ? glows[i].lo : -1, emit[2] = glows[i].mask ? 1 / (fabsf(span) < 0.001f ? 0.001f : span) : 1;
+            e->emit[0] = glows[i].strength, e->emit[1] = glows[i].mask ? glows[i].lo : -1, e->emit[2] = glows[i].mask ? 1 / (fabsf(span) < 0.001f ? 0.001f : span) : 1;
         }
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 26, emit, 1);
-    float keep[4] = { lv.unbake_keep, 0, 0, 0 };
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 29, keep, 1);
-    float hold[4] = { lv.hold, lv.exposure, lv.contrast * 1.26f, lv.shadow_y + origin[1] };
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 28, hold, 1);
     for (UINT i = 0; i < nbinds && n < 2; i++)
         if (binds[i].hash == hash && (UINT)binds[i].mat < nmats) b[n++] = &binds[i];
-    if (!n) {
-        IDirect3DDevice9_SetPixelShader(d, p_world);
-        return;
-    }
-    float c[6][4], w[2][4];
     for (int k = 0; k < n; k++) {
         const struct mat *m = &mats[b[k]->mat];
         static const float weights[4][4] = { { 0, 0, 0, 0 }, { 1, -1, 0, 0 }, { 0.3f, 0.59f, 0.11f, 0 }, { 0, 0, 0, 1 } };
-        memcpy(w[k], weights[b[k]->mask & 3], 16);
+        memcpy(e->w[k], weights[b[k]->mask & 3], 16);
         float span = b[k]->hi - b[k]->lo;
         if (fabsf(span) < 0.001f) span = 0.001f;
-        float e[3][4] = { { m->tile > 0 ? 1 / m->tile : 0, m->nstrength, m->rough, 0 }, { m->tint[0], m->tint[1], m->tint[2], 1 },
+        float c[3][4] = { { m->tile > 0 ? 1 / m->tile : 0, m->nstrength, m->rough, 0 }, { m->tint[0], m->tint[1], m->tint[2], 1 },
                           { (float)b[k]->mask, b[k]->mask ? b[k]->lo : -1, b[k]->mask ? 1 / span : 1, m->flags & F_TRIPLANAR ? 1.0f : 0 } };
-        memcpy(c[k * 3], e, sizeof e);
-        IDirect3DDevice9_SetTexture(d, k ? SMP_NORMAL2 : SMP_NORMAL, m->normal ? (IDirect3DBaseTexture9 *)m->normal : (IDirect3DBaseTexture9 *)flat);
-        IDirect3DDevice9_SetTexture(d, k ? SMP_ALBEDO2 : SMP_ALBEDO, m->albedo ? (IDirect3DBaseTexture9 *)m->albedo : (IDirect3DBaseTexture9 *)white);
+        memcpy(e->c[k * 3], c, sizeof c);
+        e->t[k * 2] = m->normal ? (IDirect3DBaseTexture9 *)m->normal : (IDirect3DBaseTexture9 *)flat;
+        e->t[k * 2 + 1] = m->albedo ? (IDirect3DBaseTexture9 *)m->albedo : (IDirect3DBaseTexture9 *)white;
     }
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 16, c[0], n * 3);
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 22, w[0], n);
-    IDirect3DDevice9_SetPixelShader(d, n == 2 ? p_mat2 : p_mat);
+    e->n = n;
+}
+
+void hd_world_material(hd_dev d, unsigned long long hash)
+{
+    struct wmat *e = NULL, spare;
+    for (UINT i = (UINT)hash & 1023, tries = 0; hash && tries < 64 && !e; i = (i + 1) & 1023, tries++)
+        if (wmats[i].hash == hash) e = &wmats[i];
+        else if (!wmats[i].hash) make_wmat(e = &wmats[i], hash);
+    if (!e) make_wmat(e = &spare, hash);
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 26, e->emit, 1);
+    if (!e->n) {
+        IDirect3DDevice9_SetPixelShader(d, p_world);
+        return;
+    }
+    for (int k = 0; k < e->n; k++) {
+        IDirect3DDevice9_SetTexture(d, k ? SMP_NORMAL2 : SMP_NORMAL, e->t[k * 2]);
+        IDirect3DDevice9_SetTexture(d, k ? SMP_ALBEDO2 : SMP_ALBEDO, e->t[k * 2 + 1]);
+    }
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 16, e->c[0], e->n * 3);
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 22, e->w[0], e->n);
+    IDirect3DDevice9_SetPixelShader(d, e->n == 2 ? p_mat2 : p_mat);
 }
 
 void hd_world_begin(hd_dev d, const float *world)
