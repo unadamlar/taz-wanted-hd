@@ -143,6 +143,41 @@ PLANET_SPACE = {
     "space03": [dict(c=(577, 356), r=143, atm=_BLUE, reach=1.42, paint=1.42, gloss=0.3), dict(c=(790, 507), r=44, paint=1.12, freq=6)],
 }
 
+# ---- Taz hub (scene 18): floating islands. Its pak also holds Planet X's model, whose textures no rule here may name.
+TAZHUB_RULES = [
+    ("resobjs/*", "gameplay"), ("tazhub/extras/*", "gameplay"), ("tazhub/textures/tazbook*", "gameplay"),
+    ("tazhub/textures/danger*", "gameplay"), ("tazhub/textures/exp_*", "gameplay"), ("tazhub/textures/dynamite*", "gameplay"),
+    ("tazhub/textures/fuse", "gameplay"), ("tazhub/textures/plunger*", "gameplay"), ("tazhub/textures/blade_door_switch", "gameplay"),
+    ("tazhub/textures/tazplacard*", "gameplay"), ("tazhub/textures/logwantednew", "gameplay"), ("tazhub/textures/tlandshot*", "gameplay"),
+    ("tazhub/textures/samhq*", "gameplay"), ("tazhub/textures/samhideout0[45]", "gameplay"), ("tazhub/textures/crateside01", "gameplay"),
+    ("tazhub/textures/tazfern0[89]*", "ground"), ("tazhub/textures/tazfern1[23]", "ground"), ("tazhub/textures/tazsoil01", "ground"),
+    ("tazhub/textures/path05", "ground"),
+    ("tazhub/textures/tazflowers*", "painted_lawn"), ("tazhub/textures/tazfern1[01]", "rock_lawn"),  # flowers and rocks painted on grass stay
+    ("tazhub/textures/tazfern0[1-7]*", "lawn"), ("tazhub/textures/tazfern14", "lawn"), ("tazhub/textures/grass_new*", "lawn"),
+    ("tazhub/textures/safariwater", "water"), ("tazhub/skybox/*", "sky"), ("resTex/shadowsub", "hide"),
+]
+TAZHUB_DETAIL = [
+    ("tazhub/textures/tazwall*", "d_rock"), ("tazhub/textures/tazunder*", "d_rock"), ("tazhub/textures/tazvolc[0-9]*", "d_rock"),
+    ("tazhub/textures/rock_big*", "d_rock"), ("tazhub/textures/tazwood*", "d_bark"), ("tazhub/textures/loggin*", "d_bark"),
+    ("tazhub/textures/tazmill*", "d_stone"), ("tazhub/textures/taznest01", "d_bark"),
+]
+TAZHUB_TILES = {
+    "d_rock": dict(set="rock061", period=3.0, px=1024, detail=0.4, triplanar=True, rough=0.85),
+    "d_stone": dict(set="old_sandstone", period=2.6, px=1024, detail=0.45, triplanar=True, rough=0.8),
+    "d_bark": dict(set="bark", period=1.6, px=1024, detail=0.45, triplanar=True, rough=0.75, normal=0.7),
+}
+TAZHUB_HAND = {
+    "camera_B": dict(loc=(-35.0, -30.0, 16.0), look_at=(-5.0, -8.0, 14.0), lens=16.0),
+    "camera_C": dict(loc=(60.0, -20.0, 26.0), look_at=(25.0, 15.0, 18.0), lens=16.0),
+    "taz_offset_B": (0.0, 0.0, 0.0), "elephant_offset_B": (0.0, 0.0, 0.0),
+}
+TAZHUB_LOOK = dict(
+    sun=dict(sun_azimuth=40.0, sun_elevation=42.0, sun_strength=4.6, sun_color="#fff0d6"),
+    grade=dict(exposure=0.45, look="AgX - Punchy", saturation=1.28, bloom=0.4, fog=0.05, fog_start=60.0, fog_depth=300.0, ambient_strength=1.0),
+    sky=dict(zenith="#0a33d0", horizon="#59b8ff", horizon_warm="#c9ecff", sky_strength=1.0, cloud_white=1.0, ambient="#c8d8f0"),
+    cliff=dict(),
+)
+
 # ---- ice dome (scene 4): a Christmas shop frozen inside a dome. Its snow is painted white with blue zigzag edges.
 ICE_RULES = [
     ("resobjs/*", "gameplay"), ("icedome/extras/*", "gameplay"), ("icedome/textures/tazbook*", "gameplay"),
@@ -458,6 +493,13 @@ LEVELS = {
                     materials=tuple(PLANET_TILES) + ("lawn", "grass"), tiles=PLANET_TILES, detail=PLANET_DETAIL,
                     tints={"lawn": (0.16, 1.45, 0.4), "red_ground": (1.45, 1.2, 1.2)}, binds={"ground": (("lawn", 0, 0.0, 1.0), ("red_ground", 1, -0.14, -0.05))},
                     grass_opts=dict(height=(0.09, 0.22), flowers=0.0, weeds=0.0), dome="dome", space=PLANET_SPACE, flats={"hull": ((3.2, 3.2, 3.25), 0.42)}, hold=1.0, contrast=1.0, bloom_threshold=25.0, char_fill=(0.16, 0.16, 0.22)),
+    "tazhub": dict(scene=18, pak="tazhub", blend="tazhub/tazhub.blend", out="tazhub/pass1", rules=TAZHUB_RULES, hand=TAZHUB_HAND, look=TAZHUB_LOOK,
+                   hdri=None, hdri_rotation=0.0, hub=(-125.0, -60.0, 140.0, 60.0), sky_panels=True, clutter=False, grass_density=28.0, grass_opts=dict(blades=6, blade_width=0.12),
+                   captures=("planet/world-hero.bin", "planet/world-sweep-a.bin", "planet/world-sweep-b.bin"),
+                   materials=tuple(TAZHUB_TILES) + ("lawn", "dirt", "water", "water_bed", "foam", "grass", "flat", "flat_wind"),
+                   tiles=TAZHUB_TILES, detail=TAZHUB_DETAIL, fog_color="#7fc4f4",
+                   tints={"dirt": (1.5, 1.05, 0.62), "lawn": (0.32, 1.6, 0.3), "grass": (0.95, 1.5, 0.5), "water_bed": (0.85, 0.6, 0.42)}, night_sky=False, sky_gain=1.05, unbake=1.0, triplanar=("lawn",), island_boxes=True, water_flat=True, water_depth=2.5, water_color="#1c62d8", water_clarity=0.6, foam=0, water_walls=False,
+                   binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05)), "painted_lawn": (("lawn", 3, 0.085, 0.045),), "rock_lawn": (("lawn", 1, 0.0, -0.1),)}),
     "icedome": dict(scene=4, pak="icedome", blend="zoo-levels/icedome/icedome.blend", out="zoo-levels/icedome/pass1", rules=ICE_RULES, hand=ICE_HAND,
                     look=ICE_LOOK, hdri=None, hdri_rotation=0.0, hub=(-71.0, -58.0, 71.0, 50.0), sky_panels=True, clutter=False,
                     captures=("zoo-levels/icedome/world-hero.bin", "zoo-levels/icedome/world-sweep-a.bin", "zoo-levels/icedome/world-sweep-b.bin"),

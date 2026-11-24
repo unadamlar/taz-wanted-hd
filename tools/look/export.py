@@ -96,6 +96,8 @@ if "skin" in LEVEL:  # wrinkled hide for untextured characters, mapped on their 
     MATS["skin"] = ("skin", False, OPAQUE, 0, LEVEL["skin"]["tile"], (1, 1, 1), 0.6, 0, LEVEL["skin"]["grain"])
 for name, tint in LEVEL.get("tints", {}).items():
     MATS[name] = (*MATS[name][:5], tint, *MATS[name][6:])
+for name in LEVEL.get("triplanar", ()):  # ground that also covers steep banks
+    MATS[name] = (*MATS[name][:3], MATS[name][3] | TRIPLANAR, *MATS[name][4:])
 if "dome" in LEVEL:
     MATS["glass"] = ("", False, GLASS, TWO_SIDED, 0.0, (1, 1, 1), 0.05, 0, 0)
     MATS["caster"] = ("", False, CASTER, TWO_SIDED, 0.0, (1, 1, 1), 1.0, 0, 0)
@@ -449,7 +451,7 @@ for o in bpy.data.objects:
     co = np.empty(len(me.vertices) * 3, np.float32); me.vertices.foreach_get("co", co)
     M = np.array(S @ o.matrix_world, np.float32)
     w = (co.reshape(-1, 3)[tv.reshape(-1, 3)[slot_water[mi]].ravel()] @ M[:3, :3].T + M[:3, 3]) * K
-    if "@placed" in o.name and np.ptp(w[:, 1]) > 10:  # a floating log's wet underside, not a water surface
+    if not len(w) or "@placed" in o.name and np.ptp(w[:, 1]) > 10:  # a floating log's wet underside, not a water surface
         continue
     water.append(w)
 if water:
@@ -1056,7 +1058,7 @@ vals = [
     ("fog_end", fog_start + grade["fog_depth"] * SC * K / grade["fog"]),  # Blender's fog tops out at this 7%
     ("exposure", 2 ** grade["exposure"]), ("bloom_threshold", LEVEL.get("bloom_threshold", 0.9)), ("bloom_strength", grade["bloom"]),
     ("saturation", grade["saturation"]), ("contrast", LEVEL.get("contrast", 1.15)),
-    ("water_height", water_y), ("water_color", kit.srgb("#2aa6c8")), ("water_clarity", 0.72),
+    ("water_height", water_y), ("water_color", kit.srgb(LEVEL.get("water_color", "#2aa6c8"))), ("water_clarity", LEVEL.get("water_clarity", 0.72)),
     ("grass_fade_start", 5000.0), ("grass_fade_end", 10000.0), ("sky_scale", sky_scale * LEVEL.get("sky_gain", 1.0)),
 ] + [(k, LEVEL[k]) for k in ("unbake", "char_fill", "char_keep", "hold", "shadow_floor") if k in LEVEL]
 with open(os.path.join(tmp, "level.ini"), "w") as f:

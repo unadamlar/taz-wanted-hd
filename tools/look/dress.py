@@ -562,11 +562,31 @@ def blender_main(argv):
         # 3c. water: a bed and walls under the hub's water so it can be see-through, and a foam rim
         if not a.pass1:
             bed, foam = kit.water_dress([o for o in live if poly_mask(o, ("water",)).any()],
-                                        lambda o: poly_mask(o, ("water",)), SCALE, depth=0.7, foam=L.get("foam", 0.35), walls=L.get("water_walls", True),
+                                        lambda o: poly_mask(o, ("water",)), SCALE, depth=L.get("water_depth", 0.7), foam=L.get("foam", 0.35), walls=L.get("water_walls", True),
                                         region=L["hub"], coll=props)
             if bed:
                 stats["water_bed_tris"] = kit.tri_count(bed) + kit.tri_count(foam)
                 tri_props += stats["water_bed_tris"]
+            if bed and L.get("water_flat"):  # steep faces in the water's texture are the pool's banks, not a surface
+                V, F = [], []
+                for ob in live:
+                    wet = poly_mask(ob, ("water",))
+                    if not wet.any():
+                        continue
+                    n = np.empty(len(ob.data.polygons) * 3, np.float32)
+                    ob.data.polygons.foreach_get("normal", n)
+                    n = n.reshape(-1, 3) @ np.array(ob.matrix_world)[:3, :3].T
+                    steep = wet & (np.abs(n[:, 2]) < 0.8 * np.linalg.norm(n, axis=1))
+                    for pi in np.nonzero(steep)[0]:
+                        vs = [tuple(ob.matrix_world @ ob.data.vertices[v].co) for v in ob.data.polygons[int(pi)].vertices]
+                        F.append(tuple(range(len(V), len(V) + len(vs))))
+                        V += vs
+                    hide_faces(ob, steep)
+                bank = bpy.data.meshes.new("kit_water_bank")
+                bank.from_pydata(V, [], F)
+                bank.materials.append(bed.data.materials[0])
+                kit._obj("kit_water_bank", bank, props)
+                tri_props += len(F)
 
         # 3d. characters (not collision): smooth shading, fur and skin materials
         if not a.pass1 and L.get("dress_characters"):
