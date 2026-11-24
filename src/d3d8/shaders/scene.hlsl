@@ -33,6 +33,7 @@ float4 MWEIGHT2  : register(c23);
 float4 CHARK     : register(c24);   // characters: texture on, colour on, scale, as the game's stage 0
 float4 EMIT      : register(c26);   // glow: strength, lo, 1 / (hi - lo); w: baked-light exponent, 0 keeps vertex colours
 float4 HOLD      : register(c28);   // x: how much painted surfaces keep their colour through the tone curve; y exposure, z contrast, w lowest shadowed height
+float4 UNBAKE    : register(c29);   // x: how much of the baked light's tint a night level keeps
 float4 LGRID     : register(c27);   // lights: grid x0, z0, 1 / cell, 1 if the level has any
 
 float4 NEAR      : register(c32);   // x: 1 in the blended near pass; y: 1 keep far side, -1 keep near side
@@ -280,7 +281,10 @@ float4 ps_world(V2P i, float2 vpos : VPOS) : COLOR
     float4 tex = tex2D(BASE, i.uv);
     float3 vc = i.c.rgb;
     // A night level's colour is baked into its vertices as blue light: keep how bright, not the tint.
-    if (EMIT.w > 0) vc = pow(saturate(max(vc.r, max(vc.g, vc.b)) * 2), EMIT.w) * 0.5;
+    if (EMIT.w > 0) {
+        float m = max(vc.r, max(vc.g, vc.b));
+        vc = pow(saturate(m * 2), EMIT.w) * 0.5 * lerp(1, vc / max(m, 0.004), UNBAKE.x);
+    }
     float3 game = to_linear(saturate(tex.rgb * vc * 2));
     float3 n = normalize(i.n);
     float3 albedo = game, nor = n;
