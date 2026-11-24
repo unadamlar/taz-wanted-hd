@@ -995,6 +995,8 @@ if not LEVEL.get("game_sky"):  # otherwise the game's own painted backdrop stays
     sky = np.asarray(bake.bake_sky(cache, sc, eye, panels=LEVEL.get("sky_panels", False), night=LEVEL.get("night_sky", True)), np.float32)
     if not LEVEL.get("night_sky", True):
         sky = bake.fill_ceiling(sky)
+    if "sea" in LEVEL:  # the sea painted under the horizon, seen past the level's edge
+        sky = bake.sea_below(sky, kit.srgb(LEVEL["sea"]))
     sky_scale = max(1.0, float(np.quantile(sky, 0.9999)))
     faces = [np.asarray(dds.to_srgb(f / sky_scale), np.float32) for f in bake.cube_faces(sky, 1024)]
     sky_bytes = dds.write_cube(os.path.join(tmp, "sky.dds"), faces)
