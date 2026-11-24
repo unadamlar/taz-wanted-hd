@@ -114,6 +114,7 @@ unbake_keep  optional, 0 to 1: how much of the baked light's tint stays, at the 
 char_fill  optional, three numbers: extra ambient on characters only, so they read away from a night level's lamps
 shadow_floor  optional: the height below which `hold` surfaces take no sun shadow
 hold       optional. Above 0 game surfaces keep their painted colour through the tone curve; light only shades it
+glow_add   optional. Above 0 the game's additive sprites add (times this) as the game draws them, instead of the soft screen blend
 ```
 
 - sun_dir points towards the sun, in game space. sun_color already includes the 1/pi: diffuse = albedo * sun_color * N.L.

@@ -596,7 +596,7 @@ LEVELS = {
     "tazboss1": dict(scene=19, pak="tazboss1", blend="tazhub/tazboss1/tazboss1.blend", out="tazhub/tazboss1/pass1", rules=TB1_RULES, hand=TB1_HAND,
                      look=TB1_LOOK, hdri=None, hdri_rotation=0.0, hub=(-25.0, -19.5, 25.5, 19.5), game_sky=True, clutter=False,
                      captures=("tazhub/tazboss1/world-hero.bin", "tazhub/tazboss1/world-sweep-a.bin"), materials=tuple(TB1_TILES) + ("flat",),
-                     tiles=TB1_TILES, detail=TB1_DETAIL, glow=TB1_GLOW, hold=0.6, contrast=1.0, bloom_threshold=14.0, char_fill=(0.55, 0.46, 0.42), char_keep=1.0),
+                     tiles=TB1_TILES, detail=TB1_DETAIL, glow=TB1_GLOW, hold=0.6, contrast=1.0, bloom_threshold=14.0, glow_add=1.0, char_fill=(0.55, 0.46, 0.42), char_keep=1.0),
     "tazboss2": dict(scene=20, pak="tazboss2", blend="tazhub/tazboss2/tazboss2.blend", out="tazhub/tazboss2/pass1", rules=TB2_RULES, hand=TB2_HAND,
                      look=TB2_LOOK, hdri=None, hdri_rotation=0.0, hub=(-14.0, -39.5, 14.5, 52.0), sky_panels=True, night_sky=False, sky_gain=1.05, clutter=False,
                      captures=("tazhub/tazboss2/world-hero.bin", "tazhub/tazboss2/world-sweep-a.bin", "tazhub/tazboss2/world-sweep-b.bin"),
