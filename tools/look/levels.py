@@ -728,7 +728,10 @@ LEVELS = {
                    captures=tuple(f"westhub/grandc/world-{n}.bin" for n in ("hero", "sweep-a", "sweep-b")),
                    materials=tuple(WEST_TILES) + ("flat",), tiles=WEST_TILES, detail=GRANDC_DETAIL, binds={"ground": (("d_sand", 4, -1.0, 0.0),)},
                    clutter_opts=dict(leaves=0.0, pebbles=5.0, stones=0.7), grass_min=2.0, unbake=0.2,
-                   solids=dict(cards={}, soft=("grandc/textures/cactus07",)),  # the barbed wire stays the game's: its strips are not the zoo's pairs
+                   solids=dict(cards={}, soft=tuple(f"grandc/textures/{n}" for n in ("cactus04", "cactus06", "cactus07"))),  # the barbed wire stays the game's: its strips are not the zoo's pairs
+                   cacti=("grandc/textures/cactus0[467]",), armed_cacti=tuple(f"grandc/textures/{n}" for n in ("cactus06", "cactus07", "smallcack")),
+                   card_models=(("grandc/textures/smallcack", "cactus"), ("grandc/textures/plantspike*", "flower")) + tuple((f"grandc/textures/{n}", "sign") for n in (
+                       "plainsigndiamond", "wood_keepout", "wood_keepout02", "sign_landscape_wood", "sign_rocks", "telephone_pole_sign", "telephone_pole_sign02")),
                    relief=dict(textures=tuple(f"grandc/textures/{p}" for p in ("wwrock*", "vert_strips*", "monolith*", "pestwest*")), tint=(0.9, 1.075, 1.25), min_area=6.0,
                                cell=0.4, depth=0.3, band=1.1, block=1.6, foot=1.8, border=0.8),
                    fog_color="#f4d8b0", ground_tint=(0.82, 0.62, 0.42), sky_gain=1.3, char_keep=0.55, char_fill=(-0.65, -0.6, -0.5),
