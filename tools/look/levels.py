@@ -714,7 +714,7 @@ LEVELS = {
                   captures=tuple(f"westhub/ghost/world-{n}.bin" for n in ("hero", "sweep-a", "sweep-b", "sweep-c")),
                   materials=tuple(GHOST_TILES) + ("flat",), tiles=GHOST_TILES, detail=GHOST_DETAIL, binds={"ground": (("d_cobble", 4, -1.0, 0.0),)},
                   clutter_opts=dict(leaves=1.6, pebbles=3.0, stones=0.4), grass_min=2.0, glow=GHOST_GLOW, lamps=dict(CITY_LAMPS, color="#ffcf8a", power=4.0, extra=()),
-                  card_models=(("ghost/textures/ghbanister", "banister"),),
+                  card_models=(("ghost/textures/ghbanister", "banister"), ("ghost/textures/ghspookfence", "iron")),
                   relief=dict(textures=("ghost/textures/spookyrock*",), min_area=6.0, cell=0.4, depth=0.3, band=1.1, block=1.6, foot=1.8, border=0.8),
                   fog_color="#2a1d5c", unbake=0.5, sky_gain=2.0, char_fill=(0.2, 0.2, 0.3)),
     "goldmine": dict(scene=15, pak="goldmine", blend="westhub/goldmine/goldmine.blend", out="westhub/goldmine/pass1", rules=GOLD_RULES, hand=GOLD_HAND,

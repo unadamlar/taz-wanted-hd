@@ -1105,6 +1105,76 @@ def banister_geo(alpha, paint, pos, uv, col, size):
     return [(p, n, np.zeros((len(p), 2)), c, np.full(len(p), MAT_ID["prop"])) for p, n, c in out]
 
 
+def iron_geo(alpha, paint, pos, uv, col, size):
+    """Painted wrought iron as round bars along the paint's strokes, a spear head on each bar that ends upward in one.
+    Only what falls on this piece of card is kept: its texture repeats, and the card can start part way into one."""
+    h, w = alpha.shape
+    px = np.array(size, float) / [w, h]  # world size of a texel
+    lines = solid.strokes(alpha)
+    if not lines:
+        return []
+    lit = np.clip(col.mean((0, 1)), 0, 1)
+    iron = np.clip(np.median(paint[alpha > 0.5], 0) * lit * 1.6, 0, 1)  # lighter than the paint's ink, so it shades round
+    rmed = np.median(np.concatenate([r for _, r, *_ in lines]))
+    on = lambda q: 0 <= q[1] < h and alpha[int(q[1]), int(q[0]) % w] > 0.5
+
+    def half_width(q, d):  # paint across the bar at q
+        side = np.array([-d[1], d[0]])
+        return min(next(k for k in range(1, 40) if not on(q + s_ * k * side)) for s_ in (1, -1)) - 0.5
+
+    P, N = [], []
+    for xy, r, *free in lines:
+        xy = xy + 0.5
+        heads = []
+        for end, f in ((0, free[0]), (-1, free[1])):
+            if not f or len(xy) < 6:
+                continue
+            seg = xy if end == -1 else xy[::-1]
+            d = seg[-1] - seg[max(-10, -len(seg))]
+            d /= max(np.linalg.norm(d), 1e-9)
+            if d[1] > -0.7:  # up the texture only: the card's top is the world's top
+                continue
+            tip = seg[-1].copy()
+            while on(tip + d):
+                tip = tip + d
+            k = len(seg) - 1  # the head: down the bar while the paint stays wide
+            while k > 0 and half_width(seg[k], d) > 1.6 * rmed:
+                k -= 1
+            wide = min(max(half_width(q, d) for q in seg[k:]), 3 * rmed) if k < len(seg) - 1 else 2.2 * rmed
+            if np.linalg.norm(tip - seg[k]) < 2 * rmed:
+                k = max(0, len(seg) - 1 - int(3 * rmed))
+            heads.append((end, k, seg[k], tip, wide))
+        for end, k, base, tip, wide in heads:  # the bar stops at its head
+            xy = xy[:k + 1] if end == -1 else xy[len(xy) - 1 - k:]
+            r = r[:k + 1] if end == -1 else r[len(r) - 1 - k:]
+            m0, m1 = base * px, tip * px
+            p, n = props3d._tube(np.c_[np.array([m0, m0 + (m1 - m0) * 1e-3, m1]), np.zeros(3)], np.array([0.0, 0.9 * wide * px.mean(), 0.0]), 4)
+            P.append(p); N.append(n)
+        if len(xy) > 4:  # pixel steps smoothed out, ends kept
+            sm = np.c_[[np.convolve(np.pad(xy[:, c], 2, mode="edge"), np.ones(5) / 5, "valid") for c in (0, 1)]].T
+            sm[[0, -1]] = xy[[0, -1]]
+            xy = sm
+        idx = np.unique(np.r_[np.arange(0, len(xy), 3), len(xy) - 1])
+        m = xy[idx] * px
+        if len(m) < 2 or np.linalg.norm(m[-1] - m[0]) < 1e-6:
+            continue
+        p, n = props3d._tube(np.c_[m, np.zeros(len(m))], np.full(len(m), np.clip(np.median(r), 0.5, 1.3 * rmed) * 0.85 * px.mean()), 6)  # forged bars: even
+        P.append(p); N.append(n)
+    if not P:
+        return []
+    p = np.concatenate(P); n = np.concatenate(N)
+    pw, nw, q, c = solid.on_card(p / [size[0], size[1], 1], n, pos, uv, col, size, tiled=True)
+    a_, e1, e2 = uv[:, 0], uv[:, 1] - uv[:, 0], uv[:, 2] - uv[:, 0]
+    det = e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]
+    rel = q[:, None] - a_[None]
+    l1 = (rel[..., 0] * e2[:, 1] - rel[..., 1] * e2[:, 0]) / det
+    l2 = (e1[:, 0] * rel[..., 1] - e1[:, 1] * rel[..., 0]) / det
+    keep = (np.minimum(np.minimum(l1, l2), 1 - l1 - l2) > -0.01).any(1).reshape(-1, 3).all(1)
+    k = (np.nonzero(keep)[0][:, None] * 3 + [0, 1, 2]).ravel()
+    return [(pw[k], nw[k], np.zeros((len(k), 2)), np.tile(iron, (len(k), 1)), np.full(len(k), MAT_ID["prop"]))]
+
+
+STRIPS = ("banister", "iron")  # painted along a run of cards that turns corners: any number of facings
 solids, static_hide, static_parts, static_done = {}, set(), [], set()
 cfg = dict(LEVEL.get("solids") or dict(cards={}, soft=()))
 cfg["cards"] = dict(cfg["cards"])
@@ -1123,14 +1193,15 @@ if cfg["cards"] or cfg["soft"]:
     solid_tex = {h: label_of(h) is not None and game_rgba(label_of(h))[..., 3].mean() > 0.98 for h in {d[0] for ds in found.values() for d in ds}}
     for keys, ds in sorted(found.items(), key=lambda kv: -len(kv[0])):  # a sweep frame can hold part of a model
         ds = [d for d in ds if (d[0] in card_h and label_of(d[0])) or solid_tex[d[0]]]  # see-through parts, and another pak's copies, stay the game's own draws
-        auto = [d for d in ds if cfg["cards"].get(label_of(d[0]), {}).get("auto")]
+        strip = lambda d: cfg["cards"].get(label_of(d[0]), {}).get("kind") in STRIPS
+        auto = [d for d in ds if cfg["cards"].get(label_of(d[0]), {}).get("auto") and not strip(d)]
         if auto:  # faces of a modelled object (a box, a signal) drawn one by one: joined across draws they face 3+ ways
             tp = [solid.triangles(d[2], d[3], d[4])[0] for d in auto]
             owner = np.concatenate([np.full(len(t), i) for i, t in enumerate(tp)])
             allp = np.concatenate(tp)
             bad = {int(i) for t in solid.islands(allp) if solid.orientations([allp[t]]) > 2 for i in np.unique(owner[t])}
             ds = [d for d in ds if not any(d is auto[i] for i in bad)]
-        ds = [d for d in ds if not cfg["cards"].get(label_of(d[0]), {}).get("auto") or solid.card_pieces(*solid.triangles(d[2], d[3], d[4])[:2])]
+        ds = [d for d in ds if not cfg["cards"].get(label_of(d[0]), {}).get("auto") or strip(d) or solid.card_pieces(*solid.triangles(d[2], d[3], d[4])[:2])]
         if not ds:
             continue
         if {(solid.key_of(d[4]), d[0]) for d in ds} <= solids.keys():
@@ -1152,7 +1223,7 @@ if cfg["cards"] or cfg["soft"]:
                         traced[lab] = rgba[::step_, ::step_, 3], rgba[::step_, ::step_, :3]  # traced at up to 256 px
                     small, paint = traced[lab]
                     got, sil, cols = [], [], []
-                    for t in solid.card_pieces(dp, du):
+                    for t in (solid.flat_pieces(dp, du) if kind in STRIPS else solid.card_pieces(dp, du)):
                         tu, size = du[t], solid.repeat_size(dp[t], du[t])
                         a_ = small
                         if np.ptp(tu[..., 0]) <= 1.001 and np.ptp(tu[..., 1]) <= 1.001:  # one repeat: only the part of the texture the card shows
@@ -1203,6 +1274,9 @@ if cfg["cards"] or cfg["soft"]:
                             continue
                         if kind == "banister":
                             got += banister_geo(small, paint, dp[t], tu, dc[t], size)
+                            continue
+                        if kind == "iron":
+                            got += iron_geo(small, paint, dp[t], tu, dc[t], size)
                             continue
                         if kind == "banner":  # cloth in folds under a rod, the game's paint and cut-out kept
                             h_, v_ = solid.uv_axes(dp[t], tu)
