@@ -82,6 +82,7 @@ HRESULT smooth_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UI
                     HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT));
 void capture_frame(void);
 void capture_scene(void);
+extern int scene_requests; // scene changes and level reloads so far (asserts.c)
 void capture_draw(IDirect3DDevice8 *dev, IDirect3DVertexBuffer8 *vb, D3DPRIMITIVETYPE type, UINT start, UINT count);
 extern int capture_world_on;
 void look_install(void *draw);

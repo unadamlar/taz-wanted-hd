@@ -15,8 +15,11 @@ static void __cdecl on_assert(const char *file, int line, const char *msg)
     ((void(__cdecl *)(int))0x5dbfd4)(1); // the game's own exit()
 }
 
+int scene_requests;
+
 __attribute__((used)) static void __cdecl log_scene_request(int scene)
 {
+    scene_requests++;
     log_line("saving on the way to scene %d", scene);
 }
 
