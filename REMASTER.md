@@ -78,6 +78,9 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
   Known leftovers: safari's flat tree canopies and palm leaves, painted green edges, a flat cyan water area in one view; faint straight
   lines across the aquarium's sea; slightly hazy ice dome snow.
 - Zoo boss F5/F9 can crash when the load crosses the goal replay (with the look data 2 of 3 runs, without it 3 of 3). Cause unknown, plain `master` not tried.
+- Cutscenes use the level's Remaster look and keep their own props (`extracted/look/reports/step7/cutscenes/`). The mod tells a cutscene's textures
+  from a level's by the pak they loaded from, so this needs nothing per level. Watched 14 of the 29 cutscenes plus two level endings. Open: the
+  Tasmania intro's sky can flash flat lavender (in HD and Original too), and a bark strip crosses the zoo boss pitch in its intro.
 - For the user to judge in the city levels: real paint replaces baked colour (store's blue, museum's pink floor, construction huts teal to yellow).
 
 ## How the pieces fit
