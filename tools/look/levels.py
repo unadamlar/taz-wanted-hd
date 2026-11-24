@@ -700,9 +700,9 @@ LEVELS = {
                     solids=dict(cards={"westhub/textures/train_chain": dict(mat="link", links=True),
                                        "westhub/textures/safarigrill01": dict(size=(90.0, 345.0), depth=4.5, tol=1.4, area=30.0, repeat=2, each_draw=True)},
                                 soft=tuple(f"westhub/textures/{n}" for n in ("cactus05", "cactus06", "cactus07", "cactus_bit", "cactus_bit2"))),
-                    card_models=(("westhub/textures/plantspike*", "flower"),) + tuple((f"westhub/textures/{n}", "sign") for n in (
+                    card_models=(("westhub/textures/plantspike*", "flower"), ("westhub/textures/cactus04", "cactus")) + tuple((f"westhub/textures/{n}", "sign") for n in (
                         "sign_landscape", "sign_dynamite", "ammo_dumpsign", "arrowbend", "plainsigndiamond", "ticket_sign_04", "warning_sign", "speedsign", "barrierstart")),
-                    ribbed=("westhub/textures/cactus*",),
+                    cacti=("westhub/textures/cactus*",),
                     relief=dict(textures=("westhub/textures/vert_strips*", "westhub/textures/wwrock*"), tint=(0.9, 1.075, 1.25), min_area=6.0, cell=0.4, depth=0.3, band=1.1, block=1.6, foot=1.8, border=0.8),
                     fog_color="#f4d8b0", ground_tint=(0.82, 0.62, 0.42), sky_gain=1.3, char_keep=0.55, char_fill=(-0.65, -0.6, -0.5), tints={"d_sand": (2.0, 1.66, 1.05), "d_canyon": (1.8, 2.15, 2.5), "d_cliff": (1.8, 2.15, 2.5), "flat": (1.3, 0.86, 0.7)}),
     "ghost": dict(scene=14, pak="ghost", blend="westhub/ghost/ghost.blend", out="westhub/ghost/pass1", rules=GHOST_RULES, hand=GHOST_HAND,
