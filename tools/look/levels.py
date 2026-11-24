@@ -217,6 +217,8 @@ SAFARI_RULES = [
     ("safari/textures/trunkwanted", "gameplay"), ("safari/textures/monkeytyre", "gameplay"), ("safari/textures/safhelipad", "gameplay"),
     ("safari/skybox/*", "sky"), ("resTex/shadowsub", "hide"), ("safari/textures/safariwater", "water"),
     ("safari/textures/pestsaf01", "lawn"), ("safari/textures/pestsaf02", "lawn"), ("safari/textures/tazfern02", "lawn"), ("safari/textures/tazfern06", "lawn"),
+    ("safari/textures/tazwood02a", "tree"), ("safari/textures/tazfern05*", "tree"), ("safari/textures/safarifruitree9", "palm"),
+    ("safari/textures/safarifruitree1[01]", "palm"), ("safari/textures/safarifringe", "drip"), ("safari/textures/safarifringe02", "drip"),  # green only: 03 and 04 are purple and blue roofs
     ("safari/textures/pestsaf03", "ground"), ("safari/textures/pestsaf06", "ground"), ("safari/textures/pestsaf07", "ground"),
     ("safari/textures/grassedge*", "ground"), ("safari/textures/grassjoiner*", "ground"),
 ]
@@ -288,7 +290,7 @@ ZOOBOSS_RULES = [
 ]
 ZOOBOSS_DETAIL = [
     ("zooboss/textures/soccer_*", "d_sand"), ("zooboss/textures/zoo_citblock*", "d_stone"), ("zooboss/textures/safrock*", "d_rock"),
-    ("zooboss/textures/sharprock*", "d_rock"), ("zooboss/textures/farm_plot*", "d_bark"), ("zooboss/textures/jhut*", "d_bark"),
+    ("zooboss/textures/sharprock*", "d_rock"), ("zooboss/textures/farm_plot*", "d_bark"), ("zooboss/textures/jhuthatch*", "d_bark"),  # plain white jhut also paints the intro's light beam
 ]
 ZOOBOSS_TILES = dict(d_sand=dict(AQUA_TILES["d_sand"], period=1.5, detail=0.35, normal=0.3), d_stone=SAFARI_TILES["d_stone"], d_rock=SAFARI_TILES["d_rock"], d_bark=SAFARI_TILES["d_bark"])
 ZOOBOSS_HAND = {
@@ -507,14 +509,14 @@ LEVELS = {
                     binds={"snow": (("d_ice", 4, -1.0, 0.0), ("snowfield", 3, 0.66, 0.82))},
                     lumps=dict(roles=("snow",), density=0.2, colour="#f4f9ff"), island_boxes=True, sky_gain=1.35, night_sky=False, ground_tint=(0.74, 0.67, 0.59), tints={"snowfield": (0.88, 0.9, 0.94)}),
     "safari": dict(scene=5, pak="safari", blend="zoo-levels/safari/safari.blend", out="zoo-levels/safari/pass1", rules=SAFARI_RULES, hand=SAFARI_HAND,
-                   look=SAFARI_LOOK, hdri=None, hdri_rotation=0.0, hub=(-79.0, -64.0, 71.0, 80.0), sky_panels=True, night_sky=False, grass_density=30.0, island_boxes=True,
+                   look=SAFARI_LOOK, hdri=None, hdri_rotation=0.0, hub=(-79.0, -64.0, 71.0, 80.0), sky_panels=True, night_sky=False, grass_density=30.0, island_boxes=True, sea="#0f6f9a",
                    captures=("zoo-levels/safari/world-hero.bin", "zoo-levels/safari/world-sweep-a.bin", "zoo-levels/safari/world-sweep-b.bin"),
-                   materials=tuple(SAFARI_TILES) + ("lawn", "dirt", "grass", "flat", "flat_wind", "water", "water_bed", "foam"), tiles=SAFARI_TILES,
+                   materials=tuple(SAFARI_TILES) + ("lawn", "dirt", "grass", "flat", "flat_wind", "water", "water_bed", "foam", "bark", "leaves", "leaf_core", "ivy"), tiles=SAFARI_TILES,
                    detail=SAFARI_DETAIL, binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05))}, sky_gain=1.3),
     "aqua": dict(scene=6, pak="aqua", blend="zoo-levels/aqua/aqua.blend", out="zoo-levels/aqua/pass1", rules=AQUA_RULES, hand=AQUA_HAND,
                  look=AQUA_LOOK, hdri=None, hdri_rotation=0.0, hub=(-96.0, -79.0, 116.0, 127.0), sky_panels=True, night_sky=False, clutter=False, island_boxes=True,
                  captures=("zoo-levels/aqua/world-hero.bin", "zoo-levels/aqua/world-sweep-a.bin", "zoo-levels/aqua/world-sweep-b.bin"),
-                 materials=tuple(AQUA_TILES) + ("dirt", "water", "water_bed"), tiles=AQUA_TILES, detail=AQUA_DETAIL, sky_gain=1.3, foam=0, water_walls=False, ground_tint=(0.69, 0.6, 0.47)),
+                 materials=tuple(AQUA_TILES) + ("dirt", "water", "water_bed"), tiles=AQUA_TILES, detail=AQUA_DETAIL, sky_gain=1.3, foam=0, water_walls=False, sea="#5f9a9c", sea_horizon="#58aab8", ground_tint=(0.69, 0.6, 0.47)),
     "zooboss": dict(scene=7, pak="zooboss", blend="zoo-levels/zooboss/zooboss.blend", out="zoo-levels/zooboss/pass1", rules=ZOOBOSS_RULES, hand=ZOOBOSS_HAND,
                     look=ZOOBOSS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-30.0, -30.0, 30.0, 27.0), sky_panels=True, night_sky=False, clutter=False,
                     island_boxes=True, grass_density=40.0, skin=dict(tile=520.0, grain=0.18), char_keep=0.8, fog_color="#ffc090", ground_tint=(0.72, 0.6, 0.5), sky_gain=1.25,

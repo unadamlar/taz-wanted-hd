@@ -435,6 +435,20 @@ def blender_main(argv):
             tri_props += kit.tri_count(tr) + kit.tri_count(can)
         stats["trees"] = len(trees)
 
+        # 1b. palms: their flat frond stars become stems with leaflets
+        ptris = []
+        for ob in live:
+            m = poly_mask(ob, ("palm",))
+            if m.any():
+                co, tv, tp = kit._world_tris(ob)
+                ptris.append(co[tv[m[tp]]])
+                hide_faces(ob, m)
+        if ptris:
+            palm = kit.palm_fronds(np.concatenate(ptris), SCALE, coll=props)
+            if palm:
+                stats["palm_fronds"] = palm["kit_fronds"]
+                tri_props += kit.tri_count(palm)
+
         # 2. fences: each rail card island -> its top edge polyline -> kit fence segments;
         #    posts and caps standing on those lines are hidden
         segs = []
@@ -450,7 +464,7 @@ def blender_main(argv):
         for p0, p1 in segs:
             k = tuple(sorted([(round(p0.x, 1), round(p0.y, 1)), (round(p1.x, 1), round(p1.y, 1))]))
             uniq[k] = (p0, p1)
-        nonground = ("fence_rail", "fence_post", "fence_cap", "tree", "hide", "sky", "hidden")
+        nonground = ("fence_rail", "fence_post", "fence_cap", "tree", "palm", "drip", "hide", "sky", "hidden")
         blk = [o for o in live if not poly_mask(o, nonground).all()]
         verts, polys, off = [], [], 0
         for o in blk:
@@ -662,6 +676,13 @@ def blender_main(argv):
         edges = kit.top_edges_open(cliffs, ("cliff", "cliff_lilac"), blockers=solid) if cliffs else []
         if overlay:  # vines hang from the rock mass rim (also where tops border grass objects)
             edges = mass_edges
+        for ob in live:  # painted grass drips over ledges: vines and a grassy lip along their top edge instead
+            m = poly_mask(ob, ("drip",))
+            for isl, lo, hi in kit.islands(ob, m) if m.any() else ():
+                nrm = ob.matrix_world.to_3x3() @ ob.data.polygons[isl[0]].normal
+                away = Vector((nrm.x, nrm.y, 0)).normalized() if nrm.xy.length > 1e-3 else Vector((1, 0, 0))
+                edges += [(a_, b_, away) for a_, b_ in rail_polyline(ob, isl, hi.z)]
+            hide_faces(ob, m)
         vines = [v for v in (kit.scatter_vines(edges, SCALE, seed=5, per_m=3.0 if overlay else 5.0),
                              kit.scatter_ledge_moss(edges, SCALE, seed=6)) if v] if edges else []
         lumps = []

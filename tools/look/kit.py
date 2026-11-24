@@ -2066,6 +2066,109 @@ def scatter_lumps(P, scale, colour, *, size=(0.14, 0.42), squash=0.42, seed=8, n
     return _instancer(name, P, rot, np.stack([sz, sz, sz], 1), rng.integers(0, 5, m), vs, _coll("kit_clutter"))
 
 
+def palm_fronds(tris, scale=1.0, *, seed=6, name="kit_palm", coll=None):
+    """Palm canopies rebuilt from the game's flat star-shaped frond cards (world triangles, n x 3 x 3): each frond keeps
+    its hub, tip and height profile, and becomes a stem with drooping leaflets. Colours go in look_bake, read as is."""
+    rng = np.random.default_rng(seed)
+    key = np.round(np.sort(tris, axis=1), 2).reshape(-1, 9)
+    tris = tris[np.unique(key, axis=0, return_index=True)[1]]  # hero and sweep captures repeat draws
+    V, inv = np.unique(np.round(tris.reshape(-1, 3), 3), axis=0, return_inverse=True)
+    par = np.arange(len(V))
+    def root(a):
+        while par[a] != a:
+            par[a] = par[par[a]]
+            a = par[a]
+        return a
+    for t in inv.reshape(-1, 3):
+        for j in (1, 2):
+            par[root(t[j])] = root(t[0])
+    groups = {}
+    for i in range(len(V)):
+        groups.setdefault(root(i), []).append(i)
+    dark, light = np.array(srgb("#2c6a1b")), np.array(srgb("#7dc23c"))
+    P, F, C = [], [], []
+    up = np.array((0.0, 0.0, 1.0))
+
+    def quad_strip(path, r):
+        """Three-sided stem along path."""
+        t = np.gradient(path, axis=0)
+        t /= np.linalg.norm(t, axis=1, keepdims=True)
+        side = np.cross(t, up)
+        side /= np.maximum(np.linalg.norm(side, axis=1, keepdims=True), 1e-6)
+        top = np.cross(side, t)
+        k0 = len(P)
+        for q, sd, tp in zip(path, side, top):
+            for a in (0, 2.09, 4.19):
+                P.append(q + r * (np.cos(a) * sd + np.sin(a) * tp))
+                C.append(dark * 0.8)
+        for i in range(len(path) - 1):
+            for j in range(3):
+                a, b = k0 + 3 * i + j, k0 + 3 * i + (j + 1) % 3
+                F.append((a, b, b + 3, a + 3))
+
+    fronds = 0
+    for g in groups.values():
+        pts = V[g]
+        if len(pts) < 6:
+            continue
+        hub_xy = pts[:, :2].mean(0)
+        d = pts[:, :2] - hub_xy
+        rr, th = np.hypot(d[:, 0], d[:, 1]), np.arctan2(d[:, 1], d[:, 0])
+        R = rr.max()
+        hub = np.array((*hub_xy, pts[rr < 0.2 * R, 2].max() if (rr < 0.2 * R).any() else pts[:, 2].max()))
+        tips = []
+        for i in np.argsort(-rr):  # farthest points first, one tip per 30 degrees
+            if rr[i] < 0.55 * R:
+                break
+            if all(abs((th[i] - th[j] + np.pi) % (2 * np.pi) - np.pi) > 0.52 for j in tips):
+                tips.append(i)
+        for i in tips:
+            near = np.abs((th - th[i] + np.pi) % (2 * np.pi) - np.pi) < 0.35
+            x, z = np.r_[0.0, rr[near]], np.r_[hub[2], pts[near, 2]]
+            fit = np.polyfit(x, z, 2 if len(x) > 3 else 1)
+            half = max(np.max(rr[near] * np.abs(np.sin(th[near] - th[i]))), 0.12 * rr[i])
+            n = 14
+            s = np.linspace(0, 1, n)
+            path = np.c_[hub_xy + np.outer(s, d[i]), np.polyval(fit, s * rr[i])]
+            quad_strip(path, 0.035 * scale)
+            t = np.gradient(path, axis=0)
+            t /= np.linalg.norm(t, axis=1, keepdims=True)
+            leaves = max(12, int(rr[i] / (0.06 * scale)))
+            for k in range(leaves):
+                u = 0.08 + 0.9 * (k + 0.5) / leaves
+                q = np.array([np.interp(u, s, path[:, j]) for j in range(3)])
+                tk = np.array([np.interp(u, s, t[:, j]) for j in range(3)])
+                tk /= np.linalg.norm(tk)
+                sd = np.cross(tk, up)
+                sd /= max(np.linalg.norm(sd), 1e-6)
+                L = half * 1.35 * np.sin(np.pi * min(1, u * 1.15)) ** 0.6 + 0.08 * scale
+                w = 0.075 * scale
+                for side in (-1, 1):
+                    dirn = side * sd + 0.45 * tk - (0.25 + 0.35 * u) * up
+                    dirn /= np.linalg.norm(dirn)
+                    tip = q + dirn * L - up * 0.12 * L
+                    mid = q + dirn * L * 0.45
+                    k0 = len(P)
+                    P.extend([q, mid + tk * w, tip, mid - tk * w])
+                    c = dark + (light - dark) * np.clip(0.25 + 0.55 * u + rng.normal(0, 0.08), 0, 1)
+                    C.extend([c * 0.75, c, c * 1.08, c])
+                    F.extend([(k0, k0 + 1, k0 + 2), (k0, k0 + 2, k0 + 3)])
+            fronds += 1
+    if not F:
+        return None
+    me = bpy.data.meshes.new(name)
+    me.from_pydata([tuple(p) for p in P], [], F)
+    me.materials.append(_flat("kit_palm_leaf", "#4d9a2c", 0.6))
+    col = me.color_attributes.new("look_bake", "FLOAT_COLOR", "CORNER")
+    vi = np.empty(len(me.loops), np.int32)
+    me.loops.foreach_get("vertex_index", vi)
+    Cn = np.array(C, np.float32)
+    col.data.foreach_set("color", np.c_[Cn[vi], np.ones(len(vi), np.float32)].ravel())
+    ob = _obj(name, me, coll)
+    ob["kit_fronds"] = fronds
+    return ob
+
+
 def top_edges(objects, select_roles=("cliff",), roles=None, min_len=0.05):
     """Convex edges where an up-facing face meets a near-vertical face.
     Returns list of (p0, p1, outward_normal) in world space."""

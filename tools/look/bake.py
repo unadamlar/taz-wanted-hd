@@ -181,6 +181,30 @@ def fill_ceiling(sky):
     return sky
 
 
+def sea_below(sky, deep, horizon=None, seed=3):
+    """A painted box whose lower half is one flat sea colour: deepen it away from the horizon and give it long wave streaks.
+    horizon: first recolour that flat sea (not what is painted on it) to meet a real water surface's far colour."""
+    h, w = sky.shape[:2]
+    if horizon is not None:
+        low = sky[h // 2:]
+        near = np.clip(1.5 - np.abs(low - np.median(low.reshape(-1, 3), 0)).sum(2, keepdims=True) / 0.06, 0, 1)
+        sky = sky.copy()
+        sky[h // 2:] = low * (1 - near) + np.asarray(horizon, np.float32) * near
+    below = (np.arange(h // 2, h) + 0.5) / h * 180 - 90  # degrees under the horizon
+    m = np.clip(below / 30, 0, 1)[:, None, None] ** 0.7
+    rng = np.random.default_rng(seed)
+    small = rng.normal(size=(96, 512)).astype(np.float32)
+    ry, rx = np.linspace(0, 95, h - h // 2), np.linspace(0, 511, w)
+    y0, x0 = np.floor(ry).astype(int), np.floor(rx).astype(int)
+    fy, fx = (ry - y0)[:, None], (rx - x0)[None]
+    y1, x1 = np.minimum(y0 + 1, 95), (x0 + 1) % 512
+    n = (small[y0][:, x0] * (1 - fx) + small[y0][:, x1] * fx) * (1 - fy) + (small[y1][:, x0] * (1 - fx) + small[y1][:, x1] * fx) * fy
+    streak = 1 + 0.07 * n[..., None] * (1 - 0.6 * m)
+    sky = sky.copy()
+    sky[h // 2:] = (sky[h // 2:] * (1 - m) + np.asarray(deep, np.float32) * m) * streak
+    return sky
+
+
 def cube_faces(sky, size=1024):
     """Six faces in D3D order, sampled by game-space direction (game (x, y, z) = Blender (x, z, y))."""
     t = (np.arange(size) + 0.5) / size * 2 - 1
