@@ -908,6 +908,13 @@ if cfg["cards"] or cfg["soft"]:
     solid_tex = {h: label_of(h) is not None and game_rgba(label_of(h))[..., 3].mean() > 0.98 for h in {d[0] for ds in found.values() for d in ds}}
     for keys, ds in sorted(found.items(), key=lambda kv: -len(kv[0])):  # a sweep frame can hold part of a model
         ds = [d for d in ds if d[0] in card_h or solid_tex[d[0]]]  # see-through parts stay the game's own draws
+        auto = [d for d in ds if cfg["cards"].get(label_of(d[0]), {}).get("auto")]
+        if auto:  # faces of a modelled object (a box, a signal) drawn one by one: joined across draws they face 3+ ways
+            tp = [solid.triangles(d[2], d[3], d[4])[0] for d in auto]
+            owner = np.concatenate([np.full(len(t), i) for i, t in enumerate(tp)])
+            allp = np.concatenate(tp)
+            bad = {int(i) for t in solid.islands(allp) if solid.orientations([allp[t]]) > 2 for i in np.unique(owner[t])}
+            ds = [d for d in ds if not any(d is auto[i] for i in bad)]
         ds = [d for d in ds if not cfg["cards"].get(label_of(d[0]), {}).get("auto") or solid.card_pieces(*solid.triangles(d[2], d[3], d[4])[:2])]
         if not ds:
             continue

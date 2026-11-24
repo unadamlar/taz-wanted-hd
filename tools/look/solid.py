@@ -220,6 +220,18 @@ def uv_mask(uv, shape):
     return m
 
 
+def orientations(parts):
+    """How many differently facing planes some triangle lists hold (a card and its back count once)."""
+    seen = []
+    for pos in parts:
+        n = np.cross(pos[:, 1] - pos[:, 0], pos[:, 2] - pos[:, 0])
+        for v in n[np.linalg.norm(n, axis=1) > 1e-6]:
+            v = v / np.linalg.norm(v)
+            if all(abs(v @ u) < 0.97 for u in seen):
+                seen.append(v)
+    return len(seen)
+
+
 def card_pieces(pos, uv):
     """A draw's flat cards, crossed ones split apart: lists of triangle indices, or None if it is a modelled object."""
     e1, e2 = uv[:, 1] - uv[:, 0], uv[:, 2] - uv[:, 0]
