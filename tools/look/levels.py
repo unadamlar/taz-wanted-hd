@@ -714,6 +714,7 @@ LEVELS = {
                   captures=tuple(f"westhub/ghost/world-{n}.bin" for n in ("hero", "sweep-a", "sweep-b", "sweep-c")),
                   materials=tuple(GHOST_TILES) + ("flat",), tiles=GHOST_TILES, detail=GHOST_DETAIL, binds={"ground": (("d_cobble", 4, -1.0, 0.0),)},
                   clutter_opts=dict(leaves=1.6, pebbles=3.0, stones=0.4), grass_min=2.0, glow=GHOST_GLOW, lamps=dict(CITY_LAMPS, color="#ffcf8a", power=4.0, extra=()),
+                  card_models=(("ghost/textures/ghbanister", "banister"), ("ghost/textures/ghspookfence", "iron")),
                   relief=dict(textures=("ghost/textures/spookyrock*",), min_area=6.0, cell=0.4, depth=0.3, band=1.1, block=1.6, foot=1.8, border=0.8),
                   fog_color="#2a1d5c", unbake=0.5, sky_gain=2.0, char_fill=(0.2, 0.2, 0.3)),
     "goldmine": dict(scene=15, pak="goldmine", blend="westhub/goldmine/goldmine.blend", out="westhub/goldmine/pass1", rules=GOLD_RULES, hand=GOLD_HAND,
@@ -746,7 +747,8 @@ LEVELS = {
     "tazboss1": dict(scene=19, pak="tazboss1", blend="tazhub/tazboss1/tazboss1.blend", out="tazhub/tazboss1/pass1", rules=TB1_RULES, hand=TB1_HAND,
                      look=TB1_LOOK, hdri=None, hdri_rotation=0.0, hub=(-25.0, -19.5, 25.5, 19.5), game_sky=True, clutter=False,
                      captures=("tazhub/tazboss1/world-hero.bin", "tazhub/tazboss1/world-sweep-a.bin"), materials=tuple(TB1_TILES) + ("flat",),
-                     tiles=TB1_TILES, detail=TB1_DETAIL, glow=TB1_GLOW, hold=0.6, contrast=1.0, bloom_threshold=14.0, glow_add=1.0, char_fill=(1.0, 1.5, 2.0), char_keep=1.0),
+                     tiles=TB1_TILES, detail=TB1_DETAIL, glow=TB1_GLOW, hold=0.6, contrast=1.0, bloom_threshold=14.0, glow_add=1.0, char_fill=(1.0, 1.5, 2.0), char_keep=1.0,
+                     card_models=(("tazboss1/textures/cbfloodstand", "iron"),)),  # the red truss round the dance floor
     "tazboss2": dict(scene=20, pak="tazboss2", blend="tazhub/tazboss2/tazboss2.blend", out="tazhub/tazboss2/pass1", rules=TB2_RULES, hand=TB2_HAND,
                      look=TB2_LOOK, hdri=None, hdri_rotation=0.0, hub=(-14.0, -39.5, 14.5, 52.0), sky_panels=True, night_sky=False, sky_gain=1.05, clutter=False,
                      captures=("tazhub/tazboss2/world-hero.bin", "tazhub/tazboss2/world-sweep-a.bin", "tazhub/tazboss2/world-sweep-b.bin"),

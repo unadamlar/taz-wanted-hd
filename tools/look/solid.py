@@ -215,6 +215,22 @@ def orientations(parts):
     return len(seen)
 
 
+def flat_pieces(pos, uv):
+    """A draw's flat stretches, however many ways they face: lists of triangle indices of each plane in each piece."""
+    n = np.cross(pos[:, 1] - pos[:, 0], pos[:, 2] - pos[:, 0])
+    e1, e2 = uv[:, 1] - uv[:, 0], uv[:, 2] - uv[:, 0]
+    ok = (np.linalg.norm(n, axis=1) > 1e-6) & (np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]) > 1e-8)
+    n = n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+    out = []
+    for t in islands(pos):
+        groups = []
+        for i in t[ok[t]]:
+            g = next((g for g in groups if abs(n[g[0]] @ n[i]) > 0.97 and abs(n[g[0]] @ (pos[i].mean(0) - pos[g[0]].mean(0))) < 0.02 * np.ptp(pos[g[0]], 0).max()), None)
+            g.append(i) if g else groups.append([i])
+        out += [np.array(g) for g in groups if g]
+    return out
+
+
 def card_pieces(pos, uv):
     """A draw's flat cards, crossed ones split apart: lists of triangle indices, or None if it is a modelled object."""
     e1, e2 = uv[:, 1] - uv[:, 0], uv[:, 2] - uv[:, 0]
@@ -287,11 +303,13 @@ def chain_on_cards(pos, uv, col):
     return [np.concatenate(x) for x in zip(*parts)]
 
 
-def on_card(P, N, pos, uv, col, size):
-    """Moves plate() corners onto a game card given as triangles; the texture repeats where the card's uvs do."""
+def on_card(P, N, pos, uv, col, size, tiled=None):
+    """Moves plate() corners onto a game card given as triangles; the texture repeats where the card's uvs do.
+    tiled: whether P is one texture repeat (default: if it stays within 0..1)."""
     parts = []
-    copies = range(int(math.floor(uv[..., 0].min() + 1e-6)), int(math.ceil(uv[..., 0].max() - 1e-6))) if P[:, 0].max() <= 1.001 else (0,)
-    kv = math.floor(uv[..., 1].min() + 1e-6) if P[:, 1].max() <= 1.001 else 0  # a card whose v runs over 1..2 still uses the texture once
+    tiled = (P[:, 0].max() <= 1.001, P[:, 1].max() <= 1.001) if tiled is None else (tiled, tiled)
+    copies = range(int(math.floor(uv[..., 0].min() + 1e-6)), int(math.ceil(uv[..., 0].max() - 1e-6))) if tiled[0] else (0,)
+    kv = math.floor(uv[..., 1].min() + 1e-6) if tiled[1] else 0  # a card whose v runs over 1..2 still uses the texture once
     for k in copies:
         q = P[:, :2] + [k, kv]
         a, e1, e2 = uv[:, 0], uv[:, 1] - uv[:, 0], uv[:, 2] - uv[:, 0]
@@ -313,6 +331,122 @@ def on_card(P, N, pos, uv, col, size):
         c = col[t, 0] + (col[t, 1] - col[t, 0]) * l1[ix, t, None] + (col[t, 2] - col[t, 0]) * l2[ix, t, None]
         parts.append((p, n, q, np.clip(c, 0, 1)))
     return [np.concatenate(x) for x in zip(*parts)]
+
+
+def strokes(alpha, wrap=True):
+    """The painted strokes of a cut-out (wrought iron, wire) as centre lines: [(points (k, 2) in texels, x right and
+    y down, half widths (k,), free at start, free at end)]. A free end stops in the paint, not at a joint or the
+    texture's edge. wrap: the texture repeats along x, so strokes run on across its edges."""
+    h, w = alpha.shape
+    m = np.tile(alpha > 0.5, (1, 3)) if wrap else alpha > 0.5
+    m = np.pad(m, 1)
+    depth = np.zeros(m.shape)  # erosions a texel survives: its distance to the edge
+    e = m.copy()
+    while e.any():
+        depth += e
+        e = e & np.roll(e, 1, 0) & np.roll(e, -1, 0) & np.roll(e, 1, 1) & np.roll(e, -1, 1)
+    s = m.copy()  # Zhang-Suen thinning
+    while True:
+        changed = False
+        for step in (0, 1):
+            P = [np.roll(np.roll(s, -dy, 0), -dx, 1) for dy, dx in ((-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1))]
+            B = sum(p.astype(int) for p in P)
+            A = sum((~P[i] & P[(i + 1) % 8]).astype(int) for i in range(8))
+            c = (P[0] & P[2] & P[4]) if step == 0 else (P[0] & P[2] & P[6])
+            d = (P[2] & P[4] & P[6]) if step == 0 else (P[0] & P[4] & P[6])
+            kill = s & (B >= 2) & (B <= 6) & (A == 1) & ~c & ~d
+            if kill.any():
+                s &= ~kill
+                changed = True
+        if not changed:
+            break
+    nb = [(dy, dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if dy or dx]
+    pts = {tuple(p) for p in np.argwhere(s)}
+    deg = {p: sum((p[0] + dy, p[1] + dx) in pts for dy, dx in nb) for p in pts}
+    seen, out = set(), []
+    for start in sorted(pts, key=lambda p: deg[p] == 2):  # from ends and junctions first, then loops
+        for dy, dx in nb:
+            q = (start[0] + dy, start[1] + dx)
+            if q not in pts or (start, q) in seen:
+                continue
+            line = [start, q]
+            seen |= {(start, q), (q, start)}
+            while deg[line[-1]] == 2:
+                nxt = [(line[-1][0] + a, line[-1][1] + b) for a, b in nb if (line[-1][0] + a, line[-1][1] + b) in pts and (line[-1], (line[-1][0] + a, line[-1][1] + b)) not in seen]
+                if not nxt:
+                    break
+                seen |= {(line[-1], nxt[0]), (nxt[0], line[-1])}
+                line.append(nxt[0])
+            yx = np.array(line, float)
+            out.append((yx[:, ::-1] - [1 + (w if wrap else 0), 1], depth[tuple(np.array(line).T)] - 0.5))
+    if wrap:  # the middle copy's share: cut where a line leaves it
+        keep = []
+        for xy, r in out:
+            inside = (xy[:, 0] >= 0) & (xy[:, 0] < w)
+            for run in np.split(np.arange(len(xy)), np.nonzero(np.diff(inside.astype(int)))[0] + 1):
+                if inside[run[0]] and len(run) > 1:
+                    keep.append((xy[run], r[run]))
+        out = keep
+    return _tidy(out, w, wrap) if out else []
+
+
+def _tidy(lines, w, wrap):
+    """Joints made of several skeleton texels become one point, short side spurs go (a spear head's corners), and
+    runs through two-way joints are merged."""
+    ends = np.array([p for xy, _ in lines for p in (xy[0], xy[-1])])
+    root = list(range(len(ends)))
+
+    def find(a):
+        while root[a] != a:
+            root[a] = root[root[a]]
+            a = root[a]
+        return a
+
+    for i in range(len(ends)):
+        for j in np.nonzero(np.abs(ends[i + 1:] - ends[i]).max(1) <= 1.5)[0] + i + 1:
+            root[find(j)] = find(i)
+    node = [find(i) for i in range(len(ends))]
+    pos = collections.defaultdict(list)
+    for i, n in enumerate(node):
+        pos[n].append(ends[i])
+    pos = {n: np.mean(p, 0) for n, p in pos.items()}
+    edges = []
+    for k, (xy, r) in enumerate(lines):
+        a, b = node[2 * k], node[2 * k + 1]
+        if a != b or len(xy) > 4:
+            xy = xy.copy()
+            xy[0], xy[-1] = pos[a], pos[b]
+            edges.append((a, b, xy, r))
+    rmed = np.median(np.concatenate([e[3] for e in edges]))
+    seam = lambda n: wrap and not 1 <= pos[n][0] <= w - 2
+    for final in (False, True):
+        while True:
+            deg = collections.Counter(n for e in edges for n in e[:2])
+            free = lambda n: deg[n] == 1 and not seam(n)
+
+            def spur(e):
+                if free(e[0]) == free(e[1]) or len(e[2]) >= (3 if final else 4) * rmed + 3 or (not final and max(deg[e[0]], deg[e[1]]) < 3):
+                    return False
+                d = pos[e[1]] - pos[e[0]] if free(e[1]) else pos[e[0]] - pos[e[1]]
+                return not (d[1] < -2 * rmed and abs(d[0]) < 0.6 * abs(d[1]))  # a bar pointing up stays
+
+            cut = [e for e in edges if spur(e)]
+            if not cut:
+                break
+            edges = [e for e in edges if not spur(e)]
+        while True:  # merge through two-way joints
+            deg = collections.Counter(n for e in edges for n in e[:2])
+            n2 = next((n for n, d in deg.items() if d == 2 and not seam(n) and not any(e[0] == e[1] == n for e in edges)), None)
+            if n2 is None:
+                break
+            e1, e2 = [e for e in edges if n2 in e[:2]]
+            if e1[1] != n2:
+                e1 = (e1[1], e1[0], e1[2][::-1], e1[3][::-1])
+            if e2[0] != n2:
+                e2 = (e2[1], e2[0], e2[2][::-1], e2[3][::-1])
+            edges = [e for e in edges if n2 not in e[:2]] + [(e1[0], e2[1], np.r_[e1[2], e2[2][1:]], np.r_[e1[3], e2[3][1:]])]
+    deg = collections.Counter(n for e in edges for n in e[:2])
+    return [(xy, r, deg[a] == 1 and not seam(a), deg[b] == 1 and not seam(b)) for a, b, xy, r in edges]
 
 
 def islands(pos):
