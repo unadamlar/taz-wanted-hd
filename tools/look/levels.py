@@ -258,6 +258,21 @@ CONS_TILES = {
 CONS_LOOK = dict(CITY_LOOK, grade=dict(CITY_LOOK["grade"], ambient_strength=0.72))  # the tower's floors have no lamps of their own
 CONS_HAND = dict(DEPT_HAND, camera_B=dict(loc=(0.0, -40.0, -46.0), look_at=(0.0, 0.0, -40.0), lens=16.0), camera_C=dict(loc=(-30.0, 20.0, 14.0), look_at=(0.0, 10.0, 12.0), lens=16.0))
 
+# ---- city boss (scene 12): a lit TV arena. Its colour is painted into the vertices, so it is kept (no unbake) and held through the tone curve.
+BOSS_RULES = [("resobjs/*", "gameplay"), ("cityboss/extras/*", "gameplay"), ("resTex/shadowsub", "hide")]
+BOSS_GLOW = [(f"cityboss/textures/{p}", g, r) for p, g, r in (
+    ("scoreboardanim*", 1.3, None), ("stadedgeani*", 0.9, None), ("trafficlights*", 1.6, (0.4, 0.7)), ("lightcolours", 1.4, None), ("podlights", 1.4, None),
+    ("cbfloodlights*", 1.8, (0.45, 0.75)), ("cbfloorlights", 1.2, (0.4, 0.7)), ("greenlight", 1.6, None), ("redlight", 1.6, None), ("yellowlight", 1.6, None), ("truck_headlights*", 1.6, (0.4, 0.7)))]
+BOSS_DETAIL = [(f"cityboss/textures/{p}", m) for p, m in (
+    ("cbfloor", "d_tile"), ("cbfloorspecial", "d_tile"), ("magfloor*", "d_tile"), ("stadwall*", "d_wall"), ("stadstairs*", "d_wall"), ("stadtunnel*", "d_wall"),
+    ("cbtunnel*", "d_wall"), ("seats*", "d_wall"), ("stadseats*", "d_wall"), ("billboardedges", "d_wall"), ("tunneledges", "d_wall"))]
+BOSS_LOOK = dict(
+    sun=dict(sun_azimuth=75.0, sun_elevation=62.0, sun_strength=1.62, sun_color="#fff0d6"),
+    grade=dict(exposure=-0.134, look="AgX - Punchy", saturation=1.08, bloom=0.3, fog=0.01, fog_start=200.0, fog_depth=400.0, ambient_strength=0.68),
+    sky=dict(zenith="#1257e6", horizon="#8fd0ff", horizon_warm="#fff4e2", sky_strength=1.3, cloud_white=1.0, ambient="#cdd8ea"), cliff=dict(),
+)
+BOSS_HAND = dict(DEPT_HAND, camera_B=dict(loc=(0.0, -20.0, -2.0), look_at=(0.0, 10.0, -7.0), lens=16.0), camera_C=dict(loc=(20.0, 0.0, -2.0), look_at=(-5.0, 0.0, -7.0), lens=16.0))
+
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
@@ -307,4 +322,8 @@ LEVELS = {
                      look=CONS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-121.0, -108.0, 105.0, 68.0), game_sky=True, clutter=False,
                      materials=tuple(CONS_TILES) + ("flat",), tiles=CONS_TILES, detail=CONS_DETAIL, tints={"d_conc": (1.25, 1.25, 1.35)}, captures=("city-levels/contruct/world-hero.bin",),
                      fog_color="#20366f", glow=CONS_GLOW, lamps=dict(CITY_LAMPS, power=1.7, cone=0.35, pool_power=0.45, extra=()), unbake=0.5, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
+    "cityboss": dict(scene=12, pak="cityboss", blend="city-levels/cityboss/cityboss.blend", out="city-levels/cityboss/pass1", rules=BOSS_RULES, hand=BOSS_HAND,
+                     look=BOSS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-73.0, -73.0, 73.0, 72.0), game_sky=True, clutter=False,
+                     materials=tuple(DEPT_TILES) + ("flat",), tiles=DEPT_TILES, detail=BOSS_DETAIL, tints={"d_tile": (1.7, 1.7, 1.7)},
+                     captures=("city-levels/cityboss/world-hero.bin",), glow=BOSS_GLOW, hold=0.75, contrast=1.0, bloom_threshold=14.0),
 }
