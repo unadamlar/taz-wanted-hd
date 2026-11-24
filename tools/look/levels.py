@@ -237,6 +237,36 @@ AQUA_LOOK = dict(
     sky=dict(zenith="#1257e6", horizon="#8fd0ff", horizon_warm="#fff4e2", sky_strength=1.3, cloud_white=1.35, ambient="#dedad7"), cliff=dict(),
 )
 
+# ---- zoo boss (scene 7): elephant football on a clay pitch inside the zoo's walls, at sunset. Zoo hub brick, grass and trees.
+BOSS_RULES = [
+    ("resobjs/*", "gameplay"), ("zooboss/extras/*", "gameplay"), ("zooboss/textures/tazbook*", "gameplay"), ("zooboss/textures/tazwanted", "gameplay"),
+    ("zooboss/textures/tazanted02", "gameplay"), ("zooboss/textures/zepp*", "gameplay"), ("zooboss/textures/sheild*", "gameplay"),
+    ("zooboss/textures/truck*", "gameplay"), ("zooboss/textures/van*", "gameplay"), ("zooboss/textures/postbox*", "gameplay"),
+    ("zooboss/textures/sign*", "gameplay"), ("zooboss/textures/safwheel*", "gameplay"),
+    ("zooboss/skybox/*", "sky"), ("resTex/shadowsub", "hide"), ("zooboss/textures/safariwater", "water"),
+    ("zooboss/textures/zoohubgrass*", "lawn"), ("zooboss/textures/hubflowers*", "lawn"), ("zooboss/textures/zoo_road", "lawn"),
+    ("zooboss/textures/zoo_road05", "lawn"), ("zooboss/textures/zoo_road06", "lawn"),
+    ("zooboss/textures/zoohubpath*", "ground"), ("zooboss/textures/zoohubbankedge", "ground"),
+    ("zooboss/textures/tazwood02a", "tree"), ("zooboss/textures/tazfern05*", "tree"),
+    ("zooboss/textures/zoohubwall2", "lit"), ("zooboss/textures/zoohubpiller*", "brick"), ("zooboss/textures/zoohubwall*", "brick"),
+    ("zooboss/textures/tower", "brick"), ("zooboss/textures/tower0*", "brick"),
+]
+BOSS_DETAIL = [
+    ("zooboss/textures/soccer_*", "d_sand"), ("zooboss/textures/zoo_citblock*", "d_stone"), ("zooboss/textures/safrock*", "d_rock"),
+    ("zooboss/textures/sharprock*", "d_rock"), ("zooboss/textures/farm_plot*", "d_bark"), ("zooboss/textures/jhut*", "d_bark"),
+]
+BOSS_TILES = dict(d_sand=dict(AQUA_TILES["d_sand"], period=1.5, detail=0.35, normal=0.3), d_stone=SAFARI_TILES["d_stone"], d_rock=SAFARI_TILES["d_rock"], d_bark=SAFARI_TILES["d_bark"])
+BOSS_HAND = {
+    "camera_B": dict(loc=(0.0, -9.0, 3.0), look_at=(0.0, 8.0, 0.5), lens=16.0),
+    "camera_C": dict(loc=(14.0, 0.0, 3.0), look_at=(0.0, 0.0, 0.5), lens=16.0),
+    "taz_offset_B": (0.0, 0.0, 0.0), "elephant_offset_B": (0.0, 0.0, 0.0),
+}
+BOSS_LOOK = dict(
+    sun=dict(sun_azimuth=230.0, sun_elevation=30.0, sun_strength=4.6, sun_color="#ffd2a0"),
+    grade=dict(exposure=0.4, look="AgX - Punchy", saturation=1.25, bloom=0.45, fog=0.05, fog_start=60.0, fog_depth=320.0, ambient_strength=0.9),
+    sky=dict(zenith="#c2301a", horizon="#ffb060", horizon_warm="#ffd890", sky_strength=1.0, cloud_white=1.0, ambient="#e0c0b4"), cliff=dict(),
+)
+
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", captures=("world-hero.bin", "world-sweep.bin"), rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
@@ -284,4 +314,10 @@ LEVELS = {
                  look=AQUA_LOOK, hdri=None, hdri_rotation=0.0, hub=(-96.0, -79.0, 116.0, 127.0), sky_panels=True, night_sky=False, clutter=False, island_boxes=True,
                  captures=("zoo-levels/aqua/world-hero.bin", "zoo-levels/aqua/world-sweep-a.bin", "zoo-levels/aqua/world-sweep-b.bin"),
                  materials=tuple(AQUA_TILES) + ("dirt", "water", "water_bed"), tiles=AQUA_TILES, detail=AQUA_DETAIL, sky_gain=1.3, foam=0, water_walls=False, ground_tint=(0.69, 0.6, 0.47)),
+    "zooboss": dict(scene=7, pak="zooboss", blend="zoo-levels/zooboss/zooboss.blend", out="zoo-levels/zooboss/pass1", rules=BOSS_RULES, hand=BOSS_HAND,
+                    look=BOSS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-30.0, -30.0, 30.0, 27.0), sky_panels=True, night_sky=False, clutter=False,
+                    island_boxes=True, grass_density=40.0, skin=dict(tile=520.0, grain=0.18), char_keep=0.8, fog_color="#ffc090", ground_tint=(0.72, 0.6, 0.5), sky_gain=1.25,
+                    captures=("zoo-levels/zooboss/world-hero.bin", "zoo-levels/zooboss/world-sweep-a.bin", "zoo-levels/zooboss/world-sweep-b.bin"),
+                    materials=tuple(BOSS_TILES) + ("lawn", "dirt", "brick", "trim", "bark", "leaves", "leaf_core", "grass", "flat", "flat_wind", "water", "water_bed", "foam", "skin"),
+                    tiles=BOSS_TILES, detail=BOSS_DETAIL, binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05))}),
 }

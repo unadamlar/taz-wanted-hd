@@ -44,7 +44,7 @@ struct target { IDirect3DTexture9 *t; IDirect3DSurface9 *s; UINT w, h; };
 
 static struct level {
     float sun[3], sun_col[3], sky[3], ground[3], soft, ao_radius, ao_strength, fog[3], fog_start, fog_end;
-    float exposure, bloom_t, bloom_s, sat, contrast, water_h, water[3], clarity, fade0, fade1, sky_scale, unbake, char_fill[3], hold, shadow_y;
+    float exposure, bloom_t, bloom_s, sat, contrast, water_h, water[3], clarity, fade0, fade1, sky_scale, unbake, char_fill[3], char_keep, hold, shadow_y;
 } lv;
 
 static int scene_no = -1;
@@ -235,7 +235,7 @@ static void read_ini(void)
         K("fog_color", fog, 3), K("fog_start", fog_start, 1), K("fog_end", fog_end, 1), K("exposure", exposure, 1),
         K("bloom_threshold", bloom_t, 1), K("bloom_strength", bloom_s, 1), K("saturation", sat, 1), K("contrast", contrast, 1),
         K("water_height", water_h, 1), K("water_color", water, 3), K("water_clarity", clarity, 1),
-        K("grass_fade_start", fade0, 1), K("grass_fade_end", fade1, 1), K("sky_scale", sky_scale, 1), K("unbake", unbake, 1), K("char_fill", char_fill, 3), K("hold", hold, 1), K("shadow_floor", shadow_y, 1),
+        K("grass_fade_start", fade0, 1), K("grass_fade_end", fade1, 1), K("sky_scale", sky_scale, 1), K("unbake", unbake, 1), K("char_fill", char_fill, 3), K("char_keep", char_keep, 1), K("hold", hold, 1), K("shadow_floor", shadow_y, 1),
     };
     while (fgets(line, sizeof line, f)) {
         char *eq = strchr(line, '=');
@@ -1461,7 +1461,7 @@ void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_c
         else if (dd < d1) memcpy(two[2], e, 32), d1 = dd;
     }
     IDirect3DDevice9_SetPixelShaderConstantF(d, 26, two[0], 4);
-    float fill[4] = { lv.char_fill[0], lv.char_fill[1], lv.char_fill[2], 0 };
+    float fill[4] = { lv.char_fill[0], lv.char_fill[1], lv.char_fill[2], lv.char_keep };
     IDirect3DDevice9_SetPixelShaderConstantF(d, 30, fill, 1);
     IDirect3DDevice9_SetPixelShaderConstantF(d, 31, style, 1);
     bind_common(d);
