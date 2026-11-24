@@ -544,6 +544,27 @@ GRANDC_DETAIL = [(f"grandc/textures/{p}", m) for p, m in (
     ("watertank*", "d_iron"), ("ufo_floor*", "d_iron"), ("powerplant", "d_iron"), ("pestyoilcan*", "d_iron"))]
 GRANDC_HAND = dict(DEPT_HAND, camera_B=dict(loc=(-2.0, -22.0, -18.0), look_at=(-2.0, -32.0, -19.0), lens=16.0), camera_C=dict(loc=(40.0, 20.0, -18.0), look_at=(48.0, 26.0, -19.0), lens=16.0))
 
+# ---- westboss (scene 17): Yosemite Sam's dynamite warehouse, seen from above. Its skylight pools are baked into the vertices and kept;
+# the roof would shade a sun, so ceiling lamps over the maze do the modelling.
+WBOSS_RULES = [
+    ("resobjs/*", "gameplay"), ("westboss/extras/*", "gameplay"), ("westboss/textures/exp_bigbomb*", "gameplay"), ("westboss/textures/exp_crate_tnt*", "gameplay"),
+    ("westboss/textures/exp_dynamite", "gameplay"), ("westboss/textures/exp_crate_fire*", "gameplay"), ("westboss/textures/special_crate*", "gameplay"),
+    ("westboss/textures/dynamite*", "gameplay"), ("westboss/textures/red_cross*", "gameplay"), ("resTex/shadowsub", "hide"),
+]
+WBOSS_DETAIL = [(f"westboss/textures/{p}", m) for p, m in (
+    ("pallet*", "d_plank"), ("ware_floor*", "d_plank"), ("exp_crate*", "d_plank"), ("exp_tall_crate*", "d_plank"), ("exp_mini_crate", "d_plank"),
+    ("exp_barrel*", "d_iron"), ("exp_torpedo*", "d_iron"), ("exp_rocket*", "d_iron"), ("wood_strut*", "d_plank"), ("ware_main_door*", "d_plank"), ("ware_arch*", "d_plank"),
+    ("warehouse wall*", "d_plaster"), ("ware_window*", "d_plaster"))]
+WBOSS_TILES = dict(d_plank=WEST_TILES["d_plank"], d_iron=WEST_TILES["d_iron"], d_plaster=DEPT_TILES["d_wall"])
+WBOSS_GLOW = [(f"westboss/textures/{p}", g, r) for p, g, r in (
+    ("volume_light", 0.6, None), ("warehouse_light", 2.2, (0.45, 0.75)), ("sky_light0*", 0.8, None), ("skylight_window", 0.8, None), ("window_wb_big", 0.8, None))]
+WBOSS_LOOK = dict(
+    sun=dict(sun_azimuth=215.0, sun_elevation=60.0, sun_strength=1.0, sun_color="#fff0d8"),
+    grade=dict(exposure=0.2, look="AgX - Punchy", saturation=1.15, bloom=0.4, fog=0.01, fog_start=200.0, fog_depth=400.0, ambient_strength=1.0),
+    sky=dict(zenith="#1a68e0", horizon="#a6dcff", horizon_warm="#ffe9c8", sky_strength=1.0, cloud_white=1.0, ambient="#e0d4c8"), cliff=dict(),
+)
+WBOSS_HAND = dict(DEPT_HAND, camera_B=dict(loc=(-17.9, -9.7, -1.8), look_at=(-11.0, -2.6, -11.5), lens=16.0), camera_C=dict(loc=(-17.9, -9.7, -1.8), look_at=(-11.0, -2.6, -11.5), lens=16.0))
+
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", captures=("world-hero.bin", "world-sweep.bin"), rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
@@ -660,4 +681,10 @@ LEVELS = {
                                cell=0.4, depth=0.3, band=1.1, block=1.6, foot=1.8, border=0.8),
                    fog_color="#f4d8b0", ground_tint=(0.82, 0.62, 0.42), sky_gain=1.3, char_keep=0.55, char_fill=(-0.65, -0.6, -0.5),
                    tints={"d_sand": (2.0, 1.66, 1.05), "d_canyon": (1.8, 2.15, 2.5), "d_cliff": (1.8, 2.15, 2.5), "flat": (1.3, 0.86, 0.7)}),
+    "westboss": dict(scene=17, pak="westboss", blend="westhub/westboss/westboss.blend", out="westhub/westboss/pass1", rules=WBOSS_RULES, hand=WBOSS_HAND,
+                     look=WBOSS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-42.0, -49.0, 42.0, 49.0), game_sky=True, clutter=False, island_boxes=True, grass_min=2.0,
+                     captures=("westhub/westboss/world-hero.bin", "westhub/westboss/world-sweep-a.bin"),
+                     materials=tuple(WBOSS_TILES) + ("flat",), tiles=WBOSS_TILES, detail=WBOSS_DETAIL, glow=WBOSS_GLOW,
+                     lamps=dict(DEPT_LAMPS, extra=room_lamps(((-6000, -4000, 2000, 4000, -2100, 3, 3),), 1900, 13.0, "#ffe2b8", 1.6)),
+                     char_fill=(0.12, 0.12, 0.14)),
 }
