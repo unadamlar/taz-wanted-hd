@@ -441,7 +441,7 @@ WEST_RULES = [
     ("westhub/skybox/*", "sky"), ("resTex/shadowsub", "hide"), ("westhub/textures/sand", "ground"), ("westhub/textures/sandrock*", "ground"),
 ]
 WEST_DETAIL = [(f"westhub/textures/{p}", m) for p, m in (
-    ("vert_strips*", "d_canyon"), ("wwrock*", "d_canyon"), ("wwsml*", "d_canyon"), ("wwroad", "d_road"), ("roadstart", "d_road"),
+    ("vert_strips*", "d_cliff"), ("wwrock*", "d_canyon"), ("wwsml*", "d_canyon"), ("wwroad", "d_road"), ("roadstart", "d_road"),
     ("sleeper", "d_plank"), ("track_wood", "d_plank"), ("mine_wood*", "d_plank"), ("spookhouse_wood", "d_plank"), ("spookhouse_side*", "d_plank"),
     ("spookhouse_newroof*", "d_plank"), ("spookhouse_roof_tile", "d_plank"), ("station_side*", "d_plank"), ("station_backside", "d_plank"),
     ("station_floor", "d_plank"), ("station_stair*", "d_plank"), ("station_roof*", "d_plank"), ("hut_*", "d_plank"), ("teepee_wood", "d_plank"),
@@ -450,6 +450,7 @@ WEST_DETAIL = [(f"westhub/textures/{p}", m) for p, m in (
 WEST_TILES = dict(
     d_sand=dict(made="sand", period=2.6, px=1024, detail=0.7, triplanar=True, rough=0.92, normal=0.65),
     d_canyon=dict(set="old_sandstone", period=4.2, px=1024, detail=0.55, triplanar=True, rough=0.88, normal=0.9),
+    d_cliff=dict(set="rock061", period=7.5, px=1024, detail=0.5, triplanar=True, rough=0.9, normal=1.6),  # the big flat walls: broad relief
     d_road=dict(set="asphalt", period=3.0, px=1024, detail=0.3, triplanar=True, rough=0.85, normal=0.5),
     d_plank=dict(set="bark", period=1.6, px=1024, detail=0.45, triplanar=True, rough=0.78, normal=0.7),
     d_iron=dict(set="asphalt", period=1.2, px=1024, detail=0.1, triplanar=True, rough=0.38, normal=0.2),
@@ -550,5 +551,6 @@ LEVELS = {
                     solids=dict(cards={"westhub/textures/train_chain": dict(mat="link", links=True),
                                        "westhub/textures/safarigrill01": dict(size=(90.0, 345.0), depth=4.5, tol=1.4, area=30.0, repeat=2, each_draw=True)},
                                 soft=tuple(f"westhub/textures/{n}" for n in ("cactus07", "cactus_bit", "cactus_bit2"))),
-                    fog_color="#f4d8b0", ground_tint=(0.82, 0.62, 0.42), sky_gain=1.3, char_keep=0.55, tints={"d_sand": (2.0, 1.66, 1.05), "d_canyon": (1.8, 2.15, 2.5), "flat": (1.3, 0.86, 0.7)}),
+                    relief=dict(textures=("westhub/textures/vert_strips*", "westhub/textures/wwrock*"), tint=(0.9, 1.075, 1.25), min_area=6.0, cell=0.4, depth=0.3, band=1.1, block=1.6, foot=1.8, border=0.8),
+                    fog_color="#f4d8b0", ground_tint=(0.82, 0.62, 0.42), sky_gain=1.3, char_keep=0.55, char_fill=(-0.65, -0.6, -0.5), tints={"d_sand": (2.0, 1.66, 1.05), "d_canyon": (1.8, 2.15, 2.5), "d_cliff": (1.8, 2.15, 2.5), "flat": (1.3, 0.86, 0.7)}),
 }
