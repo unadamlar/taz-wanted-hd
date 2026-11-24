@@ -481,9 +481,27 @@ TB1_TILES = dict(d_cliff=TAZHUB_TILES["d_cliff"], d_steel=CONS_TILES["d_steel"],
 TB1_HAND = dict(TAZHUB_HAND, camera_B=dict(loc=(0.0, -18.0, 2.0), look_at=(0.0, 0.0, -5.0), lens=16.0), camera_C=dict(loc=(18.0, 0.0, 2.0), look_at=(0.0, 0.0, -5.0), lens=16.0))
 TB1_LOOK = dict(
     sun=dict(sun_azimuth=60.0, sun_elevation=68.0, sun_strength=1.5, sun_color="#ffd8b0"),  # down the volcano's mouth
-    grade=dict(exposure=-0.1, look="AgX - Punchy", saturation=1.12, bloom=0.35, fog=0.01, fog_start=200.0, fog_depth=400.0, ambient_strength=0.72),
+    grade=dict(exposure=-0.1, look="AgX - Punchy", saturation=1.12, bloom=0.22, fog=0.01, fog_start=200.0, fog_depth=400.0, ambient_strength=0.72),
     sky=dict(zenith="#3a1030", horizon="#a03040", horizon_warm="#ff8050", sky_strength=1.0, cloud_white=1.0, ambient="#e8c0c8"), cliff=dict(),
 )
+
+# ---- Taz boss 2 (scene 20): inside Sam's zeppelin, blue painted steel over the hub's sky. Fogless; its baked purple shading is kept.
+TB2_RULES = [
+    ("resobjs/*", "gameplay"), ("tazboss2/extras/*", "gameplay"), ("crashhelmet/*", "gameplay"), ("tazboss2/textures/zepp_taz_crate*", "gameplay"),
+    ("tazboss2/textures/crate_t*", "gameplay"), ("tazboss2/textures/warning_sign", "gameplay"), ("tazboss2/textures/zepp_switch", "gameplay"),
+    ("tazboss2/textures/final_backdoor*", "gameplay"), ("tazboss2/textures/doorhandle01", "gameplay"), ("tazboss2/textures/zepp_chart", "gameplay"),
+    ("tazboss2/skybox/*", "sky"), ("resTex/shadowsub", "hide"),
+]
+TB2_GLOW = [(f"tazboss2/textures/{p}", g, r) for p, g, r in (
+    ("zepp_light", 1.6, None), ("light", 1.2, (0.5, 0.8)), ("pestizepp0*", 0.9, (0.55, 0.85)), ("greenred03.gif", 1.2, None), ("elecloop", 1.4, None),
+    ("zepp_powerbox*", 0.5, (0.6, 0.85)))]
+TB2_DETAIL = [(f"tazboss2/textures/{p}", "d_steel") for p in (
+    "zepp_wall*", "zepp_room*", "zepp_panels*", "zepp_plates", "floor_bolt*", "end_room*", "zepp_girder*", "girder0*", "zepp_floor*", "floor_new",
+    "floor_stripes", "floor_trap_door", "zepp_mag*", "zepp_pipe*", "zepp_door*", "wall_taz_entry*", "zepp_coveyer*", "zepp_big_door*", "back_door*",
+    "zepp_bay_door", "zepp_flaps", "zepp_test", "fan", "panel")]
+TB2_TILES = dict(d_steel=CONS_TILES["d_steel"])
+TB2_HAND = dict(TAZHUB_HAND, camera_B=dict(loc=(0.0, -36.0, 2.0), look_at=(0.0, -20.0, -1.0), lens=16.0), camera_C=dict(loc=(0.0, 20.0, 2.0), look_at=(0.0, 40.0, -1.0), lens=16.0))
+TB2_LOOK = dict(TAZHUB_LOOK, grade=dict(TB1_LOOK["grade"], ambient_strength=0.8), sky=dict(TAZHUB_LOOK["sky"], ambient="#efe2d2"))  # warm: the roof shades the sun, and blue light turned Taz lilac
 
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", captures=("world-hero.bin", "world-sweep.bin"), rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
@@ -578,5 +596,10 @@ LEVELS = {
     "tazboss1": dict(scene=19, pak="tazboss1", blend="tazhub/tazboss1/tazboss1.blend", out="tazhub/tazboss1/pass1", rules=TB1_RULES, hand=TB1_HAND,
                      look=TB1_LOOK, hdri=None, hdri_rotation=0.0, hub=(-25.0, -19.5, 25.5, 19.5), game_sky=True, clutter=False,
                      captures=("tazhub/tazboss1/world-hero.bin", "tazhub/tazboss1/world-sweep-a.bin"), materials=tuple(TB1_TILES) + ("flat",),
-                     tiles=TB1_TILES, detail=TB1_DETAIL, glow=TB1_GLOW, hold=0.75, contrast=1.0, bloom_threshold=6.0, char_fill=(0.55, 0.46, 0.42), char_keep=1.0),
+                     tiles=TB1_TILES, detail=TB1_DETAIL, glow=TB1_GLOW, hold=0.6, contrast=1.0, bloom_threshold=14.0, char_fill=(0.55, 0.46, 0.42), char_keep=1.0),
+    "tazboss2": dict(scene=20, pak="tazboss2", blend="tazhub/tazboss2/tazboss2.blend", out="tazhub/tazboss2/pass1", rules=TB2_RULES, hand=TB2_HAND,
+                     look=TB2_LOOK, hdri=None, hdri_rotation=0.0, hub=(-14.0, -39.5, 14.5, 52.0), sky_panels=True, night_sky=False, sky_gain=1.05, clutter=False,
+                     captures=("tazhub/tazboss2/world-hero.bin", "tazhub/tazboss2/world-sweep-a.bin", "tazhub/tazboss2/world-sweep-b.bin"),
+                     materials=tuple(TB2_TILES) + ("flat",), tiles=TB2_TILES, detail=TB2_DETAIL, glow=TB2_GLOW, fog_color="#7fc4f4",
+                     hold=0.6, contrast=1.0, bloom_threshold=14.0, char_fill=(0.6, 0.5, 0.4), char_keep=1.0),
 }
