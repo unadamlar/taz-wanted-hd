@@ -690,7 +690,8 @@ LEVELS = {
                    fog_color="#20366f", glow=MUSE_GLOW, lamps=MUSE_LAMPS, unbake=0.5, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
     "contruct": dict(scene=11, pak="contruct", blend="city-levels/contruct/contruct.blend", out="city-levels/contruct/pass1", rules=CONS_RULES, hand=CONS_HAND,
                      look=CONS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-121.0, -108.0, 105.0, 68.0), game_sky=True, clutter=False,
-                     materials=tuple(CONS_TILES) + ("flat",), tiles=CONS_TILES, detail=CONS_DETAIL, tints={"d_conc": (1.25, 1.25, 1.35)}, captures=("city-levels/contruct/world-hero.bin",),
+                     materials=tuple(CONS_TILES) + ("flat", "link"), tiles=CONS_TILES, detail=CONS_DETAIL, tints={"d_conc": (1.25, 1.25, 1.35)}, captures=("city-levels/contruct/world-hero.bin",),
+                     flats={"link": ((0.42, 0.44, 0.5), 0.4)}, solids=dict(cards={"contruct/textures/chain2": dict(mat="link", links=True)}, soft=()),  # the crane's chain: real links
                      fog_color="#20366f", glow=CONS_GLOW, lamps=dict(CITY_LAMPS, power=1.7, cone=0.35, pool_power=0.45, extra=()), unbake=0.5, unbake_keep=0.4, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
     "cityboss": dict(scene=12, pak="cityboss", blend="city-levels/cityboss/cityboss.blend", out="city-levels/cityboss/pass1", rules=BOSS_RULES, hand=BOSS_HAND,
                      look=BOSS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-73.0, -73.0, 73.0, 72.0), game_sky=True, clutter=False,
@@ -836,6 +837,3 @@ LEVELS["deconstruct"] = _bonus("contruct", "deconstruct", 25, ("hero", "sweep-0"
 LEVELS["deconstruct"]["glow"] += [("deconstruct/textures/lighthalo01", 1.6, None)]
 # Brighter than the tower, still night: at the tower's settings Taz read as a dark shape among the crates.
 LEVELS["deconstruct"].update(look=dict(CONS_LOOK, grade=dict(CONS_LOOK["grade"], exposure=0.63, ambient_strength=0.676)), char_fill=(0.8, 0.867, 1.067))
-# The crane's two hanging chains are painted crossed cards: real links, as in the city hub.
-LEVELS["deconstruct"].update(materials=LEVELS["deconstruct"]["materials"] + ("link",), flats={"link": ((0.42, 0.44, 0.5), 0.4)},
-                             solids=dict(cards={"deconstruct/textures/chain2": dict(mat="link", links=True)}, soft=()))
