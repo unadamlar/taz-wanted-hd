@@ -220,3 +220,23 @@ def barrel(base, height, radius, colour, flower_colour, rng):
         c = base + np.array([np.cos(a) * radius * 0.35, height * 0.97, np.sin(a) * radius * 0.35])
         parts.append(flower(c, radius * 0.22, flower_colour, (0.95, 0.8, 0.2), rng, petals=5, rings=1))
     return _faces(*zip(*parts))
+
+
+def cloth(u, v, size, along_u, top, folds, amp, steps=(24, 12)):
+    """A hanging banner over a card's texture rectangle u=(u0, u1), v=(v0, v1): corners (u, v, offset) and normals as
+    solid.plate gives them, waved into folds across it (along u if along_u) that deepen away from its top edge
+    (texture coordinate top on the hanging axis)."""
+    a_r, d_r = (u, v) if along_u else (v, u)
+    A, D = np.meshgrid(np.linspace(*a_r, steps[0]), np.linspace(*d_r, steps[1]), indexing="ij")
+    fa = (A - a_r[0]) / (a_r[1] - a_r[0])
+    fd = np.abs(D - top) / (d_r[1] - d_r[0])
+    k = 2 * np.pi * folds
+    w = amp * (0.25 + 0.75 * fd)
+    Z = w * np.sin(k * fa)
+    slope = w * np.cos(k * fa) * k / ((a_r[1] - a_r[0]) * size[0 if along_u else 1])
+    grid = np.stack([A, D, Z], -1) if along_u else np.stack([D, A, Z], -1)
+    nrm = np.stack([-slope, np.zeros_like(slope), np.ones_like(slope)], -1) if along_u else np.stack([np.zeros_like(slope), -slope, np.ones_like(slope)], -1)
+    nrm /= np.linalg.norm(nrm, axis=-1, keepdims=True)
+    I, J = np.mgrid[:steps[0] - 1, :steps[1] - 1]
+    corner = ((I, J), (I + 1, J), (I + 1, J + 1), (I, J), (I + 1, J + 1), (I, J + 1))
+    return np.stack([grid[i, j] for i, j in corner], 2).reshape(-1, 3), np.stack([nrm[i, j] for i, j in corner], 2).reshape(-1, 3)

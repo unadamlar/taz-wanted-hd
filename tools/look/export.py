@@ -1002,8 +1002,9 @@ def sign_mount(art, axes, thin, alpha, world):
     return out
 
 
-def cactus_geo(W, colour, rng):
-    """A modelled cactus over a cactus's footprint: a saguaro if it is tall, a barrel if squat."""
+def cactus_geo(W, colour, rng, armed=False):
+    """A modelled cactus over a cactus's footprint: a saguaro if it is tall or armed (its arms widen the footprint),
+    a barrel if squat."""
     c = W.mean(0)
     ax = np.linalg.svd(W - c, full_matrices=False)[2]
     up = ax[0] * np.sign(ax[0][1] or 1)
@@ -1015,7 +1016,9 @@ def cactus_geo(W, colour, rng):
     height, radius = np.ptp(h), np.percentile(side, 90)
     base = c + up * h.min()
     green = np.clip(0.55 * np.asarray(colour) + 0.45 * np.array((0.22, 0.45, 0.18)), 0, 1)
-    if height > 2.2 * radius:
+    if armed:
+        p, n, col = props3d.saguaro(np.zeros(3), height, max(np.percentile(side, 10), height * 0.06), green, rng)  # most points are on the arms
+    elif height > 2.2 * radius:
         p, n, col = props3d.saguaro(np.zeros(3), height, max(radius * 0.45, height * 0.08), green, rng)
     else:
         p, n, col = props3d.barrel(np.zeros(3), height, radius, green, (0.95, 0.4, 0.6), rng)
@@ -1101,6 +1104,22 @@ if cfg["cards"] or cfg["soft"]:
                             a_ = small * solid.uv_mask(tu - np.floor(tu.reshape(-1, 2).min(0) + 1e-6), small.shape)
                         if not solid.outlines(a_, 1.0, (a_.shape[1] / 48) ** 2):
                             continue
+                        if kind == "banner":  # cloth in folds under a rod, the game's paint and cut-out kept
+                            h_, v_ = solid.uv_axes(dp[t], tu)
+                            fu = tu.reshape(-1, 2) - np.floor(tu.reshape(-1, 2).min(0) + 1e-6)
+                            along_u = abs(h_[1]) < abs(v_[1])
+                            r_ = (fu[:, 1].min(), fu[:, 1].max()) if along_u else (fu[:, 0].min(), fu[:, 0].max())
+                            top = r_[1] if (v_ if along_u else h_)[1] > 0 else r_[0]
+                            wide = np.ptp(fu[:, 0]) * size[0] if along_u else np.ptp(fu[:, 1]) * size[1]
+                            P, N = props3d.cloth((fu[:, 0].min(), fu[:, 0].max()), (fu[:, 1].min(), fu[:, 1].max()), size, along_u, top, 2.5, 0.07 * wide)
+                            q = solid.on_card(P, N, dp[t], tu, dc[t], size)
+                            got.append((*q, np.full(len(q[0]), card_mat(lab))))
+                            ends = np.array([[fu[:, 0].min(), top, 0], [fu[:, 0].max(), top, 0]] if along_u else [[top, fu[:, 1].min(), 0], [top, fu[:, 1].max(), 0]])
+                            e_ = solid.on_card(ends, np.tile([0, 0, 1.0], (2, 1)), dp[t], tu, dc[t], size)[0]
+                            ax_ = e_[1] - e_[0]
+                            p, n, col = props3d.pole(e_[0] - 0.08 * ax_, e_[1] + 0.08 * ax_, 0.035 * wide, (0.72, 0.55, 0.22))
+                            got.append((p, n, np.zeros((len(p), 2)), col, np.full(len(p), MAT_ID["flat"])))
+                            continue
                         thin = 0.02 * min(size) if kind == "sign" else 1e-3
                         P, N = solid.plate(a_, size, thin, tol=1.0, min_area=(a_.shape[1] / 48) ** 2)
                         if kind == "sign":
@@ -1180,12 +1199,12 @@ if cfg["cards"] or cfg["soft"]:
         else:
             mats = [solid_mat(label_of(d[0])) for d in ds]
             tex = np.concatenate([np.full(len(t[0]), i) for i, t in enumerate(T)])
-            cac = [i for i, d in enumerate(ds) if any(fnmatch.fnmatch(labels[d[0]][0], pat) for pat in LEVEL.get("cacti", ()))]
+            cac = [i for i, d in enumerate(ds) if any(fnmatch.fnmatch(label_of(d[0]), pat) for pat in LEVEL.get("cacti", ()))]
             if cac:  # a low-poly cactus model: a modelled saguaro or barrel over its footprint, and its flower if it has one
                 rng_ = np.random.default_rng(solid.key_of(ds[0][4]) & 0xffff)
                 W = np.concatenate([T[i][0].reshape(-1, 3) for i in cac])
                 colour = np.clip(np.mean([game_rgba(label_of(ds[i][0]))[..., :3].reshape(-1, 3).mean(0) for i in cac], 0), 0, 1)
-                pp, nn, cc = cactus_geo(W, colour, rng_)
+                pp, nn, cc = cactus_geo(W, colour, rng_, any(fnmatch.fnmatch(label_of(ds[i][0]), pat) for i in cac for pat in LEVEL.get("armed_cacti", ())))
                 for i in set(range(len(ds))) - set(cac):
                     q = T[i][0].reshape(-1, 3)
                     f_p, f_n, f_c = props3d.flower(q.mean(0), 0.5 * np.ptp(q, 0).max(), paint_families(game_rgba(label_of(ds[i][0]))[..., :3].reshape(-1, 3))[0], (0.95, 0.8, 0.2), rng_)
