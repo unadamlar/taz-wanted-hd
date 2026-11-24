@@ -238,6 +238,26 @@ MUSE_ROOMS = (
 MUSE_LAMPS = dict(DEPT_LAMPS, extra=room_lamps(MUSE_ROOMS, 1400, 13.0, "#ffd9a8", 1.8))
 MUSE_HAND = dict(DEPT_HAND, camera_B=dict(loc=(12.0, -40.0, 11.0), look_at=(12.0, -20.0, 8.0), lens=16.0), camera_C=dict(loc=(-40.0, -20.0, 3.0), look_at=(-30.0, -5.0, 1.0), lens=16.0))
 
+# ---- construction site (scene 11): outdoors at night, the city hub's moon and lamps on a tower of steel floors.
+CONS_RULES = [
+    ("resobjs/*", "gameplay"), ("contruct/extras/*", "gameplay"), ("contruct/textures/tazbook*", "gameplay"), ("contruct/textures/tazcage*", "gameplay"),
+    ("contruct/textures/tazwanted", "gameplay"), ("contruct/textures/tazanted02", "gameplay"), ("contruct/textures/bombbit*", "transient"),
+    ("contruct/textures/postlamp", "lamp"), ("resTex/shadowsub", "hide"),
+]
+CONS_GLOW = [(f"contruct/textures/{p}", g, r) for p, g, r in (
+    ("signgreen*", 1.6, None), ("signred*", 1.6, None), ("contubesigns*", 1.4, (0.3, 0.6)), ("contowersign", 1.2, (0.4, 0.7)), ("conexitsign*", 1.2, (0.4, 0.7)), ("esign_*", 1.2, (0.4, 0.7)),
+    ("trafficlight*", 1.8, (0.4, 0.7)), ("beacon_lamp", 2.2, (0.4, 0.7)), ("latern_light", 2.2, (0.4, 0.7)), ("cblight", 2.0, (0.4, 0.7)), ("digger_lamp", 1.8, (0.4, 0.7)), ("window01", 0.9, (0.45, 0.75)))]
+CONS_DETAIL = [(f"contruct/textures/{p}", m) for p, m in (
+    ("ground*", "d_conc"), ("concrete*", "d_conc"), ("greyconcrete*", "d_conc"), ("woodplanks*", "d_wall"), ("workhutwall*", "d_wall"),
+    ("gurder*", "d_steel"), ("c_metal*", "d_steel"), ("digger_metal*", "d_steel"), ("oilbarrel*", "d_steel"), ("const_barrel*", "d_steel"), ("skip*", "d_steel"), ("ironrods*", "d_steel"))]
+CONS_TILES = {
+    "d_conc": dict(set="paving", period=3.0, px=1024, detail=0.35, triplanar=True, rough=0.85, normal=0.6),
+    "d_wall": DEPT_TILES["d_wall"],
+    "d_steel": dict(set="asphalt", period=1.2, px=1024, detail=0.12, triplanar=True, rough=0.4, normal=0.25),
+}
+CONS_LOOK = dict(CITY_LOOK, grade=dict(CITY_LOOK["grade"], ambient_strength=0.72))  # the tower's floors have no lamps of their own
+CONS_HAND = dict(DEPT_HAND, camera_B=dict(loc=(0.0, -40.0, -46.0), look_at=(0.0, 0.0, -40.0), lens=16.0), camera_C=dict(loc=(-30.0, 20.0, 14.0), look_at=(0.0, 10.0, 12.0), lens=16.0))
+
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
@@ -283,4 +303,8 @@ LEVELS = {
                    look=DEPT_LOOK, hdri=None, hdri_rotation=0.0, hub=(-79.0, -68.0, 79.0, 68.0), game_sky=True, clutter=False,
                    materials=tuple(DEPT_TILES) + ("flat",), tiles=DEPT_TILES, detail=MUSE_DETAIL, tints={"d_tile": (1.5, 1.5, 1.58)},
                    captures=("city-levels/museum/world-hero.bin",), fog_color="#20366f", glow=MUSE_GLOW, lamps=MUSE_LAMPS, unbake=0.5, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
+    "contruct": dict(scene=11, pak="contruct", blend="city-levels/contruct/contruct.blend", out="city-levels/contruct/pass1", rules=CONS_RULES, hand=CONS_HAND,
+                     look=CONS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-121.0, -108.0, 105.0, 68.0), game_sky=True, clutter=False,
+                     materials=tuple(CONS_TILES) + ("flat",), tiles=CONS_TILES, detail=CONS_DETAIL, tints={"d_conc": (1.25, 1.25, 1.35)}, captures=("city-levels/contruct/world-hero.bin",),
+                     fog_color="#20366f", glow=CONS_GLOW, lamps=dict(CITY_LAMPS, power=1.7, cone=0.35, pool_power=0.45, extra=()), unbake=0.5, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
 }
