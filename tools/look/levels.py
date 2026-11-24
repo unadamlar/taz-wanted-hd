@@ -804,3 +804,6 @@ LEVELS["detasmania"] = dict(scene=26, pak="detasmania", blend="westhub/bonus/s26
                             captures=tuple(f"westhub/bonus/s26/world-{c}.bin" for c in ("hero", "sweep-0", "sweep-1", "sweep-2")),
                             materials=tuple(TAZHUB_TILES) + ("flat",), tiles=TAZHUB_TILES, detail=DETAS_DETAIL, binds={"ground": (("d_stone", 4, -1.0, 0.0),)},
                             fog_color="#a03030", ground_tint=(0.8, 0.5, 0.5), sky_gain=1.1, char_keep=1.0)  # the werewolf costume's pale blue went grey under the red light
+LEVELS["deconstruct"] = _bonus("contruct", "deconstruct", 25, ("hero", "sweep-0", "sweep-1", "sweep-2"), hub=(-80.0, -63.0, 108.0, 63.0),
+                               first=[(f"deconstruct/textures/{p}", "gameplay") for p in _RACE_SIGNS])
+LEVELS["deconstruct"]["glow"] += [("deconstruct/textures/lighthalo01", 1.6, None)]
