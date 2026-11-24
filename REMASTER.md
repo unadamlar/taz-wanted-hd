@@ -95,6 +95,10 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
   rcgoldmine, rcicedome and deconstruct drop Taz into an endless fall from every entry; tests place him with the scripts in `extracted/look/westhub/bonus/`.
   Deconstruct is dark and Taz reads as a dark shape there; deaqua's flat deep-blue sea is now clear turquoise water over sand.
 - Every scene now has Remaster data, and the user's playable copy has all of it (2026-11-24, e1852b5).
+- Real 3D objects in place of painted cards so far: safari, Taz hub, west hub, museum (cloth banners, saguaro), department store (one 3D flower per
+  painted flower in the beds), safari race, Grand Canyon and its race (saguaros, barrel cacti, signs on boards), zoo boss (leafy bushes). The construction
+  site was left alone: its signs are lit signs on the building and its tyres belong to the lorry. The playable copy has these (2026-11-24).
+  For the user to judge: the saguaros are smooth green tubes, plainer than the painted cartoon cactus.
 - For the user to judge in the west: the game's painted canyon stripes are kept on its own shapes. The zoo's rebuilt 3D rock would add depth but replace them,
   and the choice carries to ghost town, goldmine, Grand Canyon and westboss.
 - For the user to judge in the city levels: real paint replaces baked colour (store's blue, museum's pink floor, construction huts teal to yellow).
@@ -224,6 +228,9 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
 - Jumping out of westboss with the QA scene trigger crashes at taz.exe+0x15f785 (reading 0x134) right after "saving on the way to scene 18",
   reproducible (again on 8277f0c, westboss to tazboss2, 2026-11-24). The trigger calls the game's own scene change (FUN_004a9730), so a player leaving
   westboss by winning or Exit Game may take the same path; not tested, and not tried on `master` or with passthrough. Notes: `extracted/look/reports/step7/tazhub/notes.md`, tenth batch.
+- Leaving the zoo boss right after a quickload crashed at taz.exe+0x9abae (3 of 3 runs, old and new look data); a player can reach this with F5/F9.
+  Entering a boss or race level a second time through the test scene jump also crashes (zoo boss 4 of 4, safari race once). Neither tried on `master`.
+  Logs: `extracted/look/zoo-levels/zooboss/crash-*-taz-hd.log`, `extracted/look/zoo-levels/rcsafari/crash-entry-taz-hd.log`.
 - Bright saturated character paint (Daffy's bill, Sam's yellow shirt, Taz's helmet) leans orange and loses saturation through the pale-paint hold.
 - A 240-frame full-size screenshot burst crashed in d3d9.dll after 156 frames (`extracted/look/reports/step7/tazhub/burst-crash-taz-hd.log`). Smaller bursts are fine.
 - Test-camera shots differ between runs where the game places sprites on screen from its real camera (the safari waterfall's splash, a pink sprite in zoo-b).
