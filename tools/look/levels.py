@@ -159,6 +159,120 @@ FRONT_LOOK = dict(
     sky=dict(zenith="#1257e6", horizon="#8fd0ff", horizon_warm="#fff4e2", sky_strength=1.3, cloud_white=1.0, ambient="#cdd8ea"), cliff=dict(),
 )
 
+# ---- department store (scene 9): a shop at night. Like the city, its colour is blue light baked over pale paint.
+DEPT_RULES = [
+    ("resobjs/*", "gameplay"), ("deptstr/extras/*", "gameplay"), ("deptstr/textures/tazbook*", "gameplay"), ("deptstr/textures/tazcage*", "gameplay"),
+    ("deptstr/textures/tazwanted", "gameplay"), ("deptstr/textures/tazanted02", "gameplay"), ("deptstr/textures/bombbit*", "transient"),
+    ("resTex/shadowsub", "hide"),
+]
+DEPT_HAND = {
+    "camera_B": dict(loc=(20.0, 0.0, -10.0), look_at=(40.0, 10.0, -12.0), lens=16.0),
+    "camera_C": dict(loc=(60.0, 0.0, -10.0), look_at=(40.0, 10.0, -12.0), lens=16.0),
+    "taz_offset_B": (0.0, 0.0, 0.0), "elephant_offset_B": (0.0, 0.0, 0.0),
+}
+DEPT_LOOK = dict(
+    sun=dict(sun_azimuth=242.0, sun_elevation=52.0, sun_strength=1.1, sun_color="#a9c0ff"),
+    grade=dict(exposure=0.3, look="AgX - Punchy", saturation=1.2, bloom=0.4, fog=0.1, fog_start=80.0, fog_depth=300.0, ambient_strength=1.0),
+    sky=CITY_LOOK["sky"], cliff=dict(),
+)
+DEPT_GLOW = [(f"deptstr/textures/{p}", g, r) for p, g, r in (
+    ("*neon*", 2.0, None), ("winstar*", 1.6, (0.3, 0.6)), ("deptlight*", 0.45, (0.55, 0.8)), ("light.frame*", 2.2, (0.45, 0.7)), ("lightstrip", 1.6, (0.45, 0.7)),
+    ("road_barrier_light*", 2.2, (0.4, 0.65)), ("racecarheadlight", 1.8, None), ("shoptvflash*", 0.9, None), ("tvsnow*", 0.8, None), ("tv0*", 0.8, None),
+    ("littletv*", 0.8, None), ("blackholemonitors*", 0.8, None), ("scoreboardanim*", 1.3, None))]
+# Paint kept, with a fine relief: glazed floor tile, painted plaster on the walls and fittings.
+DEPT_DETAIL = [(f"deptstr/textures/{p}", m) for p, m in (
+    ("ceramictile*", "d_tile"), ("shopblackfloor*", "d_tile"), ("citypave*", "d_tile"), ("leading*", "d_wall"), ("walljoiner*", "d_wall"), ("toywall*", "d_wall"),
+    ("barsblue*", "d_wall"), ("shopbowl*", "d_wall"), ("shopbed*", "d_wall"), ("shopdanger*", "d_wall"), ("racetrak*", "d_wall"), ("sportsnfl*", "d_wall"),
+    ("pestmart*", "d_wall"), ("toybricks", "d_wall"), ("toycastle*", "d_wall"), ("shopdough*", "d_wall"))]
+DEPT_TILES = {
+    "d_tile": dict(set="paving", period=2.2, px=1024, detail=0.14, triplanar=True, rough=0.34, normal=0.22),
+    "d_wall": dict(set="old_sandstone", period=2.6, px=1024, detail=0.22, triplanar=True, rough=0.72, normal=0.4),
+}
+
+
+def room_lamps(rooms, height, radius, color, power):
+    """Indoor light: rows of ceiling lamps over each room (game x0, z0, x1, z1, floor y, columns, rows), as `extra` lamps.
+    Lamps ignore floors, and a grid cell keeps its four nearest, so don't stack rooms' lamps over each other."""
+    out = []
+    for x0, z0, x1, z1, floor, nx, nz in rooms:
+        for i in range(nx):
+            for k in range(nz):
+                out.append(((x0 + (x1 - x0) * (i + 0.5) / nx) / 250, (z0 + (z1 - z0) * (k + 0.5) / nz) / 250, (floor + height) / 250, radius, color, power))
+    return tuple(out)
+
+
+DEPT_ROOMS = (
+    (-11800, -5200, 1000, 6200, -2800, 4, 4), (-10500, 4200, 1000, 6400, -300, 3, 1),  # main hall and its balcony
+    (-1000, -6000, 10000, 8000, -800, 3, 4),    # the upper floor: start, toys
+    (12500, -3500, 19500, 7000, -1300, 2, 3),   # round room
+    (20000, 500, 40000, 4500, -1300, 5, 1),     # long gallery
+    (-22000, -6000, -14000, 7000, -2800, 2, 3), # sports arena
+    (-12000, 6600, 1500, 12500, -2800, 3, 1),   # back of the hall
+    (2000, -8600, 11000, -6800, -1800, 3, 1), (12500, -6200, 17500, -4600, -1800, 2, 1),  # service street
+)
+DEPT_LAMPS = dict(color="#ffd9a8", power=0.0, radius=13.0, drop=0.7, cone=0.8, pool_power=0.0, pool_radius=8.0, pool_height=3.2, pool_cone=-0.2,
+                  extra=room_lamps(DEPT_ROOMS, 1700, 13.0, "#ffd9a8", 2.1))
+
+# ---- museum (scene 10): the same night treatment and indoor recipe as the store, on three floors (100, 1900, 5000).
+MUSE_RULES = [
+    ("resobjs/*", "gameplay"), ("museum/extras/*", "gameplay"), ("museum/textures/tazbook*", "gameplay"), ("museum/textures/tazcage*", "gameplay"),
+    ("museum/textures/tazwanted", "gameplay"), ("museum/textures/tazanted02", "gameplay"), ("museum/textures/bombbit*", "transient"), ("resTex/shadowsub", "hide"),
+]
+MUSE_GLOW = [(f"museum/textures/{p}", g, r) for p, g, r in (
+    ("tvmuseum*", 0.8, None), ("tvsnow*", 0.8, None), ("tv", 0.8, None), ("compmont*", 0.7, None), ("light.frame*", 2.2, (0.45, 0.7)), ("lightbulbflashing*", 1.2, (0.5, 0.8)),
+    ("uplights", 1.2, (0.45, 0.7)), ("labtanklight", 1.8, None), ("lightstrip", 1.6, (0.45, 0.7)), ("window*", 0.5, (0.5, 0.8)),
+    ("removal_truck_lights", 1.8, None))]
+MUSE_DETAIL = [(f"museum/textures/{p}", m) for p, m in (
+    ("marbtiles*", "d_tile"), ("modfloor*", "d_tile"), ("woodfloor*", "d_tile"), ("ancientfloor*", "d_tile"), ("industfloor*", "d_tile"), ("haringfloor*", "d_tile"),
+    ("floorsteel*", "d_tile"), ("*carpet*", "d_wall"), ("marbwall*", "d_wall"), ("lightbluewall*", "d_wall"), ("yellowwall*", "d_wall"), ("modwall*", "d_wall"),
+    ("wall*", "d_wall"), ("pillar*", "d_wall"), ("fineartmarb*", "d_wall"), ("industwalls*", "d_wall"), ("industmarb*", "d_wall"), ("libarywall*", "d_wall"),
+    ("tornwallpaper*", "d_wall"), ("newmoneywall*", "d_wall"), ("roofpanels*", "d_wall"))]
+MUSE_ROOMS = (
+    (-15000, -8000, -11500, 1000, 100, 1, 3), (-11500, -8000, -3000, -5000, 100, 3, 1), (-10500, -2000, -6500, 1500, 100, 1, 1),  # west ring, octagon
+    (-13500, -4700, -9500, -2000, 100, 1, 1), (-7000, 1500, -5000, 4500, 100, 1, 1), (-5000, 5000, -3000, 9000, 100, 1, 1), (-4000, -9000, -1000, -5000, 100, 1, 1),
+    (1000, -13000, 5000, -2500, 1900, 1, 3), (-2000, 1000, 4000, 5000, 1900, 2, 1), (5000, -3500, 8000, -500, 1900, 1, 1), (6000, 2000, 9500, 6000, 1900, 1, 1),  # middle floor
+    (12500, -6000, 16500, 7000, 1900, 1, 3), (5000, -11000, 9500, -8000, 1900, 1, 1), (5000, 6500, 8000, 10000, 1900, 1, 1),
+    (-6000, 0, -500, 4000, 5000, 2, 1), (-1000, 2000, 2500, 5000, 5000, 1, 1), (3000, 0, 5500, 6000, 5000, 1, 2), (6000, 2000, 9500, 6000, 5000, 1, 1),  # top floor
+    (2000, 8000, 7000, 16000, 5000, 1, 2), (12500, -3000, 16500, 8000, 5000, 1, 3), (1000, -8000, 5000, -3000, 5000, 1, 1), (5000, -7500, 16000, -5000, 5000, 2, 1),
+)
+MUSE_LAMPS = dict(DEPT_LAMPS, extra=room_lamps(MUSE_ROOMS, 1400, 13.0, "#ffd9a8", 1.8))
+MUSE_HAND = dict(DEPT_HAND, camera_B=dict(loc=(12.0, -40.0, 11.0), look_at=(12.0, -20.0, 8.0), lens=16.0), camera_C=dict(loc=(-40.0, -20.0, 3.0), look_at=(-30.0, -5.0, 1.0), lens=16.0))
+
+# ---- construction site (scene 11): outdoors at night, the city hub's moon and lamps on a tower of steel floors.
+CONS_RULES = [
+    ("resobjs/*", "gameplay"), ("contruct/extras/*", "gameplay"), ("contruct/textures/tazbook*", "gameplay"), ("contruct/textures/tazcage*", "gameplay"),
+    ("contruct/textures/tazwanted", "gameplay"), ("contruct/textures/tazanted02", "gameplay"), ("contruct/textures/bombbit*", "transient"),
+    ("contruct/textures/postlamp", "lamp"), ("resTex/shadowsub", "hide"),
+]
+CONS_GLOW = [(f"contruct/textures/{p}", g, r) for p, g, r in (
+    ("signgreen*", 1.6, None), ("signred*", 1.6, None), ("contubesigns*", 1.4, (0.3, 0.6)), ("contowersign", 1.2, (0.4, 0.7)), ("conexitsign*", 1.2, (0.4, 0.7)), ("esign_*", 1.2, (0.4, 0.7)),
+    ("trafficlight*", 1.8, (0.4, 0.7)), ("beacon_lamp", 2.2, (0.4, 0.7)), ("latern_light", 2.2, (0.4, 0.7)), ("cblight", 2.0, (0.4, 0.7)), ("digger_lamp", 1.8, (0.4, 0.7)), ("window01", 0.9, (0.45, 0.75)))]
+CONS_DETAIL = [(f"contruct/textures/{p}", m) for p, m in (
+    ("ground*", "d_conc"), ("concrete*", "d_conc"), ("greyconcrete*", "d_conc"), ("woodplanks*", "d_wall"), ("workhutwall*", "d_wall"),
+    ("gurder*", "d_steel"), ("c_metal*", "d_steel"), ("digger_metal*", "d_steel"), ("oilbarrel*", "d_steel"), ("const_barrel*", "d_steel"), ("skip*", "d_steel"), ("ironrods*", "d_steel"))]
+CONS_TILES = {
+    "d_conc": dict(set="paving", period=3.0, px=1024, detail=0.35, triplanar=True, rough=0.85, normal=0.6),
+    "d_wall": DEPT_TILES["d_wall"],
+    "d_steel": dict(set="asphalt", period=1.2, px=1024, detail=0.12, triplanar=True, rough=0.4, normal=0.25),
+}
+CONS_LOOK = dict(CITY_LOOK, grade=dict(CITY_LOOK["grade"], ambient_strength=0.72))  # the tower's floors have no lamps of their own
+CONS_HAND = dict(DEPT_HAND, camera_B=dict(loc=(0.0, -40.0, -46.0), look_at=(0.0, 0.0, -40.0), lens=16.0), camera_C=dict(loc=(-30.0, 20.0, 14.0), look_at=(0.0, 10.0, 12.0), lens=16.0))
+
+# ---- city boss (scene 12): a lit TV arena. Its colour is painted into the vertices, so it is kept (no unbake) and held through the tone curve.
+BOSS_RULES = [("resobjs/*", "gameplay"), ("cityboss/extras/*", "gameplay"), ("resTex/shadowsub", "hide")]
+BOSS_GLOW = [(f"cityboss/textures/{p}", g, r) for p, g, r in (
+    ("scoreboardanim*", 1.3, None), ("stadedgeani*", 0.9, None), ("trafficlights*", 1.6, (0.4, 0.7)), ("lightcolours", 1.4, None), ("podlights", 1.4, None),
+    ("cbfloodlights*", 1.8, (0.45, 0.75)), ("cbfloorlights", 1.2, (0.4, 0.7)), ("greenlight", 1.6, None), ("redlight", 1.6, None), ("yellowlight", 1.6, None), ("truck_headlights*", 1.6, (0.4, 0.7)))]
+BOSS_DETAIL = [(f"cityboss/textures/{p}", m) for p, m in (
+    ("cbfloor", "d_tile"), ("cbfloorspecial", "d_tile"), ("magfloor*", "d_tile"), ("stadwall*", "d_wall"), ("stadstairs*", "d_wall"), ("stadtunnel*", "d_wall"),
+    ("cbtunnel*", "d_wall"), ("seats*", "d_wall"), ("stadseats*", "d_wall"), ("billboardedges", "d_wall"), ("tunneledges", "d_wall"))]
+BOSS_LOOK = dict(
+    sun=dict(sun_azimuth=75.0, sun_elevation=62.0, sun_strength=1.62, sun_color="#fff0d6"),
+    grade=dict(exposure=-0.134, look="AgX - Punchy", saturation=1.08, bloom=0.3, fog=0.01, fog_start=200.0, fog_depth=400.0, ambient_strength=0.68),
+    sky=dict(zenith="#1257e6", horizon="#8fd0ff", horizon_warm="#fff4e2", sky_strength=1.3, cloud_white=1.0, ambient="#cdd8ea"), cliff=dict(),
+)
+BOSS_HAND = dict(DEPT_HAND, camera_B=dict(loc=(0.0, -20.0, -2.0), look_at=(0.0, 10.0, -7.0), lens=16.0), camera_C=dict(loc=(20.0, 0.0, -2.0), look_at=(-5.0, 0.0, -7.0), lens=16.0))
+
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
@@ -196,4 +310,20 @@ LEVELS = {
                      captures=("screens/capture/world-sweep.bin",), materials=("lawn", "dirt", "grass", "flat", "flat_wind", "water", "water_bed", "foam"),
                      binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05))}, grass_opts=dict(height=(0.08, 0.2), flowers=0.0, weeds=0.0), grass_min=0.7, tints={"dirt": (1.75, 1.2, 0.62)},
                      hold=1.0, contrast=1.0, bloom_threshold=3.0, char_fill=(0.12, 0.12, 0.14)),
+    "deptstr": dict(scene=9, pak="deptstr", blend="city-levels/deptstr/deptstr.blend", out="city-levels/deptstr/pass1", rules=DEPT_RULES, hand=DEPT_HAND,
+                    look=DEPT_LOOK, hdri=None, hdri_rotation=0.0, hub=(-90.0, -44.0, 162.0, 53.0), game_sky=True, clutter=False,
+                    materials=tuple(DEPT_TILES) + ("flat",), tiles=DEPT_TILES, detail=DEPT_DETAIL, tints={"d_tile": (1.5, 1.5, 1.58)}, captures=("city-levels/deptstr/world-hero.bin", "city-levels/deptstr/world-sweep.bin"),
+                    fog_color="#20366f", glow=DEPT_GLOW, lamps=DEPT_LAMPS, unbake=0.5, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
+    "museum": dict(scene=10, pak="museum", blend="city-levels/museum/museum.blend", out="city-levels/museum/pass1", rules=MUSE_RULES, hand=MUSE_HAND,
+                   look=DEPT_LOOK, hdri=None, hdri_rotation=0.0, hub=(-79.0, -68.0, 79.0, 68.0), game_sky=True, clutter=False,
+                   materials=tuple(DEPT_TILES) + ("flat",), tiles=DEPT_TILES, detail=MUSE_DETAIL, tints={"d_tile": (1.5, 1.5, 1.58)},
+                   captures=("city-levels/museum/world-hero.bin",), fog_color="#20366f", glow=MUSE_GLOW, lamps=MUSE_LAMPS, unbake=0.5, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
+    "contruct": dict(scene=11, pak="contruct", blend="city-levels/contruct/contruct.blend", out="city-levels/contruct/pass1", rules=CONS_RULES, hand=CONS_HAND,
+                     look=CONS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-121.0, -108.0, 105.0, 68.0), game_sky=True, clutter=False,
+                     materials=tuple(CONS_TILES) + ("flat",), tiles=CONS_TILES, detail=CONS_DETAIL, tints={"d_conc": (1.25, 1.25, 1.35)}, captures=("city-levels/contruct/world-hero.bin",),
+                     fog_color="#20366f", glow=CONS_GLOW, lamps=dict(CITY_LAMPS, power=1.7, cone=0.35, pool_power=0.45, extra=()), unbake=0.5, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
+    "cityboss": dict(scene=12, pak="cityboss", blend="city-levels/cityboss/cityboss.blend", out="city-levels/cityboss/pass1", rules=BOSS_RULES, hand=BOSS_HAND,
+                     look=BOSS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-73.0, -73.0, 73.0, 72.0), game_sky=True, clutter=False,
+                     materials=tuple(DEPT_TILES) + ("flat",), tiles=DEPT_TILES, detail=BOSS_DETAIL, tints={"d_tile": (1.7, 1.7, 1.7)},
+                     captures=("city-levels/cityboss/world-hero.bin",), glow=BOSS_GLOW, hold=0.75, contrast=1.0, bloom_threshold=14.0),
 }
