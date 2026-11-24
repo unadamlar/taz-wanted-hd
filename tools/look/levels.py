@@ -527,6 +527,23 @@ GOLD_LOOK = dict(
 )
 GOLD_HAND = dict(DEPT_HAND, camera_B=dict(loc=(0.0, -1.0, -10.0), look_at=(0.0, -11.0, -11.0), lens=16.0), camera_C=dict(loc=(20.0, 10.0, -10.0), look_at=(28.0, 16.0, -11.0), lens=16.0))
 
+# ---- Grand Canyon (scene 16): the west hub's desert by day, with roads. Its baked shade is a warm brown: mostly dropped for real shadows.
+GRANDC_RULES = [
+    ("resobjs/*", "gameplay"), ("grandc/extras/*", "gameplay"), ("grandc/textures/westcube*", "gameplay"), ("grandc/textures/exp_*", "gameplay"),
+    ("grandc/textures/*sign*", "gameplay"), ("grandc/textures/billboard*", "gameplay"), ("grandc/textures/1000ring", "gameplay"),
+    ("grandc/textures/catapult*", "gameplay"), ("grandc/textures/anvil*", "gameplay"), ("grandc/textures/tire_tred", "gameplay"),
+    ("grandc/textures/tazwanted", "gameplay"), ("grandc/textures/tazanted02", "gameplay"), ("grandc/textures/popup_wall*", "gameplay"),
+    ("grandc/skybox/*", "sky"), ("resTex/shadowsub", "hide"),
+    ("grandc/textures/sand*", "ground"), ("grandc/textures/basesand", "ground"),
+]
+GRANDC_DETAIL = [(f"grandc/textures/{p}", m) for p, m in (
+    ("wwrock*", "d_canyon"), ("vert_strips*", "d_canyon"), ("monolith*", "d_canyon"), ("tunrock*", "d_canyon"), ("pestwest*", "d_canyon"), ("stonewall*", "d_canyon"),
+    ("road_*", "d_road"), ("sleeper", "d_plank"), ("hut_*", "d_plank"), ("guard_hut_wall", "d_plank"), ("wood_ramp*", "d_plank"), ("sam_moving_buildboard_wood", "d_plank"),
+    ("bridge_*", "d_plank"), ("totem*", "d_plank"), ("trough01", "d_plank"), ("teepee0*", "d_plank"),
+    ("train0*", "d_iron"), ("train1*", "d_iron"), ("train2*", "d_iron"), ("train3*", "d_iron"), ("track01", "d_iron"), ("girder*", "d_iron"),
+    ("watertank*", "d_iron"), ("ufo_floor*", "d_iron"), ("powerplant", "d_iron"), ("pestyoilcan*", "d_iron"))]
+GRANDC_HAND = dict(DEPT_HAND, camera_B=dict(loc=(-2.0, -22.0, -18.0), look_at=(-2.0, -32.0, -19.0), lens=16.0), camera_C=dict(loc=(40.0, 20.0, -18.0), look_at=(48.0, 26.0, -19.0), lens=16.0))
+
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", captures=("world-hero.bin", "world-sweep.bin"), rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
@@ -632,4 +649,15 @@ LEVELS = {
                      clutter_opts=dict(leaves=0.0, pebbles=4.0, stones=0.6), grass_min=2.0, glow=GOLD_GLOW, lamps=dict(CITY_LAMPS, color="#ffc27a", power=4.0, extra=()),
                      relief=dict(textures=("goldmine/textures/minerock*",), min_area=6.0, cell=0.4, depth=0.3, band=1.1, block=1.6, foot=1.8, border=0.8),
                      fog_color="#3a1040", char_fill=(0.2, 0.18, 0.25)),  # the baked magenta light is the mine's mood: kept
+    "grandc": dict(scene=16, pak="grandc", blend="westhub/grandc/grandc.blend", out="westhub/grandc/pass1", rules=GRANDC_RULES, hand=GRANDC_HAND,
+                   look=dict(WEST_LOOK, grade=dict(WEST_LOOK["grade"], exposure=0.1, fog=0.02, fog_start=140.0, fog_depth=600.0)),  # wider views than the hub
+                   hdri=None, hdri_rotation=0.0, hub=(-65.0, -85.0, 85.0, 65.0), sky_panels=True, night_sky=False, island_boxes=True,
+                   captures=tuple(f"westhub/grandc/world-{n}.bin" for n in ("hero", "sweep-a", "sweep-b")),
+                   materials=tuple(WEST_TILES) + ("flat",), tiles=WEST_TILES, detail=GRANDC_DETAIL, binds={"ground": (("d_sand", 4, -1.0, 0.0),)},
+                   clutter_opts=dict(leaves=0.0, pebbles=5.0, stones=0.7), grass_min=2.0, unbake=0.2,
+                   solids=dict(cards={}, soft=("grandc/textures/cactus07",)),  # the barbed wire stays the game's: its strips are not the zoo's pairs
+                   relief=dict(textures=tuple(f"grandc/textures/{p}" for p in ("wwrock*", "vert_strips*", "monolith*", "pestwest*")), tint=(0.9, 1.075, 1.25), min_area=6.0,
+                               cell=0.4, depth=0.3, band=1.1, block=1.6, foot=1.8, border=0.8),
+                   fog_color="#f4d8b0", ground_tint=(0.82, 0.62, 0.42), sky_gain=1.3, char_keep=0.55, char_fill=(-0.65, -0.6, -0.5),
+                   tints={"d_sand": (2.0, 1.66, 1.05), "d_canyon": (1.8, 2.15, 2.5), "d_cliff": (1.8, 2.15, 2.5), "flat": (1.3, 0.86, 0.7)}),
 }

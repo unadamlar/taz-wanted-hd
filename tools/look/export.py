@@ -896,8 +896,8 @@ if "solids" in LEVEL:
     known = {dress.base_name(m.name.split(":", 1)[1]) for m in bpy.data.materials if m.name.startswith(("lit:", "lit+:"))}
     soft_h = {tex_hash[l] for l in cfg["soft"]}
     found = solid.models(solid.capture(captures, card_h | soft_h, soft_h), card_h)
-    label_of = lambda h: next(l for l in labels[h] if l in known)
-    solid_tex = {h: game_rgba(label_of(h))[..., 3].mean() > 0.98 for h in {d[0] for ds in found.values() for d in ds}}
+    label_of = lambda h: next((l for l in labels[h] if l in known), None)  # None: a texture from another pak, left as the game's draw
+    solid_tex = {h: label_of(h) is not None and game_rgba(label_of(h))[..., 3].mean() > 0.98 for h in {d[0] for ds in found.values() for d in ds}}
     for keys, ds in sorted(found.items(), key=lambda kv: -len(kv[0])):  # a sweep frame can hold part of a model
         ds = [d for d in ds if d[0] in card_h or solid_tex[d[0]]]  # see-through parts stay the game's own draws
         if {solid.key_of(d[4]) for d in ds} <= solids.keys():
