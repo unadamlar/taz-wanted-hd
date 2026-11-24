@@ -1147,14 +1147,22 @@ if cfg["cards"] or cfg["soft"]:
                         elif kind == "sign":
                             got.append((*q, np.full(len(q[0]), solid_mat(label_of(d[0])))))
                             got += sign_mount(q[0], solid.uv_axes(dp[t], tu), thin, a_, d[1])
-                    if sil and kind in ("flower", "cactus"):
-                        W = np.concatenate(sil)
-                        rng_ = np.random.default_rng(solid.key_of(d[4]) & 0xffff)
-                        main = np.clip(np.mean([c[0] for c in cols], 0), 0, 1)
+                    groups = []  # a plant's crossed cards make one model; a bed's separate flower cards one each
+                    for i, q_ in enumerate(sil if kind in ("flower", "cactus") else ()):
+                        g_ = next((g for g in groups if np.linalg.norm(q_.mean(0) - sil[g[0]].mean(0)) < 0.3 * max(np.ptp(q_, 0).max(), np.ptp(sil[g[0]], 0).max())), None)
+                        g_.append(i) if g_ else groups.append([i])
+                    for g_ in groups:
+                        W = np.concatenate([sil[i] for i in g_])
+                        rng_ = np.random.default_rng((solid.key_of(d[4]) + len(got)) & 0xffff)
+                        main = np.clip(np.mean([cols[i][0] for i in g_], 0), 0, 1)
                         if kind == "flower":
-                            yel = [f for c in cols for f in c[1:] if f[0] > 0.6 and f[1] > 0.45 and f[2] < 0.5 * f[1]]  # a painted yellow middle
+                            is_yel = lambda f: min(f[0], f[1]) > 2.5 * f[2] and f[1] > 0.55 * f[0]  # by hue: these colours carry the baked light
+                            petal = [next((f for f in cols[i] if not is_yel(f)), cols[i][0]) for i in g_]  # a big yellow middle is not the petals' colour
+                            main = np.mean(petal, 0)
+                            main = np.clip(main * min(1.5, 1 / max(main.max(), 1e-3)), 0, 1)  # the family's median takes in its dark outline
+                            yel = [f for i in g_ for f in cols[i] if is_yel(f) and not any(f is p_ for p_ in petal)]  # a painted yellow middle
                             mid = np.clip(np.mean(yel, 0), 0, 1) if yel else np.array((0.95, 0.8, 0.2))
-                            bp, bn, bc = props3d.flower(W.mean(0), 0.5 * np.ptp(W, 0).max(), main, mid, rng_)
+                            bp, bn, bc = props3d.flower(W.mean(0), 0.5 * np.ptp(W, 0).max(), main, mid, rng_, cheap=len(groups) > 3)
                         else:
                             bp, bn, bc = cactus_geo(W, main, rng_)
                         got.append((bp, bn, np.zeros((len(bp), 2)), bc, np.full(len(bp), MAT_ID["flat"])))

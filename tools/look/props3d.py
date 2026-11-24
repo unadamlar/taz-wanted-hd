@@ -119,9 +119,12 @@ def leaf(root, axis, side, length, width, colour, droop=0.25, cup=0.18, steps=9)
     return _faces(*zip(*parts))
 
 
-def flower(centre, radius, petal, middle, rng, petals=9, rings=2):
+def flower(centre, radius, petal, middle, rng, petals=9, rings=2, cheap=False):
     """A modelled flower: a cup of shaped petals (narrow at the base, round at the tip, curving up), a domed centre
-    and short stamens."""
+    and short stamens. cheap: fewer petals and points and no stamens, for beds of many flowers (a quarter of the
+    triangles)."""
+    if cheap:
+        petals = min(petals, 7)
     up = np.array([0, 1.0, 0])
     petal, middle = np.asarray(petal, float), np.asarray(middle, float)
     parts = []
@@ -130,7 +133,7 @@ def flower(centre, radius, petal, middle, rng, petals=9, rings=2):
             a = 2 * np.pi * (k + 0.5 * ring) / n_ + rng.uniform(-0.12, 0.12)
             d = np.array([np.cos(a), lift, np.sin(a)]); d /= np.linalg.norm(d)
             side = np.cross(d, up); side /= np.linalg.norm(side)
-            t = np.linspace(0, 1, 6)[:, None]; across = np.linspace(-1, 1, 4)[None, :]
+            t = np.linspace(0, 1, 4 if cheap else 6)[:, None]; across = np.linspace(-1, 1, 3 if cheap else 4)[None, :]
             half = radius * 0.4 * np.sqrt(np.clip(np.sin(np.pi * (0.12 + 0.88 * t)), 0, 1)) * (0.3 + 0.7 * t) ** 0.6  # narrow foot, broad round tip
             normal = np.cross(side, d); normal *= np.sign(normal[1] or 1)
             spine = centre + t * radius * length * d + (0.12 * radius * t ** 2) * up
@@ -138,11 +141,11 @@ def flower(centre, radius, petal, middle, rng, petals=9, rings=2):
             col = np.clip(petal * (0.82 + 0.25 * t[..., None]) * (1.0 if ring == 0 else 0.9), 0, 1) * np.ones(g.shape)
             for sheet in (g, g[:, ::-1] - normal * radius * 0.01):
                 parts.append(_sheet(sheet, col))
-    th = np.linspace(0, np.pi / 2, 5)[:, None]; ph = np.linspace(0, 2 * np.pi, 13)[None, :]
+    th = np.linspace(0, np.pi / 2, 3 if cheap else 5)[:, None]; ph = np.linspace(0, 2 * np.pi, 9 if cheap else 13)[None, :]
     dome = centre + radius * 0.34 * np.stack([np.cos(th) * np.cos(ph), 0.8 * np.sin(th) * np.ones_like(ph) + 0.15, np.cos(th) * np.sin(ph)], -1)
     dcol = np.clip(middle * (0.75 + 0.35 * np.sin(th))[..., None] * np.ones(dome.shape), 0, 1)
     parts.append(_sheet(dome, dcol))
-    for k in range(6):  # stamens
+    for k in range(0 if cheap else 6):  # stamens
         a = 2 * np.pi * k / 6
         d = np.array([np.cos(a) * 0.5, 1.0, np.sin(a) * 0.5]); d /= np.linalg.norm(d)
         p, n = _tube(np.array([centre + up * radius * 0.1, centre + up * radius * 0.1 + d * radius * 0.3]), np.array([radius * 0.025, radius * 0.02]), 4)
