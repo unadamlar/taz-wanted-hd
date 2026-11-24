@@ -1116,6 +1116,48 @@ if cfg["cards"] or cfg["soft"]:
                             a_ = small * solid.uv_mask(tu - np.floor(tu.reshape(-1, 2).min(0) + 1e-6), small.shape)
                         if not solid.outlines(a_, 1.0, (a_.shape[1] / 48) ** 2):
                             continue
+                        if kind == "bulbs":  # a painted string of lights: real bulbs where the paint has them, on a wire
+                            sat_ = paint.max(2) - paint.min(2)
+                            on_ = (a_ > 0.5) & (sat_ > 0.3)  # the bulbs' coloured cores: their pale halos touch
+                            lab_ = np.zeros(on_.shape, int); blobs = []
+                            for y0, x0 in zip(*np.nonzero(on_)):
+                                if lab_[y0, x0]:
+                                    continue
+                                lab_[y0, x0] = len(blobs) + 1; stack, px_ = [(y0, x0)], []
+                                while stack:
+                                    y, x = stack.pop(); px_.append((y, x))
+                                    for yy, xx in ((y + 1, x), (y - 1, x), (y, x + 1), (y, x - 1)):
+                                        if 0 <= yy < on_.shape[0] and 0 <= xx < on_.shape[1] and on_[yy, xx] and not lab_[yy, xx]:
+                                            lab_[yy, xx] = len(blobs) + 1; stack.append((yy, xx))
+                                blobs.append(np.array(px_))
+                            blobs = [b for b in blobs if len(b) > on_.size * 2e-4]
+                            if not blobs:
+                                continue
+                            lo_, hi_ = tu.reshape(-1, 2).min(0), tu.reshape(-1, 2).max(0)
+                            pts, cols_ = [], []
+                            for k_ in range(int(np.floor(lo_[0] + 1e-6)), int(np.ceil(hi_[0] - 1e-6))):  # every repeat along the string
+                                for b in blobs:
+                                    cy, cx = b.mean(0)
+                                    u_, w_ = k_ + (cx + 0.5) / on_.shape[1], np.floor(lo_[1] + 1e-6) + (cy + 0.5) / on_.shape[0]
+                                    if lo_[0] <= u_ <= hi_[0] and lo_[1] <= w_ <= hi_[1]:
+                                        cols_.append(np.clip(np.median(paint[b[:, 0], b[:, 1]], 0) * 1.1, 0, 1))
+                                        pts.append([u_, w_, 1.3 * np.sqrt(len(b) / np.pi) / on_.shape[1]])
+                            if not pts:
+                                continue
+                            pts = np.array(pts)
+                            P_ = np.c_[pts[:, 0], pts[:, 1] - np.floor(lo_[1] + 1e-6), np.zeros(len(pts))]
+                            P_ = np.r_[P_, [[2.0, 0, 0]]]  # a u past 1 makes on_card take u as given, no copies per repeat
+                            W_ = solid.on_card(P_, np.tile([0, 0, 1.0], (len(P_), 1)), dp[t], tu, dc[t], size)[0][:-1]
+                            order = np.argsort(pts[:, 0])
+                            for i in order:
+                                p, n, col = props3d.bulb(W_[i], 0.8 * pts[i, 2] * size[0], cols_[i])
+                                got.append((p, n, np.zeros((len(p), 2)), col, np.full(len(p), MAT_ID["prop"])))
+                            for a, b in zip(order[:-1], order[1:]):  # the wire, sagging a little between bulbs
+                                mid = (W_[a] + W_[b]) / 2 + np.array([0, 0.6 * pts[a, 2] * size[0], 0])
+                                for q0, q1 in ((W_[a], mid), (mid, W_[b])):
+                                    p, n, col = props3d.pole(q0, q1, 0.06 * pts[a, 2] * size[0], (0.1, 0.25, 0.1))
+                                    got.append((p, n, np.zeros((len(p), 2)), col, np.full(len(p), MAT_ID["prop"])))
+                            continue
                         if kind == "banner":  # cloth in folds under a rod, the game's paint and cut-out kept
                             h_, v_ = solid.uv_axes(dp[t], tu)
                             fu = tu.reshape(-1, 2) - np.floor(tu.reshape(-1, 2).min(0) + 1e-6)
@@ -1196,6 +1238,13 @@ if cfg["cards"] or cfg["soft"]:
                     kept = [(d, geo) for d, geo in kept if (solid.key_of(d[4]), d[0]) not in static_done]  # a sweep frame repeats the hero's
                     static_parts.extend(geo for _, geo in kept)
                     static_done.update((solid.key_of(d[4]), d[0]) for d, _ in kept)
+                    for d, (dp, du, dc) in zip(ds, T):  # a draw that gave no stand-in, next to ones that did
+                        if (solid.key_of(d[4]), d[0]) not in static_done:
+                            static_done.add((solid.key_of(d[4]), d[0]))
+                            nrm = np.cross(dp[:, 1] - dp[:, 0], dp[:, 2] - dp[:, 0])
+                            nrm = np.repeat(nrm / np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-9), 3, 0)
+                            static_parts.append((dp.reshape(-1, 3).astype(np.float32), nrm.astype(np.float32), dds.to_linear(dc.reshape(-1, 3)).astype(np.float32),
+                                                 du.reshape(-1, 2).astype(np.float32), np.full(len(dp) * 3, card_mat(label_of(d[0])))))
                     static_hide.update(d[0] for d in ds)
                 else:
                     for d, geo in kept:
@@ -1234,16 +1283,6 @@ if cfg["cards"] or cfg["soft"]:
         for d in ds:
             solids.setdefault((solid.key_of(d[4]), d[0]), pi)  # the same model can come in several paints
 
-if static_hide:  # a hidden texture's static draws that gave no stand-in, in any group, are redrawn from the capture with the same paint
-    for ds in found.values():
-        for d in ds:
-            if d[0] in static_hide and solid._identity(d[1]) and (solid.key_of(d[4]), d[0]) not in static_done:
-                static_done.add((solid.key_of(d[4]), d[0]))
-                dp, du, dc = solid.triangles(d[2], d[3], d[4])
-                nrm = np.cross(dp[:, 1] - dp[:, 0], dp[:, 2] - dp[:, 0])
-                nrm = np.repeat(nrm / np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-9), 3, 0)
-                static_parts.append((dp.reshape(-1, 3).astype(np.float32), nrm.astype(np.float32), dds.to_linear(dc.reshape(-1, 3)).astype(np.float32),
-                                     du.reshape(-1, 2).astype(np.float32), np.full(len(dp) * 3, card_mat(label_of(d[0])))))
 if static_parts:  # the static world's stand-ins, merged per chunk: one proto each, not one per card (fewer draws)
     p, n, c, u, m = (np.concatenate(x) for x in zip(*static_parts))
     cen = p.reshape(-1, 3, 3).mean(1)
