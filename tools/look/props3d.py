@@ -174,6 +174,27 @@ def disc(centre, radius, normal, thick, colour=(0.62, 0.64, 0.68), sides=32):
     return P, N, np.tile(np.asarray(colour, float), (len(P), 1))
 
 
+def plank(path, half_w, half_d, normal=(0, 0, 1.0)):
+    """A sawn board along a path: flat faces, half_w across in the plane normal to `normal`, half_d deep, ends capped.
+    Both windings, so it shows from either side under any material."""
+    z = np.asarray(normal, float)
+    t = np.gradient(path, axis=0)
+    s = np.cross(z, t); s /= np.linalg.norm(s, axis=1, keepdims=True)
+    ring = np.stack([path + a * half_w * s + d * half_d * z for a, d in ((1, 1), (-1, 1), (-1, -1), (1, -1))], 1)
+    face = np.stack([np.broadcast_to(z, s.shape), -s, -np.broadcast_to(z, s.shape), s], 1)
+    P, N = [], []
+    for i in range(len(path) - 1):
+        for j in range(4):
+            k = (j + 1) % 4
+            P += [ring[[i, i + 1, i + 1], [j, j, k]], ring[[i, i + 1, i], [j, k, k]]]
+            N += [face[[i, i + 1, i + 1], [j, j, j]]] * 2
+    for i, sg in ((0, -1), (-1, 1)):
+        cap = np.tile(sg * t[i] / np.linalg.norm(t[i]), (3, 1))
+        P += [ring[i, [0, 1, 2]], ring[i, [0, 2, 3]]]; N += [cap, cap]
+    P, N = np.concatenate(P), np.concatenate(N)
+    return np.r_[P, P.reshape(-1, 3, 3)[:, ::-1].reshape(-1, 3)], np.r_[N, N]
+
+
 def pole(top, bottom, radius, colour=(0.55, 0.57, 0.6)):
     p, n = _tube(np.array([top, bottom]), np.array([radius, radius]), 8)
     return p, n, np.tile(np.asarray(colour, float), (len(p), 1))

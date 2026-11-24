@@ -1105,8 +1105,9 @@ def banister_geo(alpha, paint, pos, uv, col, size):
     return [(p, n, np.zeros((len(p), 2)), c, np.full(len(p), MAT_ID["prop"])) for p, n, c in out]
 
 
-def iron_geo(alpha, paint, pos, uv, col, size):
+def iron_geo(alpha, paint, pos, uv, col, size, wood=False):
     """Painted wrought iron as round bars along the paint's strokes, a spear head on each bar that ends upward in one.
+    wood: sawn boards instead, flat-faced, each in its own paint, with plank grain; no plates or heads.
     Only what falls on this piece of card is kept: its texture repeats, and the card can start part way into one."""
     h, w = alpha.shape
     px = np.array(size, float) / [w, h]  # world size of a texel
@@ -1125,7 +1126,7 @@ def iron_geo(alpha, paint, pos, uv, col, size):
 
     P, N, C = [], [], []
     nodes = []  # bolted plates where bars meet: the paint is wide every way round the joint
-    for q in (p_ + 0.5 for xy, *_ in lines for p_ in (xy[0], xy[-1])):
+    for q in (p_ + 0.5 for xy, *_ in ([] if wood else lines) for p_ in (xy[0], xy[-1])):
         if all(np.abs(q - o).max() > 2 for o in nodes):
             nodes.append(q)
     for q in nodes:
@@ -1148,7 +1149,7 @@ def iron_geo(alpha, paint, pos, uv, col, size):
         xy = xy + 0.5
         heads = []
         for end, f in ((0, free[0]), (-1, free[1])):
-            if not f or len(xy) < 6:
+            if not f or len(xy) < 6 or wood:
                 continue
             seg = xy if end == -1 else xy[::-1]
             d = seg[-1] - seg[max(-10, -len(seg))]
@@ -1179,6 +1180,13 @@ def iron_geo(alpha, paint, pos, uv, col, size):
         m = xy[idx] * px
         if len(m) < 2 or np.linalg.norm(m[-1] - m[0]) < 1e-6:
             continue
+        if wood:
+            d_ = (xy[-1] - xy[0]) / np.linalg.norm(xy[-1] - xy[0])
+            hw = (np.median(r) + 0.5) * np.linalg.norm(np.array([-d_[1], d_[0]]) * px)  # the paint's width across the board
+            p, n = props3d.plank(np.c_[m, np.zeros(len(m))], hw, 0.15 * hw)  # a board 0.3 as deep as it is tall
+            board = np.median(paint[np.clip(xy[:, 1].astype(int), 0, h - 1), xy[:, 0].astype(int) % w], 0)
+            P.append(p); N.append(n); C.append(np.tile(np.clip(board * lit * 1.15, 0, 1), (len(p), 1)))
+            continue
         p, n = props3d._tube(np.c_[m, np.zeros(len(m))], np.full(len(m), np.clip(np.median(r), 0.5, 1.3 * rmed) * 0.85 * px.mean()), 6)  # forged bars: even
         P.append(p); N.append(n); C.append(np.tile(iron, (len(p), 1)))
     if not P:
@@ -1193,10 +1201,10 @@ def iron_geo(alpha, paint, pos, uv, col, size):
     l2 = (e1[:, 0] * rel[..., 1] - e1[:, 1] * rel[..., 0]) / det
     keep = (np.minimum(np.minimum(l1, l2), 1 - l1 - l2) > -0.01).any(1).reshape(-1, 3).all(1)
     k = (np.nonzero(keep)[0][:, None] * 3 + [0, 1, 2]).ravel()
-    return [(pw[k], nw[k], np.zeros((len(k), 2)), cc[k], np.full(len(k), MAT_ID["prop"]))]
+    return [(pw[k], nw[k], np.zeros((len(k), 2)), cc[k], np.full(len(k), MAT_ID["d_plank" if wood and "d_plank" in MAT_ID else "prop"]))]
 
 
-STRIPS = ("banister", "iron")  # painted along a run of cards that turns corners: any number of facings
+STRIPS = ("banister", "iron", "wood")  # painted along a run of cards that turns corners: any number of facings
 solids, static_hide, static_parts, static_done = {}, set(), [], set()
 cfg = dict(LEVEL.get("solids") or dict(cards={}, soft=()))
 cfg["cards"] = dict(cfg["cards"])
@@ -1245,7 +1253,8 @@ if cfg["cards"] or cfg["soft"]:
                         traced[lab] = rgba[::step_, ::step_, 3], rgba[::step_, ::step_, :3]  # traced at up to 256 px
                     small, paint = traced[lab]
                     got, sil, cols = [], [], []
-                    for t in (solid.flat_pieces(dp, du) if kind in STRIPS else solid.card_pieces(dp, du)):
+                    # a fence's boards run across a twisted card's two triangles: one piece, or they break at the fold
+                    for t in (solid.islands(dp) if kind == "wood" else solid.flat_pieces(dp, du) if kind in STRIPS else solid.card_pieces(dp, du)):
                         tu, size = du[t], solid.repeat_size(dp[t], du[t])
                         a_ = small
                         if np.ptp(tu[..., 0]) <= 1.001 and np.ptp(tu[..., 1]) <= 1.001:  # one repeat: only the part of the texture the card shows
@@ -1297,8 +1306,8 @@ if cfg["cards"] or cfg["soft"]:
                         if kind == "banister":
                             got += banister_geo(small, paint, dp[t], tu, dc[t], size)
                             continue
-                        if kind == "iron":
-                            got += iron_geo(small, paint, dp[t], tu, dc[t], size)
+                        if kind in ("iron", "wood"):
+                            got += iron_geo(small, paint, dp[t], tu, dc[t], size, kind == "wood")
                             continue
                         if kind == "banner":  # cloth in folds under a rod, the game's paint and cut-out kept
                             h_, v_ = solid.uv_axes(dp[t], tu)
