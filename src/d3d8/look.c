@@ -20,9 +20,6 @@ enum { MOV = 1, MAD = 4, DP3 = 8, DP4 = 9 };
 
 struct rec { IDirect3DVertexBuffer8 *vb; DWORD shader; UINT stride, start, count; D3DPRIMITIVETYPE type; float m[96][4]; };
 
-#define NOWN 512
-static IDirect3DBaseTexture8 *own_tex[NOWN];
-static UINT nown;
 static int level, loaded_scene = -1;
 #define PLANET_LOOK 30 // an unused scene number: Planet X's own look data
 #define FRONTEND 1
@@ -56,7 +53,6 @@ static void drop_recs(void)
 void look_reset(IDirect3DDevice8 *dev)
 {
     hd_reset();
-    nown = 0;
     drop_recs();
     merge_device_reset();
 }
@@ -127,25 +123,6 @@ static void prepass(IDirect3DDevice8 *dev)
     merge_each(dev, depth_batch);
     hd_prepass_end(d);
     merge_state_changed();
-}
-
-// Hides and binds are for the level's own copies of a texture. A cutscene's pack loads its own copies with the same
-// pixels, so during a cutscene only copies the level has used, or its static world draws, count. 0: leave it alone.
-
-void look_texture_gone(IDirect3DBaseTexture8 *t)
-{
-    for (UINT i = 0; i < nown; i++)
-        if (own_tex[i] == t) own_tex[i--] = own_tex[--nown];
-}
-
-UINT64 look_own_hash(IDirect3DDevice8 *dev, IDirect3DBaseTexture8 *t, UINT64 h)
-{
-    if (!level || !h || (!hd_hidden(h) && !hd_shade(h) && !hd_has_bind(h))) return h;
-    for (UINT i = 0; i < nown; i++)
-        if (own_tex[i] == t) return h;
-    if (cutscene_playing() && !merge_hub_draw(dev)) return 0;
-    if (nown < NOWN) own_tex[nown++] = t;
-    return h;
 }
 
 // The lit pass of each character shader gets a copy that also outputs world position (oT2) and normal
@@ -488,7 +465,8 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     if ((shader & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW) return 0;
     UINT64 raw = textures_bound_hash(0);
     if (raw && (hd_shade(raw) || swapped_object(dev, raw))) return 1;
-    UINT64 h = look_own_hash(dev, textures_bound(0), raw);
+    // A cutscene pack's own copy of something the level hides is that cutscene's prop.
+    UINT64 h = raw && hd_hidden(raw) && cutscene_playing() && textures_from_cutscene(textures_bound(0)) ? 0 : raw;
     int bark = moving_bark(dev, raw);
     if (h && hd_hidden(h) && !bark) return 1;
     IDirect3DDevice8_GetRenderState(dev, D3DRS_ZWRITEENABLE, &zwrite);
@@ -605,7 +583,7 @@ void look_frame(IDirect3DDevice8 *dev)
     int scene = settings.exe_known ? look_scene(SCENE) : -1;
     struct IDirect3DDevice9 *d = d3d9_device(dev);
     if (level) read_camera(), hd_frame_end(d);
-    if (hd_loaded() && (scene != loaded_scene || !level)) hd_unload(), merge_reset(), loaded_scene = -1, nown = 0;
+    if (hd_loaded() && (scene != loaded_scene || !level)) hd_unload(), merge_reset(), loaded_scene = -1;
     if (level && !hd_loaded() && scene >= 1 && (scene != loaded_scene || hd_lost())) {
         loaded_scene = scene; // tried once per scene: a scene without data stays on HD
         // Planet X's data is where it sits in the Taz hub
