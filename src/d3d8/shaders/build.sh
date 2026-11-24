@@ -25,6 +25,7 @@ c scene.hlsl vs_inst_depth vs_3_0 vs_inst_depth
 c scene.hlsl vs_inst_depth vs_3_0 vs_grass_depth GRASS WINDY
 c scene.hlsl vs_sky vs_3_0 vs_sky
 c scene.hlsl vs_char_depth vs_3_0 vs_char_depth
+c scene.hlsl vs_prop vs_2_0 vs_prop
 c scene.hlsl ps_depth ps_3_0 ps_depth
 c scene.hlsl ps_world ps_3_0 ps_world
 c scene.hlsl ps_world ps_3_0 ps_world_mat MATERIAL

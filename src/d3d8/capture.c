@@ -24,6 +24,14 @@ int capture_tests(void) { return settings.tests; }
 void capture_scene(void)
 {
     if (!settings.tests) return;
+    // Boss levels set themselves up on their first frame in play (state 1) and their teardown assumes that ran, and
+    // leaving from a rules page (state 14) leaves a freed texture for the next visit's. So a jump waits for play, pause or
+    // a hint camera (1, 3, 8), after a frame in play since the level loaded (a Continue reloads without one).
+    static int requests, last_scene = -1, was_playing, played;
+    static DWORD waiting;
+    if (requests != scene_requests || last_scene != SCENE) requests = scene_requests, last_scene = SCENE, was_playing = played = 0;
+    played |= was_playing;
+    was_playing = GAME_STATE == 1;
     if (GetFileAttributesA("taz-hd\\costume") != INVALID_FILE_ATTRIBUTES) {
         DeleteFileA("taz-hd\\costume");
         void *taz = PLAYER;
@@ -46,13 +54,23 @@ void capture_scene(void)
         if (!marked && taz && SCENE >= 2) ((void(__cdecl *)(void *, int))0x4cd830)(taz, 0);
     }
     f = fopen("taz-hd\\scene", "r");
-    if (!f) return;
+    if (!f) {
+        waiting = 0;
+        return;
+    }
     char word[8] = "";
     int scene, ok = fscanf(f, "%d %7s", &scene, word) >= 1 && scene >= 0 && scene < 0x25;
     fclose(f);
     int boot = !strcmp(word, "boot"); // from the menus, into save slot One
     if (boot && SCENE == 0) return; // too early: the scene change crashes during the logos
     if (!boot && SCENE < 2) ok = 0;
+    if (ok && SCENE >= 2 && !(played && (GAME_STATE == 1 || GAME_STATE == 3 || GAME_STATE == 8))) {
+        if (!waiting) waiting = GetTickCount(), log_line("capture: scene %d waits for this level to be in play (state %d)", scene, GAME_STATE);
+        if (GetTickCount() - waiting < 30000) return;
+        log_line("capture: this level was not in play in 30 s, scene %d refused", scene);
+        ok = 0;
+    }
+    waiting = 0;
     if (boot) *(int *)0x6c8eec = 0;
     DeleteFileA("taz-hd\\scene"); // first: loading runs game frames, which come back here
     if (ok && !strcmp(word, "intro")) *(BYTE *)(0x6c9860 + *(int *)0x6c8eec * 0x13d4 + scene * 0xa8) &= ~1; // hub intro not seen yet

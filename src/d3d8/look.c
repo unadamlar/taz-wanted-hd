@@ -28,9 +28,22 @@ static HRESULT (WINAPI *draw_real)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, U
 static struct { int frames, want; double look_ms, frame_ms, present_ms; UINT world, game, pieces, merged; LARGE_INTEGER last; } m;
 static UINT stat_world, stat_game;
 
+// Costume pieces the game attaches to characters (a helmet, a hat) are world draws, made by FUN_0055fb50 from the
+// attachment lists (solid at 0x477f1c, see-through at 0x477fca): they get the characters' paint and stay out of the bloom.
+static int attached;
+static int __cdecl draw_attached(void *instance, int a, int b)
+{
+    attached = 1;
+    int r = ((int(__cdecl *)(void *, int, int))0x55fb50)(instance, a, b);
+    attached = 0;
+    return r;
+}
+
 void look_install(void *dp)
 {
     draw_real = dp;
+    redirect_call((BYTE *)0x477f1c, (void *)0x55fb50, draw_attached);
+    redirect_call((BYTE *)0x477fca, (void *)0x55fb50, draw_attached);
     char v[8];
     settings_get("look", "0", v, sizeof v);
     level = settings.tests && atoi(v) ? 4 : 0;
@@ -505,6 +518,16 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     IDirect3DDevice8_GetTransform(dev, D3DTS_WORLD, (D3DMATRIX *)w);
     for (int i = 0; i < 3; i++)
         for (int j = 0; j < 4; j++) rows[i][j] = w[j][i];
+    if (attached) {
+        float style[4];
+        IDirect3DTexture8 *fur = style_look(dev, style);
+        hd_char_alpha(d, 1), char_drawing = 1;
+        hd_prop_begin(d, rows[0], style, d3d9_texture(fur));
+        draw_real(dev, type, start, count);
+        hd_char_end(d);
+        IDirect3DDevice8_SetVertexShader(dev, shader);
+        return 1;
+    }
     hd_world_quick(d, rows[0], h);
     if (bark) hd_world_float(d, -4055.5f); // the pond's surface
     draw_real(dev, type, start, count);

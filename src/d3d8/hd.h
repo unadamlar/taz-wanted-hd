@@ -74,5 +74,6 @@ void hd_glow_end(hd_dev d, unsigned long dest_blend);
 // Characters: pixel shader and constants around one draw.
 struct IDirect3DTexture9;
 void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_colour, float scale, const float *style, struct IDirect3DTexture9 *fur);
+void hd_prop_begin(hd_dev d, const float *world, const float *style, struct IDirect3DTexture9 *fur); // then draw, hd_char_end
 void hd_char_end(hd_dev d);
 void hd_char_alpha(hd_dev d, int on);

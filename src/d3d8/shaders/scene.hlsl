@@ -509,6 +509,21 @@ struct CharIn { float2 uv : TEXCOORD0; float3 w : TEXCOORD2; float3 n : TEXCOORD
 float4 CHAR_LIGHT[4] : register(c26);  // the two nearest lamps: position, 1 / r^2; colour
 float4 CHAR_STYLE    : register(c31);  // shading band offset, slope, fur strength, highlight
 sampler2D FUR : register(s5);
+// A costume piece the game attaches to a character (a helmet, a hat) is a world draw: it gets the same outputs, and
+// the device's linear fog like the game's character shaders (ps_char leaves fog to the device).
+float4 PROP_FOG : register(c17);  // fog end, 1 / (end - start)
+struct PropOut { float4 p : POSITION; float2 uv : TEXCOORD0; float3 w : TEXCOORD2; float3 n : TEXCOORD3; float3 bp : TEXCOORD4; float3 bn : TEXCOORD5; float4 c : COLOR0; float fog : FOG; };
+PropOut vs_prop(WorldIn i)
+{
+    PropOut o;
+    float4 q = float4(i.p.xyz, 1);
+    o.w = float3(dot(WORLD[0], q), dot(WORLD[1], q), dot(WORLD[2], q));
+    o.n = float3(dot(WORLD[0].xyz, i.n), dot(WORLD[1].xyz, i.n), dot(WORLD[2].xyz, i.n));
+    o.p = clip_of(o.w);
+    o.uv = i.uv, o.bp = i.p.xyz, o.bn = i.n, o.c = i.c;
+    o.fog = saturate((PROP_FOG.x - o.p.w) * PROP_FOG.y);
+    return o;
+}
 float4 CHAR_HOLD     : register(c34);  // exposure, contrast, saturation of the final pass: pale paint keeps its colour through it
 float4 CHAR_FILL     : register(c30);  // keeps characters readable away from the lamps of a night level
 
