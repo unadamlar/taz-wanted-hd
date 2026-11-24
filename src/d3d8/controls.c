@@ -21,7 +21,7 @@
 #define CAMERA_UPDATE ((void (*)(BYTE *))0x4dfef0)
 #define SPIT ((int (*)(BYTE *, int, int, int, int, float))0x47acd0) // launches what the actor carries along its facing
 #define MECHA_TWEETY (*(BYTE **)0x71f89c) // the last boss's actor
-#define BOSS_STATE (*(BYTE **)0x71f8a0)   // its fight's state; +0x30 is 1 in the first stage (not checked past it)
+#define BOSS_STATE (*(BYTE **)0x71f8a0)   // its fight's state; +0x34 is the stage, 1 to 3 (FUN_004fdcxx tests it)
 #define ASSIST 0.21f // radians, about 12 degrees
 #define LINE_HITS ((BYTE (*)(void *, const float *, const float *))0x45e870) // level between two points?
 #define COLLISION_CACHE ((void *)0x7054e8)
@@ -426,7 +426,7 @@ static void turn_actor(BYTE *actor, float a)
 // is turned onto him. The later stages' targets are not handled.
 static int __cdecl spit(BYTE *actor, int a, int b, int c, int d, float speed)
 {
-    if (settings.aim_assist && SCENE == 0x14 && actor == PLAYER && MECHA_TWEETY && BOSS_STATE && *(int *)(BOSS_STATE + 0x30) == 1) {
+    if (settings.aim_assist && SCENE == 0x14 && actor == PLAYER && MECHA_TWEETY && BOSS_STATE && *(int *)(BOSS_STATE + 0x34) == 1) {
         const float *q = (const float *)(actor + 0xe0), *p = (const float *)(actor + 0xc0), *t = (const float *)(MECHA_TWEETY + 0xc0);
         float fx = -2 * (q[0] * q[2] + q[3] * q[1]), fz = 2 * (q[0] * q[0] + q[1] * q[1]) - 1; // the model faces -z
         float off = wrap(atan2f(t[0] - p[0], t[2] - p[2]) - atan2f(fx, fz));
