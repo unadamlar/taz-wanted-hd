@@ -462,6 +462,42 @@ WEST_LOOK = dict(
     sky=dict(zenith="#1a68e0", horizon="#a6dcff", horizon_warm="#ffe9c8", sky_strength=1.3, cloud_white=1.3, ambient="#e8d8cc"), cliff=dict(),
 )
 
+# ---- ghost town (scene 14): the west at night. Its blue is baked into the vertices like the city's, so the city's night recipe
+# (unbake, moon, glows) goes over the west hub's surfaces.
+GHOST_RULES = [
+    ("resobjs/*", "gameplay"), ("ghost/extras/*", "gameplay"), ("ghost/textures/tazwanted", "gameplay"), ("ghost/textures/tazanted02", "gameplay"),
+    ("ghost/textures/*crate*", "gameplay"), ("ghost/textures/tumblebox*", "gameplay"), ("ghost/textures/plasticbox*", "gameplay"),
+    ("ghost/textures/cardbox", "gameplay"), ("ghost/textures/*sign*", "gameplay"), ("ghost/textures/noentrydoor*", "gameplay"),
+    ("ghost/textures/donotenter", "gameplay"), ("ghost/textures/gongwanted", "gameplay"), ("ghost/textures/wantedtrainposter", "gameplay"),
+    ("ghost/textures/ghlamp*", "lamp"), ("ghost/skybox/*", "sky"), ("resTex/shadowsub", "hide"), ("resTex/haar", "hide"),
+    ("ghost/textures/spookyfloor*", "ground"), ("ghost/textures/spookypath*", "ground"), ("ghost/textures/spookycob*", "ground"),
+]
+GHOST_DETAIL = [(f"ghost/textures/{p}", m) for p, m in (
+    ("spookyrock*", "d_canyon"), ("ghostrockroof", "d_canyon"), ("spookyentrance*", "d_canyon"), ("bh_slates*", "d_canyon"), ("gh_roof*", "d_canyon"),
+    ("ghostiles*", "d_tile"), ("ghtilefloor*", "d_tile"), ("labtunfloor*", "d_tile"), ("saloonfloor", "d_plank"), ("bh_floor", "d_plank"), ("ghlibaryfloor", "d_plank"),
+    ("spookyboards*", "d_plank"), ("spookystake*", "d_plank"), ("ghrafters*", "d_plank"), ("gh_wood", "d_plank"), ("ghplanks*", "d_plank"), ("mine_wood*", "d_plank"),
+    ("bh_*planks*", "d_plank"), ("saloonwalls*", "d_plank"), ("saloonvara*", "d_plank"), ("ghroofedge", "d_plank"), ("gh_green_wood*", "d_plank"),
+    ("spookytree*", "d_plank"), ("spookytrunk*", "d_plank"), ("slippytree", "d_plank"), ("treeinternal", "d_plank"), ("ghtreestump", "d_plank"),
+    ("spookytrack*", "d_iron"), ("gold_*", "d_iron"), ("labpipe*", "d_iron"), ("ghostspinnycog*", "d_iron"), ("boiler_side", "d_iron"), ("gh_boilder*", "d_iron"),
+    ("knight_armour", "d_iron"), ("scarymetalplank", "d_iron"), ("gh_metaldoor", "d_iron"), ("labtank*", "d_iron"),
+    ("ghostwalls*", "d_plaster"), ("ghwallpaper*", "d_plaster"), ("ghpanels*", "d_plaster"), ("labroom*", "d_plaster"), ("labtunnel*", "d_plaster"),
+    ("ghcellerwall", "d_plaster"), ("ghatticwall", "d_plaster"), ("ghbeamwall", "d_plaster"), ("bh_anc_wall", "d_plaster"), ("ghlibarypanels*", "d_plaster"))]
+GHOST_TILES = dict(d_cobble=dict(set="stone_wall", period=2.2, px=1024, detail=0.45, triplanar=True, rough=0.85, normal=0.7),
+                   d_canyon=WEST_TILES["d_canyon"], d_plank=WEST_TILES["d_plank"], d_iron=WEST_TILES["d_iron"],
+                   d_tile=DEPT_TILES["d_tile"], d_plaster=DEPT_TILES["d_wall"])
+GHOST_GLOW = [(f"ghost/textures/{p}", g, r) for p, g, r in (
+    ("spookyneon*", 2.0, None), ("spookyeyes*", 1.6, None), ("spookywindows*", 1.2, None), ("spookypunkin*", 1.6, None), ("candleflame*", 2.2, None),
+    ("ghwindows*", 0.9, (0.45, 0.75)), ("saloonwindows", 0.9, (0.45, 0.75)), ("twwindow", 0.9, (0.45, 0.75)), ("ghlamp*", 2.2, (0.4, 0.7)),
+    ("lablight*", 2.0, (0.45, 0.75)), ("labtanklight", 1.8, None), ("lab*bubbly*", 1.4, None), ("labtankswitch*", 1.0, None), ("datacomp*", 0.8, None),
+    ("spookycpu*", 0.8, None), ("labcomputer*", 0.8, None), ("flashblue", 1.6, None), ("pumkin*", 1.2, (0.45, 0.75)), ("ghchandal*", 1.6, (0.45, 0.75)),
+    ("ghfireplace*", 1.2, (0.4, 0.7)), ("juke*", 1.0, None))]
+GHOST_LOOK = dict(
+    sun=dict(sun_azimuth=200.0, sun_elevation=40.0, sun_strength=2.4, sun_color="#c8c0ff"),  # moonlight from the painted skull moon's side
+    grade=dict(exposure=0.8, look="AgX - Punchy", saturation=1.15, bloom=0.5, fog=0.2, fog_start=40.0, fog_depth=220.0, ambient_strength=0.95),
+    sky=dict(zenith="#120a38", horizon="#2a1d68", horizon_warm="#3a2a80", sky_strength=1.0, cloud_white=0.3, ambient="#9a88e8"), cliff=dict(),
+)
+GHOST_HAND = dict(DEPT_HAND, camera_B=dict(loc=(20.0, -10.0, 10.0), look_at=(24.0, 2.0, 8.0), lens=16.0), camera_C=dict(loc=(5.0, 45.0, -4.0), look_at=(13.0, 51.0, -6.0), lens=16.0))
+
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", captures=("world-hero.bin", "world-sweep.bin"), rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
@@ -553,4 +589,11 @@ LEVELS = {
                                 soft=tuple(f"westhub/textures/{n}" for n in ("cactus07", "cactus_bit", "cactus_bit2"))),
                     relief=dict(textures=("westhub/textures/vert_strips*", "westhub/textures/wwrock*"), tint=(0.9, 1.075, 1.25), min_area=6.0, cell=0.4, depth=0.3, band=1.1, block=1.6, foot=1.8, border=0.8),
                     fog_color="#f4d8b0", ground_tint=(0.82, 0.62, 0.42), sky_gain=1.3, char_keep=0.55, char_fill=(-0.65, -0.6, -0.5), tints={"d_sand": (2.0, 1.66, 1.05), "d_canyon": (1.8, 2.15, 2.5), "d_cliff": (1.8, 2.15, 2.5), "flat": (1.3, 0.86, 0.7)}),
+    "ghost": dict(scene=14, pak="ghost", blend="westhub/ghost/ghost.blend", out="westhub/ghost/pass1", rules=GHOST_RULES, hand=GHOST_HAND,
+                  look=GHOST_LOOK, hdri=None, hdri_rotation=0.0, hub=(-62.0, -93.0, 62.0, 96.0), sky_panels=True, island_boxes=True,
+                  captures=tuple(f"westhub/ghost/world-{n}.bin" for n in ("hero", "sweep-a", "sweep-b", "sweep-c")),
+                  materials=tuple(GHOST_TILES) + ("flat",), tiles=GHOST_TILES, detail=GHOST_DETAIL, binds={"ground": (("d_cobble", 4, -1.0, 0.0),)},
+                  clutter_opts=dict(leaves=1.6, pebbles=3.0, stones=0.4), grass_min=2.0, glow=GHOST_GLOW, lamps=dict(CITY_LAMPS, color="#ffcf8a", power=4.0, extra=()),
+                  relief=dict(textures=("ghost/textures/spookyrock*",), min_area=6.0, cell=0.4, depth=0.3, band=1.1, block=1.6, foot=1.8, border=0.8),
+                  fog_color="#2a1d5c", unbake=0.5, sky_gain=2.0, char_fill=(0.2, 0.2, 0.3)),
 }

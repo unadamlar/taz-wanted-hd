@@ -865,6 +865,8 @@ if "relief" in LEVEL:
                 by_label[label] = True
     for label in by_label:
         P, N, U, C = relief(dict(LEVEL["relief"], textures=(label,)))
+        if P and "unbake" in LEVEL:  # as for solids: the baked night tint goes, the moon shades
+            C = [c ** LEVEL["unbake"] for c in C]
         if P:
             place_static("relief_" + label.rsplit("/", 1)[1], *(np.concatenate(x) for x in (P, N, U, C)), solid_mat(label, LEVEL["relief"].get("tint", (1, 1, 1)), 0.88))
 if "chain" in LEVEL or "grill" in LEVEL:
