@@ -10,7 +10,7 @@ from mathutils import Matrix, Vector, noise as mnoise
 
 here = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, here)
-import bake, dds, dress, kit, made, space, solid
+import bake, dds, dress, kit, made, props3d, space, solid
 
 a = argparse.ArgumentParser()
 a.add_argument("--level", default="zoohub")
@@ -103,6 +103,9 @@ if "dome" in LEVEL:
     MATS["caster"] = ("", False, CASTER, TWO_SIDED, 0.0, (1, 1, 1), 1.0, 0, 0)
     MATS["dome_steel"] = ("", False, GLASS, TWO_SIDED, 0.0, (0.34, 0.37, 0.42), 0.28, 1, 0)
     LEVEL["materials"] += ("glass", "dome_steel", "caster", "hull")
+MATS["leaves_tint"] = ("leaves_tint", False, CARD, TWO_SIDED | WIND, 0.0, (1, 1, 1), 0.75, 0, 0.5)  # grey leaves: a bush's colour is its vertex colour
+if "materials" in LEVEL and LEVEL.get("card_models"):  # real 3D stand-ins for painted cards: flowers and boards are flat colour
+    LEVEL["materials"] = tuple(LEVEL["materials"]) + ("flat",) + (("leaves", "leaf_core", "leaves_tint") if any(k == "bush" for _, k in LEVEL["card_models"]) else ())
 if "materials" in LEVEL:  # a level loads only what it uses
     MATS["paint"] = ("", False, OPAQUE, 0, 1000.0, (0.86, 0.88, 0.92), 0.6, 0, 0)  # road markings, kept white
     MATS = {n: m for n, m in MATS.items() if n in LEVEL["materials"]}
@@ -120,6 +123,7 @@ BLENDER_MAT = {
 
 
 def format_mat(name):
+    name = name if name in BLENDER_MAT else name.split(".")[0]  # kit meshes made again here carry Blender's .001 copies
     if name in BLENDER_MAT:
         return BLENDER_MAT[name]
     if name.startswith("kit_leaf_"):
@@ -188,6 +192,11 @@ for name, mat, folder in (("leaves", kit._cards_mat, "leaves024"), ("ivy", kit._
     if name in MATS:
         set_ = kit.TEXSETS[folder]
         put_tex(name, dds.mips(card_tile(name, mat(SC) if name == "leaves" else mat(), f"{set_[0]}/{set_[2]}"), cut=0.5), b"DXT5")
+if "leaves_tint" in MATS:
+    t_ = card_tile("leaves", kit._cards_mat(SC), "%s/%s" % (kit.TEXSETS["leaves024"][0], kit.TEXSETS["leaves024"][2]))
+    lum = dds.to_linear(t_[..., :3]) @ np.array([0.3, 0.59, 0.11])
+    g = dds.to_srgb(np.clip(lum / max(lum[t_[..., 3] > 0.5].mean(), 1e-6) * 0.55, 0, 1))
+    put_tex("leaves_tint", dds.mips(np.dstack([g, g, g, t_[..., 3]]).astype(np.float32), cut=0.5), b"DXT5")
 if "water" in MATS:
     n = periodic_noise(512, 1.6, 5)
     gx, gy = (np.roll(n, -1, 1) - np.roll(n, 1, 1)) / 2, (np.roll(n, -1, 0) - np.roll(n, 1, 0)) / 2
@@ -470,7 +479,7 @@ else:
 
 # The dressing hides a fence texture only near kit fences, but the game can only hide a whole texture:
 # faces that stayed visible are redrawn from the look data with the same HD texture.
-HIDDEN_ROLES = ("hide", "fence_rail", "fence_post", "fence_cap", "tree", "palm", "drip", "water", "sky")
+HIDDEN_ROLES = ("hide", "fence_rail", "fence_post", "fence_cap", "tree", "palm", "drip", "vine", "water", "sky")
 kept = collections.defaultdict(list)
 for coll in dress.GAME_COLLS:
     for o in (bpy.data.collections[coll].objects if coll in bpy.data.collections else []):
@@ -888,15 +897,36 @@ if "chain" in LEVEL or "grill" in LEVEL:
         place_static(kind, *(np.concatenate(x) for x in zip(*parts)), mat)
 
 # Things the game may move: models in their own space, drawn at the game's transform in place of its draws (hd_solid_draw).
+def bush_geo(base, height, radius, colour, rng):
+    """A leafy bush of the kit's clumps and leaf cards filling a painted bush's footprint, tinted to its paint (sRGB)."""
+    R, H = radius / K, max(height, radius * 0.6) / K
+    n = int(np.clip(round((R / 0.42) ** 2 * H / 0.7), 3, 22))
+    centers = []
+    for _ in range(n):
+        a_, d_ = rng.uniform(0, 2 * np.pi), np.sqrt(rng.uniform(0, 1)) * R * 0.72
+        r_ = rng.uniform(0.32, 0.46) * min(1.0, max(R, 0.5))
+        z_ = rng.uniform(r_ * 0.9, max(H - r_ * 0.8, r_ * 0.95))
+        centers.append((Vector((np.cos(a_) * d_, np.sin(a_) * d_, z_)), r_))
+    o = bpy.data.objects.new("kit_bushprop", kit._canopy_mesh("kit_bushprop", centers, max(R, H / 2), rng, 30, SC))
+    sc.collection.objects.link(o)
+    bpy.context.view_layer.update()
+    p, n_, c, uv, m = tris_of(o, True)
+    bpy.data.objects.remove(o)
+    lum = (c @ np.array([0.3, 0.59, 0.11]))[:, None]
+    target = dds.to_linear(np.asarray(colour, float))
+    cards = m == MAT_ID["leaves"]
+    c = np.where(cards[:, None], lum * target / max(target.max(), 1e-3) * 1.4, lum * target / max(target @ np.array([0.3, 0.59, 0.11]), 1e-3))
+    m = np.where(cards, MAT_ID["leaves_tint"], m)
+    return p + base, n_, dds.to_srgb(np.clip(c, 0, 1)), uv, m
+
+
 solids, static_hide = {}, set()
 cfg = dict(LEVEL.get("solids") or dict(cards={}, soft=()))
 cfg["cards"] = dict(cfg["cards"])
-for l in tex_hash:  # painted cut-outs (domed) and flat boards (signs: thickness only), by rule: slabs traced from the paint's alpha
-    for key in ("flat_cards", "flat_boards"):
-        for e in LEVEL.get(key, ()):
-            pat, puff = e if isinstance(e, tuple) else (e, 0.0)  # boards: thickness only
-            if l not in cfg["cards"] and fnmatch.fnmatch(l, pat):
-                cfg["cards"][l] = dict(auto=True, puff=puff)
+for l in tex_hash:  # painted cards (bushes, flowers, leaves, signs), by rule: real 3D stand-ins where each card stands
+    for pat, kind in LEVEL.get("card_models", ()):
+        if l not in cfg["cards"] and fnmatch.fnmatch(l, pat):
+            cfg["cards"][l] = dict(auto=True, kind=kind)
 if cfg["cards"] or cfg["soft"]:
     card_h, labels = {tex_hash[l] for l in cfg["cards"]}, collections.defaultdict(list)
     for l, h in tex_hash.items():
@@ -927,12 +957,16 @@ if cfg["cards"] or cfg["soft"]:
             if spec.get("links"):
                 p, n, u, c = solid.chain_on_cards(pos, uv, col)
             elif spec.get("auto"):
-                alpha = game_rgba(label_of(ds[0][0]))[..., 3]
-                small = alpha[::max(1, alpha.shape[0] // 256), ::max(1, alpha.shape[1] // 256)]  # traced at up to 256 px
-                fd = LEVEL.get("flat_depth", (0.012, 0.18))  # thickness and dome, as shares of the smaller side and inner radius
-                parts, kept = [], []
+                parts, kept, traced = [], [], {}
                 for d, (dp, du, dc) in zip(ds, T):
-                    got = []
+                    lab = label_of(d[0])
+                    kind = cfg["cards"][lab]["kind"]  # a placed plant mixes kinds: its leaves and its flower
+                    if lab not in traced:
+                        rgba = game_rgba(lab)
+                        step_ = max(1, rgba.shape[0] // 256, rgba.shape[1] // 256)
+                        traced[lab] = rgba[::step_, ::step_, 3], rgba[::step_, ::step_, :3]  # traced at up to 256 px
+                    small, paint = traced[lab]
+                    got, sil, cols = [], [], []
                     for t in solid.card_pieces(dp, du):
                         tu, size = du[t], solid.repeat_size(dp[t], du[t])
                         a_ = small
@@ -940,17 +974,50 @@ if cfg["cards"] or cfg["soft"]:
                             a_ = small * solid.uv_mask(tu - np.floor(tu.reshape(-1, 2).min(0) + 1e-6), small.shape)
                         if not solid.outlines(a_, 1.0, (a_.shape[1] / 48) ** 2):
                             continue
-                        P, N = solid.plate(a_, size, fd[0] * min(size), tol=1.0, min_area=(a_.shape[1] / 48) ** 2, puff=spec["puff"])
+                        thin = 0.004 * min(size) if kind == "leaf" else 0.03 * min(size) if kind == "sign" else 0.0
+                        P, N = solid.plate(a_, size, max(thin, 1e-3), tol=1.0, min_area=(a_.shape[1] / 48) ** 2)
+                        if kind == "leaf":  # a real leaf: folded along its midrib and drooping to its tip
+                            P, N = props3d.curl(P, N, a_, size)
                         q = solid.on_card(P, N, dp[t], tu, dc[t], size)
-                        if len(q) and len(q[0]) and np.isfinite(q[0]).all():
+                        if not (len(q) and len(q[0]) and np.isfinite(q[0]).all()):
+                            continue
+                        px = paint[a_ > 0.5]
+                        px = px[px.max(1) > 0.25] if (px.max(1) > 0.25).any() else px  # the paint, not its dark outline
+                        hue = np.round(np.arctan2(np.sqrt(3) * (px[:, 1] - px[:, 2]), 2 * px[:, 0] - px[:, 1] - px[:, 2]) / (np.pi / 6)) % 12
+                        cnt = np.bincount(hue.astype(int), minlength=12)
+                        other = cnt.copy(); other[3:6] = 0  # greens: a magenta bush with green leaves painted on stays magenta
+                        main = px[hue == (other.argmax() if other.max() >= 0.3 * cnt.sum() else cnt.argmax())]
+                        cols.append(np.median(main, 0) * np.clip(dc[t].mean((0, 1)), 0, 1))
+                        sil.append(q[0])
+                        if kind in ("leaf", "sign"):
                             got.append((*q, np.full(len(q[0]), solid_mat(label_of(d[0])))))  # a placed plant can mix textures
+                            if kind == "sign" and (a_ > 0.5).mean() > 0.8 * (a_ > 0.5).any(1).mean() * (a_ > 0.5).any(0).mean():
+                                # a squarish sign: a wooden board round its art (shaped signs stay their own solid plate)
+                                bp, bn, bc = props3d.board(q[0], solid.uv_axes(dp[t], tu), 0.75 * thin)
+                                got.append((bp, bn, np.zeros((len(bp), 2)), bc, np.full(len(bp), MAT_ID["flat"])))
+                    if sil and kind == "flower":
+                        W = np.concatenate(sil)
+                        cen = W.mean(0)
+                        bp, bn, bc = props3d.flower(cen, 0.55 * np.ptp(W, 0).max(), np.clip(np.mean(cols, 0), 0, 1), np.random.default_rng(solid.key_of(d[4]) & 0xffff))
+                        got.append((bp, bn, np.zeros((len(bp), 2)), bc, np.full(len(bp), MAT_ID["flat"])))
+                    if sil and kind in ("bush", "plant"):
+                        W = np.concatenate(sil)
+                        base, height, radius = props3d.footprint(W)
+                        colour = np.clip(np.mean(cols, 0), 0, 1)
+                        rng_ = np.random.default_rng(solid.key_of(d[4]) & 0xffff)
+                        if kind == "bush":
+                            bp, bn, bc, bu, bm = bush_geo(base, height, radius, colour, rng_)
+                        else:
+                            bp, bn, bc = props3d.plant(base, height, max(radius, height * 0.35), colour, (0.18, 0.5, 0.12), rng_)
+                            bu, bm = np.zeros((len(bp), 2)), np.full(len(bp), MAT_ID["flat"])
+                        got.append((bp, bn, bu, bc, bm))
                     if not got:  # a draw that gave nothing stays the game's own
                         continue
                     # each draw its own prototype: a placed plant's leaves are shared by its red and blue copies
                     p, n, u, c, m = (np.concatenate(x) for x in zip(*got))
                     if "unbake" in LEVEL:
                         c = c ** LEVEL["unbake"]
-                    kept.append((d, (p.astype(np.float32), n.astype(np.float32), dds.to_linear(c).astype(np.float32), u.astype(np.float32), m)))
+                    kept.append((d, (p.astype(np.float32), n.astype(np.float32), dds.to_linear(np.clip(c, 0, 1)).astype(np.float32), u.astype(np.float32), m)))
                 if not kept:
                     continue
                 if solid._identity(ds[0][1]) and len(kept) == len(ds):
@@ -962,7 +1029,7 @@ if cfg["cards"] or cfg["soft"]:
                 else:
                     for d, geo in kept:
                         solids.setdefault((solid.key_of(d[4]), d[0]), add_proto("solid%d" % len(protos), *geo))
-                print("export: rounds %d flat game draws, %s" % (len(kept), sorted({labels[d[0]][0].rsplit("/", 1)[1] for d, _ in kept})))
+                print("export: real 3D %s for %d game draws, %s" % (sorted({cfg["cards"][label_of(d[0])]["kind"] for d, _ in kept}), len(kept), sorted({labels[d[0]][0].rsplit("/", 1)[1] for d, _ in kept})))
                 continue
             else:
                 # the same thickness in the world, whatever scale the game places this model at
@@ -978,6 +1045,9 @@ if cfg["cards"] or cfg["soft"]:
             mats = [solid_mat(label_of(d[0])) for d in ds]
             tex = np.concatenate([np.full(len(t[0]), i) for i, t in enumerate(T)])
             p, n, u, mi = solid.rounded(np.concatenate([t[0] for t in T]), np.concatenate([t[1] for t in T]), tex)
+            if any(fnmatch.fnmatch(labels[d[0]][0], pat) for d in ds for pat in LEVEL.get("ribbed", ())):  # a cactus: ribs round each upright part
+                cen = np.array([t[0].reshape(-1, 3).mean(0) for t in T])
+                p, n = props3d.ribs(p.reshape(-1, 3), n.reshape(-1, 3), cen, depth=0.05)
             m, vc = np.array(mats)[mi], np.ones_like(p)
         pi = add_proto("solid%d" % len(protos), p.astype(np.float32), n.astype(np.float32), vc.astype(np.float32), u.astype(np.float32), m)
         print("export: replaces %d game draws, %s: %d triangles" % (len(ds), sorted({labels[d[0]][0].rsplit("/", 1)[1] for d in ds}), len(p) // 3))

@@ -464,7 +464,7 @@ def blender_main(argv):
         for p0, p1 in segs:
             k = tuple(sorted([(round(p0.x, 1), round(p0.y, 1)), (round(p1.x, 1), round(p1.y, 1))]))
             uniq[k] = (p0, p1)
-        nonground = ("fence_rail", "fence_post", "fence_cap", "tree", "palm", "drip", "hide", "sky", "hidden")
+        nonground = ("fence_rail", "fence_post", "fence_cap", "tree", "palm", "drip", "vine", "hide", "sky", "hidden")
         blk = [o for o in live if not poly_mask(o, nonground).all()]
         verts, polys, off = [], [], 0
         for o in blk:
@@ -676,6 +676,14 @@ def blender_main(argv):
         edges = kit.top_edges_open(cliffs, ("cliff", "cliff_lilac"), blockers=solid) if cliffs else []
         if overlay:  # vines hang from the rock mass rim (also where tops border grass objects)
             edges = mass_edges
+        vine_edges = []
+        for ob in live:  # painted vine cards: real vines hanging from their top edge
+            m = poly_mask(ob, ("vine",))
+            for isl, lo, hi in kit.islands(ob, m) if m.any() else ():
+                nrm = ob.matrix_world.to_3x3() @ ob.data.polygons[isl[0]].normal
+                away = Vector((nrm.x, nrm.y, 0)).normalized() if nrm.xy.length > 1e-3 else Vector((1, 0, 0))
+                vine_edges += [(a_, b_, away) for a_, b_ in rail_polyline(ob, isl, hi.z)]
+            hide_faces(ob, m)
         for ob in live:  # painted grass drips over ledges: vines and a grassy lip along their top edge instead
             m = poly_mask(ob, ("drip",))
             for isl, lo, hi in kit.islands(ob, m) if m.any() else ():
@@ -683,8 +691,8 @@ def blender_main(argv):
                 away = Vector((nrm.x, nrm.y, 0)).normalized() if nrm.xy.length > 1e-3 else Vector((1, 0, 0))
                 edges += [(a_, b_, away) for a_, b_ in rail_polyline(ob, isl, hi.z)]
             hide_faces(ob, m)
-        vines = [v for v in (kit.scatter_vines(edges, SCALE, seed=5, per_m=3.0 if overlay else 5.0),
-                             kit.scatter_ledge_moss(edges, SCALE, seed=6)) if v] if edges else []
+        vines = [v for v in (kit.scatter_vines(edges + vine_edges, SCALE, seed=5, per_m=3.0 if overlay else 5.0),
+                             kit.scatter_ledge_moss(edges, SCALE, seed=6) if edges else None) if v] if edges or vine_edges else []
         lumps = []
         if "lumps" in L:
             lp = kit.sample_surface_ex(live, lambda o: poly_mask(o, L["lumps"]["roles"]) & _up(o, 0.8), L["lumps"]["density"], 13, hub)["P"]

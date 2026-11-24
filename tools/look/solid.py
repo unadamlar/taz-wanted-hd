@@ -118,11 +118,10 @@ def outlines(alpha, tol, min_area):
     return rings
 
 
-def plate(alpha, size, depth, tol=1.0, min_area=8.0, repeat=1, puff=0.0):
+def plate(alpha, size, depth, tol=1.0, min_area=8.0, repeat=1):
     """The opaque shape of a cut-out as a solid: corners (u, v, side offset) and normals in (size x, size y, 1) units.
     Face normals lean towards the outline, so a thin bar shades round without extra triangles.
-    repeat traces that many copies side by side, so a post painted across the texture's edge stays one post.
-    puff > 0 domes both faces, up to puff x the shape's inner radius, so a painted leaf or sign reads as a soft solid."""
+    repeat traces that many copies side by side, so a post painted across the texture's edge stays one post."""
     alpha = np.tile(alpha, (1, repeat))
     h, w = alpha.shape
     texels = np.array([w / repeat, h])
@@ -138,45 +137,19 @@ def plate(alpha, size, depth, tol=1.0, min_area=8.0, repeat=1, puff=0.0):
         edges += [(at + i, at + (i + 1) % len(r)) for i in range(len(r))]
         at += len(r)
     out = np.concatenate(out)
-    inner = np.zeros((0, 2))
-    if puff:  # points inside the shape, away from its outline, so the faces can dome
-        step = max(w, h) / 24
-        gy, gx = np.mgrid[step / 2:h:step, step / 2:w:step]
-        g = np.column_stack([gx.ravel(), gy.ravel()])
-        g = g[alpha[g[:, 1].astype(int).clip(0, h - 1), g[:, 0].astype(int).clip(0, w - 1)] > 0.5]
-        if len(g):
-            inner = g[np.sqrt(((g[:, None] - xy[None]) ** 2).sum(2)).min(1) > step * 0.6]
-    v, _, faces, orig, *_ = geometry.delaunay_2d_cdt([Vector(q) for q in np.vstack([xy, inner]).tolist()], edges, [], 0, 1e-4)
+    v, _, faces, orig, *_ = geometry.delaunay_2d_cdt([Vector(q) for q in xy.tolist()], edges, [], 0, 1e-4)
     v = np.array([tuple(q) for q in v])
     t = np.array([f for f in faces if len(f) == 3])
     c = np.rint(v[t].mean(1)).astype(int)
     t = t[alpha[c[:, 1].clip(0, h - 1), c[:, 0].clip(0, w - 1)] > 0.5]
-    on_rim = np.array([bool(o) and o[0] < len(xy) for o in orig])
-    vo = np.array([out[o[0]] if on_rim[i] else (0.0, 0.0) for i, o in enumerate(orig)])
+    vo = np.array([out[o[0]] if len(o) else (0.0, 0.0) for o in orig])
     uv = (v + 0.5) / texels
     lean = 0.8
-    rise = np.zeros(len(v))
-    if puff and len(inner):
-        d = np.sqrt((((v[:, None] - xy[None]) * scale) ** 2).sum(2)).min(1)
-        d[on_rim] = 0
-        R = max(d.max(), 1e-6)
-        rise = puff * R * (1 - (1 - d / R) ** 2)
     parts = []
     for z, flip in ((depth, False), (-depth, True)):
         f = t[:, ::-1] if flip else t
-        zz = math.copysign(1, z) * (abs(z) + rise)
-        if puff and len(inner):  # normals of the domed face itself, leaning out at the rim
-            q = np.column_stack([v * scale, zz])
-            fn = np.cross(q[f[:, 1]] - q[f[:, 0]], q[f[:, 2]] - q[f[:, 0]])
-            vn = np.zeros((len(v), 3))
-            for k in range(3):
-                np.add.at(vn, f[:, k], fn)
-            vn[on_rim, :2] += vo[on_rim] * np.linalg.norm(vn[on_rim], axis=1, keepdims=True) * lean
-            vn /= np.maximum(np.linalg.norm(vn, axis=1, keepdims=True), 1e-9)
-            n = vn[f.ravel()]
-        else:
-            n = np.column_stack([vo[f.ravel()] * lean, np.full(f.size, math.copysign(0.6, z))])
-        parts.append((np.column_stack([uv[f.ravel()], zz[f.ravel()] if np.ndim(zz) else np.full(f.size, zz)]), n))
+        n = np.column_stack([vo[f.ravel()] * lean, np.full(f.size, math.copysign(0.6, z))])
+        parts.append((np.column_stack([uv[f.ravel()], np.full(f.size, z)]), n))
     at = 0
     for r in rings:
         i = at + np.arange(len(r))
@@ -218,6 +191,16 @@ def uv_mask(uv, shape):
         e = 1.5 / max(w, h)
         m[y0:y1, x0:x1] |= (l1 > -e) & (l2 > -e) & (1 - l1 - l2 > -e)
     return m
+
+
+def uv_axes(pos, uv):
+    """World directions of a card's texture u and v, from its best-shaped triangle."""
+    e1, e2 = uv[:, 1] - uv[:, 0], uv[:, 2] - uv[:, 0]
+    det = e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]
+    k = int(np.abs(det).argmax())
+    d1, d2 = pos[k, 1] - pos[k, 0], pos[k, 2] - pos[k, 0]
+    du, dv = (d1 * e2[k, 1] - d2 * e1[k, 1]) / det[k], (d2 * e1[k, 0] - d1 * e2[k, 0]) / det[k]
+    return du / np.linalg.norm(du), dv / np.linalg.norm(dv)
 
 
 def orientations(parts):
