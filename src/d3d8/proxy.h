@@ -43,7 +43,7 @@ void quicksave_patch(void);
 void outro_patch(void);
 int outro_music_held(void);
 void overlay_toast(const char *msg);
-extern DWORD textures_created; // Direct3D textures taz.exe has created so far
+extern DWORD textures_changed; // Direct3D textures taz.exe has created or freed so far
 void widescreen_apply(void);
 void textures_apply(void);
 void textures_reset(IDirect3DDevice8 *dev);

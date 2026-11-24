@@ -535,7 +535,7 @@ static HRESULT WINAPI hook_UnlockRect(IDirect3DTexture8 *t, UINT level)
     return real_UnlockRect(t, level);
 }
 
-DWORD textures_created;
+DWORD textures_changed;
 
 static ULONG WINAPI hook_Release(IDirect3DTexture8 *t)
 {
@@ -543,7 +543,7 @@ static ULONG WINAPI hook_Release(IDirect3DTexture8 *t)
     if (!n) {
         EnterCriticalSection(&lock);
         struct tex_entry *e = tex_lookup(t, 0);
-        if (e) unuse(e), tex_remove(e);
+        if (e) textures_changed++, unuse(e), tex_remove(e); // only the game's own textures have an entry
         LeaveCriticalSection(&lock);
         merge_texture_gone((IDirect3DBaseTexture8 *)t);
     }
@@ -564,7 +564,7 @@ static HRESULT WINAPI hook_CreateTexture(IDirect3DDevice8 *dev, UINT w, UINT h, 
         }
         BYTE *caller = __builtin_return_address(0);
         int game = caller >= exe && caller < exe_end;
-        textures_created += game;
+        textures_changed += game;
         EnterCriticalSection(&lock);
         struct tex_entry *e = tex_lookup(*tex, 0);
         if (e) unuse(e), tex_remove(e); // a freed texture's address can be reused; forget what was there
