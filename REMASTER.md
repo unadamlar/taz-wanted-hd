@@ -81,6 +81,11 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
 - Cutscenes use the level's Remaster look and keep their own props (`extracted/look/reports/step7/cutscenes/`). The mod tells a cutscene's textures
   from a level's by the pak they loaded from, so this needs nothing per level. Watched 14 of the 29 cutscenes plus two level endings. Open: the
   Tasmania intro's sky can flash flat lavender (in HD and Original too), and a bark strip crosses the zoo boss pitch in its intro.
+- West hub done (`extracted/look/reports/step7/westhub/`, data in `extracted/look/westhub/runtime/scene13`): sunlit desert, 6.56-6.85 ms uncapped. Planet X
+  worked through its real door from this hub. Not checked: popping in motion, a full walk on foot, the moving train's new chains, its cutscenes, the 2 GB limit.
+  Known leftovers: Taz's cream face and belly are paler than HD, canyon walls keep big flat faces up close, and the arch's green prop is low-poly.
+- For the user to judge in the west: the game's painted canyon stripes are kept on its own shapes. The zoo's rebuilt 3D rock would add depth but replace them,
+  and the choice carries to ghost town, goldmine, Grand Canyon and westboss.
 - For the user to judge in the city levels: real paint replaces baked colour (store's blue, museum's pink floor, construction huts teal to yellow).
 
 ## How the pieces fit
