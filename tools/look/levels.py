@@ -783,3 +783,6 @@ LEVELS["vrmuseum"] = _bonus("museum", "vrmuseum", 21, ("hero", "sweep-0", "sweep
                             lamps=dict(DEPT_LAMPS, extra=room_lamps(((-3300, -7800, 4800, 7800, -2400, 2, 4),), 1400, 13.0, "#ffd9a8", 1.8)))
 LEVELS["vrdeptstr"] = _bonus("deptstr", "vrdeptstr", 23, ("hero", "sweep-0", "sweep-1"), hub=(-52.0, -38.0, 121.0, 52.0),
                              first=[(f"vrdeptstr/textures/{p}", "gameplay") for p in _RACE_SIGNS])
+LEVELS["deaqua"] = _bonus("aqua", "deaqua", 24, ("hero", "sweep-0", "sweep-1", "sweep-2"), hub=(-93.0, -87.0, 93.0, 87.0),
+                          first=[(f"deaqua/textures/{p}", "gameplay") for p in _RACE_SIGNS + ("sign*",)])
+LEVELS["deaqua"]["detail"] += [("deaqua/textures/wash*", "d_gloss")]
