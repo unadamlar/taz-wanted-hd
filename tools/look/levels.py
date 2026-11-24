@@ -786,3 +786,21 @@ LEVELS["vrdeptstr"] = _bonus("deptstr", "vrdeptstr", 23, ("hero", "sweep-0", "sw
 LEVELS["deaqua"] = _bonus("aqua", "deaqua", 24, ("hero", "sweep-0", "sweep-1", "sweep-2"), hub=(-93.0, -87.0, 93.0, 87.0),
                           first=[(f"deaqua/textures/{p}", "gameplay") for p in _RACE_SIGNS + ("sign*",)])
 LEVELS["deaqua"]["detail"] += [("deaqua/textures/wash*", "d_gloss")]
+
+# ---- detasmania (scene 26): Tasmania under a blood-red spooky sky, smashing crates. No story twin: the Taz hub's rock and bark
+# over its own painted ground, lit warm-red from its painted sky.
+DETAS_RULES = [("resobjs/*", "gameplay"), ("detasmania/extras/*", "gameplay")] + [(f"detasmania/textures/{p}", "gameplay") for p in _RACE_SIGNS] + [
+    ("detasmania/textures/poof*", "ground"), ("detasmania/textures/mountaincloud*", "lit"), ("detasmania/skybox/*", "sky"), ("resTex/shadowsub", "hide")]
+DETAS_DETAIL = [(f"detasmania/textures/{p}", m) for p, m in (
+    ("spookyrock*", "d_cliff"), ("tazvolc*", "d_cliff"), ("loggin*", "d_bark"), ("oldwood*", "d_bark"), ("gh_*wood*", "d_bark"), ("tazwood*", "d_bark"),
+    ("saloonvara*", "d_bark"), ("spookytrack*", "d_bark"), ("gh_roof*", "d_stone"), ("ghwallpaper*", "d_stone"), ("grave*", "d_stone"))]
+DETAS_LOOK = dict(
+    sun=dict(sun_azimuth=200.0, sun_elevation=38.0, sun_strength=3.4, sun_color="#ffc8a8"),
+    grade=dict(exposure=0.35, look="AgX - Punchy", saturation=1.2, bloom=0.5, fog=0.06, fog_start=60.0, fog_depth=300.0, ambient_strength=1.0),
+    sky=dict(zenith="#600010", horizon="#ff3020", horizon_warm="#ff8060", sky_strength=1.0, cloud_white=0.6, ambient="#e0b0b8"), cliff=dict())
+LEVELS["detasmania"] = dict(scene=26, pak="detasmania", blend="westhub/bonus/s26/detasmania.blend", out="westhub/bonus/s26/pass1", rules=DETAS_RULES,
+                            hand=TAZHUB_HAND, look=DETAS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-40.0, -20.0, 41.0, 63.0), sky_panels=True, night_sky=False,
+                            clutter_opts=dict(leaves=0.0, pebbles=4.0, stones=0.6), grass_min=2.0, island_boxes=True,
+                            captures=tuple(f"westhub/bonus/s26/world-{c}.bin" for c in ("hero", "sweep-0", "sweep-1", "sweep-2")),
+                            materials=tuple(TAZHUB_TILES) + ("flat",), tiles=TAZHUB_TILES, detail=DETAS_DETAIL, binds={"ground": (("d_stone", 4, -1.0, 0.0),)},
+                            fog_color="#a03030", ground_tint=(0.8, 0.5, 0.5), sky_gain=1.1, char_keep=1.0)  # the werewolf costume's pale blue went grey under the red light
