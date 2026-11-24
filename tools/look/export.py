@@ -1061,7 +1061,7 @@ def bush_geo(base, height, radius, colour, rng):
     return p + base, n_, uv, dds.to_srgb(np.clip(c, 0, 1)), m  # in the order the card stand-ins use
 
 
-solids, static_hide, static_parts = {}, set(), []
+solids, static_hide, static_parts, static_done = {}, set(), [], set()
 cfg = dict(LEVEL.get("solids") or dict(cards={}, soft=()))
 cfg["cards"] = dict(cfg["cards"])
 for l in tex_hash:  # painted cards (bushes, flowers, leaves, signs), by rule: real 3D stand-ins where each card stands
@@ -1191,14 +1191,9 @@ if cfg["cards"] or cfg["soft"]:
                     # the static world's cards: fixed additions and the game's texture hidden. Its draws that gave no
                     # stand-in are redrawn from the capture with the same paint. Replacing draws as the game issues them
                     # means hashing every static draw of that texture each frame (1.6 ms in the safari for its signs).
+                    kept = [(d, geo) for d, geo in kept if (solid.key_of(d[4]), d[0]) not in static_done]  # a sweep frame repeats the hero's
                     static_parts.extend(geo for _, geo in kept)
-                    done = {id(d) for d, _ in kept}
-                    for d, (dp, du, dc) in zip(ds, T):
-                        if id(d) not in done:
-                            nrm = np.cross(dp[:, 1] - dp[:, 0], dp[:, 2] - dp[:, 0])
-                            nrm = np.repeat(nrm / np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-9), 3, 0)
-                            static_parts.append((dp.reshape(-1, 3).astype(np.float32), nrm.astype(np.float32), dds.to_linear(dc.reshape(-1, 3)).astype(np.float32),
-                                                 du.reshape(-1, 2).astype(np.float32), np.full(len(dp) * 3, card_mat(label_of(d[0])))))
+                    static_done.update((solid.key_of(d[4]), d[0]) for d, _ in kept)
                     static_hide.update(d[0] for d in ds)
                 else:
                     for d, geo in kept:
@@ -1237,6 +1232,16 @@ if cfg["cards"] or cfg["soft"]:
         for d in ds:
             solids.setdefault((solid.key_of(d[4]), d[0]), pi)  # the same model can come in several paints
 
+if static_hide:  # a hidden texture's static draws that gave no stand-in, in any group, are redrawn from the capture with the same paint
+    for ds in found.values():
+        for d in ds:
+            if d[0] in static_hide and solid._identity(d[1]) and (solid.key_of(d[4]), d[0]) not in static_done:
+                static_done.add((solid.key_of(d[4]), d[0]))
+                dp, du, dc = solid.triangles(d[2], d[3], d[4])
+                nrm = np.cross(dp[:, 1] - dp[:, 0], dp[:, 2] - dp[:, 0])
+                nrm = np.repeat(nrm / np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-9), 3, 0)
+                static_parts.append((dp.reshape(-1, 3).astype(np.float32), nrm.astype(np.float32), dds.to_linear(dc.reshape(-1, 3)).astype(np.float32),
+                                     du.reshape(-1, 2).astype(np.float32), np.full(len(dp) * 3, card_mat(label_of(d[0])))))
 if static_parts:  # the static world's stand-ins, merged per chunk: one proto each, not one per card (fewer draws)
     p, n, c, u, m = (np.concatenate(x) for x in zip(*static_parts))
     cen = p.reshape(-1, 3, 3).mean(1)
