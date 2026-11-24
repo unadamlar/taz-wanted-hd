@@ -778,3 +778,8 @@ LEVELS["rcsafari"] = _bonus("safari", "rcsafari", 29, ("hero", "sweep-0", "sweep
                                 ("rcsafari/textures/grassjoiner*", "ground"), ("rcsafari/textures/pathrock", "ground")], grass_density=24.0)
 LEVELS["rcicedome"] = _bonus("icedome", "rcicedome", 27, ("hero", "sweep-0", "sweep-1", "sweep-2"), hub=(-68.0, -53.0, 64.0, 39.0),
                              first=[(f"rcicedome/textures/{p}", "gameplay") for p in _RACE_SIGNS])
+LEVELS["vrmuseum"] = _bonus("museum", "vrmuseum", 21, ("hero", "sweep-0", "sweep-1"), hub=(-14.0, -32.0, 20.0, 32.0),
+                            first=[(f"vrmuseum/textures/{p}", "gameplay") for p in _RACE_SIGNS],
+                            lamps=dict(DEPT_LAMPS, extra=room_lamps(((-3300, -7800, 4800, 7800, -2400, 2, 4),), 1400, 13.0, "#ffd9a8", 1.8)))
+LEVELS["vrdeptstr"] = _bonus("deptstr", "vrdeptstr", 23, ("hero", "sweep-0", "sweep-1"), hub=(-52.0, -38.0, 121.0, 52.0),
+                             first=[(f"vrdeptstr/textures/{p}", "gameplay") for p in _RACE_SIGNS])
