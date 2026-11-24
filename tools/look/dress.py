@@ -435,6 +435,20 @@ def blender_main(argv):
             tri_props += kit.tri_count(tr) + kit.tri_count(can)
         stats["trees"] = len(trees)
 
+        # 1b. palms: their flat frond stars become stems with leaflets
+        ptris = []
+        for ob in live:
+            m = poly_mask(ob, ("palm",))
+            if m.any():
+                co, tv, tp = kit._world_tris(ob)
+                ptris.append(co[tv[m[tp]]])
+                hide_faces(ob, m)
+        if ptris:
+            palm = kit.palm_fronds(np.concatenate(ptris), SCALE, coll=props)
+            if palm:
+                stats["palm_fronds"] = palm["kit_fronds"]
+                tri_props += kit.tri_count(palm)
+
         # 2. fences: each rail card island -> its top edge polyline -> kit fence segments;
         #    posts and caps standing on those lines are hidden
         segs = []
@@ -450,7 +464,7 @@ def blender_main(argv):
         for p0, p1 in segs:
             k = tuple(sorted([(round(p0.x, 1), round(p0.y, 1)), (round(p1.x, 1), round(p1.y, 1))]))
             uniq[k] = (p0, p1)
-        nonground = ("fence_rail", "fence_post", "fence_cap", "tree", "hide", "sky", "hidden")
+        nonground = ("fence_rail", "fence_post", "fence_cap", "tree", "palm", "hide", "sky", "hidden")
         blk = [o for o in live if not poly_mask(o, nonground).all()]
         verts, polys, off = [], [], 0
         for o in blk:

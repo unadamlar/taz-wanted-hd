@@ -114,6 +114,7 @@ BLENDER_MAT = {
     "kit_water_bed": "water_bed", "kit_foam": "foam", "kit_pebble": "flat", "kit_stem": "flat_wind",
     "kit_petal_pink": "flat_wind", "kit_petal_white": "flat_wind", "kit_petal_blue": "flat_wind",
     "kit_flower_center": "flat_wind", "kit_weed_leaf": "flat_wind",
+    "kit_palm_leaf": "flat_wind",
     "kit_snow_lump": "flat",
 }
 
@@ -469,7 +470,7 @@ else:
 
 # The dressing hides a fence texture only near kit fences, but the game can only hide a whole texture:
 # faces that stayed visible are redrawn from the look data with the same HD texture.
-HIDDEN_ROLES = ("hide", "fence_rail", "fence_post", "fence_cap", "tree", "water", "sky")
+HIDDEN_ROLES = ("hide", "fence_rail", "fence_post", "fence_cap", "tree", "palm", "water", "sky")
 kept = collections.defaultdict(list)
 for coll in dress.GAME_COLLS:
     for o in (bpy.data.collections[coll].objects if coll in bpy.data.collections else []):
