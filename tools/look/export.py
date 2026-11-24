@@ -96,6 +96,8 @@ if "skin" in LEVEL:  # wrinkled hide for untextured characters, mapped on their 
     MATS["skin"] = ("skin", False, OPAQUE, 0, LEVEL["skin"]["tile"], (1, 1, 1), 0.6, 0, LEVEL["skin"]["grain"])
 for name, tint in LEVEL.get("tints", {}).items():
     MATS[name] = (*MATS[name][:5], tint, *MATS[name][6:])
+for name in LEVEL.get("triplanar", ()):  # ground that also covers steep banks
+    MATS[name] = (*MATS[name][:3], MATS[name][3] | TRIPLANAR, *MATS[name][4:])
 if "dome" in LEVEL:
     MATS["glass"] = ("", False, GLASS, TWO_SIDED, 0.0, (1, 1, 1), 0.05, 0, 0)
     MATS["caster"] = ("", False, CASTER, TWO_SIDED, 0.0, (1, 1, 1), 1.0, 0, 0)

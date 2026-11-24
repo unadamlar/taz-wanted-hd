@@ -152,6 +152,7 @@ TAZHUB_RULES = [
     ("tazhub/textures/samhq*", "gameplay"), ("tazhub/textures/samhideout0[45]", "gameplay"), ("tazhub/textures/crateside01", "gameplay"),
     ("tazhub/textures/tazfern0[89]*", "ground"), ("tazhub/textures/tazfern1[23]", "ground"), ("tazhub/textures/tazsoil01", "ground"),
     ("tazhub/textures/path05", "ground"),
+    ("tazhub/textures/tazflowers*", "painted_lawn"), ("tazhub/textures/tazfern1[01]", "rock_lawn"),  # flowers and rocks painted on grass stay
     ("tazhub/textures/tazfern0[1-7]*", "lawn"), ("tazhub/textures/tazfern14", "lawn"), ("tazhub/textures/grass_new*", "lawn"),
     ("tazhub/textures/safariwater", "water"), ("tazhub/skybox/*", "sky"), ("resTex/shadowsub", "hide"),
 ]
@@ -467,7 +468,8 @@ LEVELS = {
                    captures=("planet/world-hero.bin", "planet/world-sweep-a.bin", "planet/world-sweep-b.bin"),
                    materials=tuple(TAZHUB_TILES) + ("lawn", "dirt", "water", "water_bed", "foam", "grass", "flat", "flat_wind"),
                    tiles=TAZHUB_TILES, detail=TAZHUB_DETAIL, fog_color="#7fc4f4",
-                   tints={"dirt": (1.5, 1.05, 0.62)}, binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05))}),
+                   tints={"dirt": (1.5, 1.05, 0.62), "lawn": (0.32, 1.6, 0.3), "grass": (0.95, 1.5, 0.5)}, night_sky=False, sky_gain=1.25, unbake=1.0, triplanar=("lawn",),
+                   binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05)), "painted_lawn": (("lawn", 3, 0.085, 0.045),), "rock_lawn": (("lawn", 1, 0.0, -0.1),)}),
     "icedome": dict(scene=4, pak="icedome", blend="zoo-levels/icedome/icedome.blend", out="zoo-levels/icedome/pass1", rules=ICE_RULES, hand=ICE_HAND,
                     look=ICE_LOOK, hdri=None, hdri_rotation=0.0, hub=(-71.0, -58.0, 71.0, 50.0), sky_panels=True, clutter=False,
                     captures=("zoo-levels/icedome/world-hero.bin", "zoo-levels/icedome/world-sweep-a.bin", "zoo-levels/icedome/world-sweep-b.bin"),
