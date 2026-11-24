@@ -889,8 +889,15 @@ if "chain" in LEVEL or "grill" in LEVEL:
 
 # Things the game may move: models in their own space, drawn at the game's transform in place of its draws (hd_solid_draw).
 solids = {}
-if "solids" in LEVEL:
-    cfg = LEVEL["solids"]
+cfg = dict(LEVEL.get("solids") or dict(cards={}, soft=()))
+cfg["cards"] = dict(cfg["cards"])
+for l in tex_hash:  # painted cut-outs (domed) and flat boards (signs: thickness only), by rule: slabs traced from the paint's alpha
+    for key in ("flat_cards", "flat_boards"):
+        for e in LEVEL.get(key, ()):
+            pat, puff = e if isinstance(e, tuple) else (e, 0.0)  # boards: thickness only
+            if l not in cfg["cards"] and fnmatch.fnmatch(l, pat):
+                cfg["cards"][l] = dict(auto=True, puff=puff)
+if cfg["cards"] or cfg["soft"]:
     card_h, labels = {tex_hash[l] for l in cfg["cards"]}, collections.defaultdict(list)
     for l, h in tex_hash.items():
         labels[h].append(l)
@@ -901,7 +908,10 @@ if "solids" in LEVEL:
     solid_tex = {h: label_of(h) is not None and game_rgba(label_of(h))[..., 3].mean() > 0.98 for h in {d[0] for ds in found.values() for d in ds}}
     for keys, ds in sorted(found.items(), key=lambda kv: -len(kv[0])):  # a sweep frame can hold part of a model
         ds = [d for d in ds if d[0] in card_h or solid_tex[d[0]]]  # see-through parts stay the game's own draws
-        if {solid.key_of(d[4]) for d in ds} <= solids.keys():
+        ds = [d for d in ds if not cfg["cards"].get(label_of(d[0]), {}).get("auto") or solid.card_pieces(*solid.triangles(d[2], d[3], d[4])[:2])]
+        if not ds:
+            continue
+        if {(solid.key_of(d[4]), d[0]) for d in ds} <= solids.keys():
             continue
         T = [solid.triangles(d[2], d[3], d[4]) for d in ds]
         if all(d[0] in card_h for d in ds):
@@ -909,6 +919,31 @@ if "solids" in LEVEL:
             spec = cfg["cards"][label_of(ds[0][0])]
             if spec.get("links"):
                 p, n, u, c = solid.chain_on_cards(pos, uv, col)
+            elif spec.get("auto"):
+                alpha = game_rgba(label_of(ds[0][0]))[..., 3]
+                small = alpha[::max(1, alpha.shape[0] // 256), ::max(1, alpha.shape[1] // 256)]  # traced at up to 256 px
+                fd = LEVEL.get("flat_depth", (0.012, 0.18))  # thickness and dome, as shares of the smaller side and inner radius
+                parts, kept = [], []
+                for d, (dp, du, dc) in zip(ds, T):
+                    got = []
+                    for t in solid.card_pieces(dp, du):
+                        tu, size = du[t], solid.repeat_size(dp[t], du[t])
+                        a_ = small
+                        if np.ptp(tu[..., 0]) <= 1.001 and np.ptp(tu[..., 1]) <= 1.001:  # one repeat: only the part of the texture the card shows
+                            a_ = small * solid.uv_mask(tu - np.floor(tu.reshape(-1, 2).min(0) + 1e-6), small.shape)
+                        if not solid.outlines(a_, 1.0, (a_.shape[1] / 48) ** 2):
+                            continue
+                        P, N = solid.plate(a_, size, fd[0] * min(size), tol=1.0, min_area=(a_.shape[1] / 48) ** 2, puff=spec["puff"])
+                        q = solid.on_card(P, N, dp[t], tu, dc[t], size)
+                        if len(q) and len(q[0]) and np.isfinite(q[0]).all():
+                            got.append((*q, np.full(len(q[0]), solid_mat(label_of(d[0])))))  # a placed plant can mix textures
+                    if got:  # a draw that gave nothing stays the game's own
+                        parts += got
+                        kept.append(d)
+                ds = kept
+                if not parts:
+                    continue
+                p, n, u, c, auto_m = (np.concatenate(x) for x in zip(*parts))
             else:
                 # the same thickness in the world, whatever scale the game places this model at
                 P, N = solid.plate(game_rgba(label_of(ds[0][0]))[..., 3], spec["size"], spec["depth"] / np.linalg.norm(ds[0][1][:3]),
@@ -918,7 +953,7 @@ if "solids" in LEVEL:
             if "unbake" in LEVEL:  # a night level bakes its light into these: the moon does the shading now
                 c = c ** LEVEL["unbake"]
             vc = dds.to_linear(c) if spec.get("mat") is None else np.ones_like(p)
-            m = np.full(len(p), solid_mat(label_of(ds[0][0]), spec.get("tint", (1, 1, 1))) if spec.get("mat") is None else MAT_ID[spec["mat"]])
+            m = auto_m if spec.get("auto") else np.full(len(p), solid_mat(label_of(ds[0][0]), spec.get("tint", (1, 1, 1))) if spec.get("mat") is None else MAT_ID[spec["mat"]])
         else:
             mats = [solid_mat(label_of(d[0])) for d in ds]
             tex = np.concatenate([np.full(len(t[0]), i) for i, t in enumerate(T)])
@@ -927,7 +962,7 @@ if "solids" in LEVEL:
         pi = add_proto("solid%d" % len(protos), p.astype(np.float32), n.astype(np.float32), vc.astype(np.float32), u.astype(np.float32), m)
         print("export: replaces %d game draws, %s: %d triangles" % (len(ds), sorted({labels[d[0]][0].rsplit("/", 1)[1] for d in ds}), len(p) // 3))
         for d in ds:
-            solids.setdefault(solid.key_of(d[4]), (d[0], pi))
+            solids.setdefault((solid.key_of(d[4]), d[0]), pi)  # the same model can come in several paints
 
 # chunks: instance centre -> grid cell; each cell lists (proto, matrices), shuffled for thinning
 cells = collections.defaultdict(lambda: collections.defaultdict(list))
@@ -1132,7 +1167,7 @@ with open(os.path.join(tmp, "scene.bin"), "wb") as f:
         f.write(struct.pack("<I", len(glows)) + b"".join(struct.pack("<Q3fI", h, *glows[h]) for h in sorted(glows)))
         f.write(struct.pack("<I", len(swaps)) + b"".join(struct.pack("<Q4f", *s_, 2.0) for s_ in swaps))
     if solids:
-        f.write(struct.pack("<I", len(solids)) + b"".join(struct.pack("<QQI", k, *solids[k]) for k in sorted(solids)))
+        f.write(struct.pack("<I", len(solids)) + b"".join(struct.pack("<QQI", *k, solids[k]) for k in sorted(solids)))
 
 # ---------------------------------------------------------------- level.ini
 sun, grade, sk = LV["sun"], LV["grade"], LV["sky"]

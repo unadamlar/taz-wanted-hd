@@ -118,10 +118,11 @@ def outlines(alpha, tol, min_area):
     return rings
 
 
-def plate(alpha, size, depth, tol=1.0, min_area=8.0, repeat=1):
+def plate(alpha, size, depth, tol=1.0, min_area=8.0, repeat=1, puff=0.0):
     """The opaque shape of a cut-out as a solid: corners (u, v, side offset) and normals in (size x, size y, 1) units.
     Face normals lean towards the outline, so a thin bar shades round without extra triangles.
-    repeat traces that many copies side by side, so a post painted across the texture's edge stays one post."""
+    repeat traces that many copies side by side, so a post painted across the texture's edge stays one post.
+    puff > 0 domes both faces, up to puff x the shape's inner radius, so a painted leaf or sign reads as a soft solid."""
     alpha = np.tile(alpha, (1, repeat))
     h, w = alpha.shape
     texels = np.array([w / repeat, h])
@@ -137,19 +138,45 @@ def plate(alpha, size, depth, tol=1.0, min_area=8.0, repeat=1):
         edges += [(at + i, at + (i + 1) % len(r)) for i in range(len(r))]
         at += len(r)
     out = np.concatenate(out)
-    v, _, faces, orig, *_ = geometry.delaunay_2d_cdt([Vector(q) for q in xy.tolist()], edges, [], 0, 1e-4)
+    inner = np.zeros((0, 2))
+    if puff:  # points inside the shape, away from its outline, so the faces can dome
+        step = max(w, h) / 24
+        gy, gx = np.mgrid[step / 2:h:step, step / 2:w:step]
+        g = np.column_stack([gx.ravel(), gy.ravel()])
+        g = g[alpha[g[:, 1].astype(int).clip(0, h - 1), g[:, 0].astype(int).clip(0, w - 1)] > 0.5]
+        if len(g):
+            inner = g[np.sqrt(((g[:, None] - xy[None]) ** 2).sum(2)).min(1) > step * 0.6]
+    v, _, faces, orig, *_ = geometry.delaunay_2d_cdt([Vector(q) for q in np.vstack([xy, inner]).tolist()], edges, [], 0, 1e-4)
     v = np.array([tuple(q) for q in v])
     t = np.array([f for f in faces if len(f) == 3])
     c = np.rint(v[t].mean(1)).astype(int)
     t = t[alpha[c[:, 1].clip(0, h - 1), c[:, 0].clip(0, w - 1)] > 0.5]
-    vo = np.array([out[o[0]] if len(o) else (0.0, 0.0) for o in orig])
+    on_rim = np.array([bool(o) and o[0] < len(xy) for o in orig])
+    vo = np.array([out[o[0]] if on_rim[i] else (0.0, 0.0) for i, o in enumerate(orig)])
     uv = (v + 0.5) / texels
     lean = 0.8
+    rise = np.zeros(len(v))
+    if puff and len(inner):
+        d = np.sqrt((((v[:, None] - xy[None]) * scale) ** 2).sum(2)).min(1)
+        d[on_rim] = 0
+        R = max(d.max(), 1e-6)
+        rise = puff * R * (1 - (1 - d / R) ** 2)
     parts = []
     for z, flip in ((depth, False), (-depth, True)):
         f = t[:, ::-1] if flip else t
-        n = np.column_stack([vo[f.ravel()] * lean, np.full(f.size, math.copysign(0.6, z))])
-        parts.append((np.column_stack([uv[f.ravel()], np.full(f.size, z)]), n))
+        zz = math.copysign(1, z) * (abs(z) + rise)
+        if puff and len(inner):  # normals of the domed face itself, leaning out at the rim
+            q = np.column_stack([v * scale, zz])
+            fn = np.cross(q[f[:, 1]] - q[f[:, 0]], q[f[:, 2]] - q[f[:, 0]])
+            vn = np.zeros((len(v), 3))
+            for k in range(3):
+                np.add.at(vn, f[:, k], fn)
+            vn[on_rim, :2] += vo[on_rim] * np.linalg.norm(vn[on_rim], axis=1, keepdims=True) * lean
+            vn /= np.maximum(np.linalg.norm(vn, axis=1, keepdims=True), 1e-9)
+            n = vn[f.ravel()]
+        else:
+            n = np.column_stack([vo[f.ravel()] * lean, np.full(f.size, math.copysign(0.6, z))])
+        parts.append((np.column_stack([uv[f.ravel()], zz[f.ravel()] if np.ndim(zz) else np.full(f.size, zz)]), n))
     at = 0
     for r in rings:
         i = at + np.arange(len(r))
@@ -160,6 +187,65 @@ def plate(alpha, size, depth, tol=1.0, min_area=8.0, repeat=1):
         nor = np.stack([np.column_stack([out[k], np.zeros(len(k))]) for k, _ in order], 1)
         parts.append((wall.reshape(-1, 3), nor.reshape(-1, 3)))
     return np.concatenate([x for x, _ in parts]), np.concatenate([x for _, x in parts])
+
+
+def repeat_size(pos, uv):
+    """World size of one texture repeat on a card, from its best-shaped triangle."""
+    e1, e2 = uv[:, 1] - uv[:, 0], uv[:, 2] - uv[:, 0]
+    det = e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]
+    k = int(np.abs(det).argmax())
+    d1, d2 = pos[k, 1] - pos[k, 0], pos[k, 2] - pos[k, 0]
+    return (np.linalg.norm((d1 * e2[k, 1] - d2 * e1[k, 1]) / det[k]), np.linalg.norm((d2 * e1[k, 0] - d1 * e2[k, 0]) / det[k]))
+
+
+def uv_mask(uv, shape):
+    """Texels of a (h, w) texture that the card's triangles (uvs within one repeat) cover: a card may use part of an atlas."""
+    h, w = shape
+    m = np.zeros(shape, bool)
+    yy, xx = np.mgrid[0:h, 0:w]
+    px, py = (xx + 0.5) / w, (yy + 0.5) / h
+    for a, b, c in uv:
+        x0, x1 = int(max(min(a[0], b[0], c[0]) * w - 1, 0)), int(min(max(a[0], b[0], c[0]) * w + 2, w))
+        y0, y1 = int(max(min(a[1], b[1], c[1]) * h - 1, 0)), int(min(max(a[1], b[1], c[1]) * h + 2, h))
+        if x1 <= x0 or y1 <= y0:
+            continue
+        X, Y = px[y0:y1, x0:x1], py[y0:y1, x0:x1]
+        d = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+        if abs(d) < 1e-12:
+            continue
+        l1 = ((b[1] - c[1]) * (X - c[0]) + (c[0] - b[0]) * (Y - c[1])) / d
+        l2 = ((c[1] - a[1]) * (X - c[0]) + (a[0] - c[0]) * (Y - c[1])) / d
+        e = 1.5 / max(w, h)
+        m[y0:y1, x0:x1] |= (l1 > -e) & (l2 > -e) & (1 - l1 - l2 > -e)
+    return m
+
+
+def card_pieces(pos, uv):
+    """A draw's flat cards, crossed ones split apart: lists of triangle indices, or None if it is a modelled object."""
+    e1, e2 = uv[:, 1] - uv[:, 0], uv[:, 2] - uv[:, 0]
+    good = np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]) > 1e-8  # slivers with no texture area carry nothing
+    n = np.cross(pos[:, 1] - pos[:, 0], pos[:, 2] - pos[:, 0])
+    good &= np.linalg.norm(n, axis=1) > 1e-6
+    n = n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+    out = []
+    for t in islands(pos):
+        t = t[good[t]]
+        groups = []
+        for i in t:
+            for g in groups:
+                if abs(n[g[0]] @ n[i]) > 0.97:
+                    g.append(i); break
+            else:
+                groups.append([i])
+        if len(groups) > 2:
+            return None
+        for g in groups:
+            q = pos[g].reshape(-1, 3)
+            s = np.linalg.svd(q - q.mean(0), compute_uv=False)
+            if s[-1] > 0.02 * s[0]:
+                return None
+            out.append(np.array(g))
+    return out
 
 
 def link(alpha, size):
@@ -210,8 +296,9 @@ def on_card(P, N, pos, uv, col, size):
     """Moves plate() corners onto a game card given as triangles; the texture repeats where the card's uvs do."""
     parts = []
     copies = range(int(math.floor(uv[..., 0].min() + 1e-6)), int(math.ceil(uv[..., 0].max() - 1e-6))) if P[:, 0].max() <= 1.001 else (0,)
+    kv = math.floor(uv[..., 1].min() + 1e-6) if P[:, 1].max() <= 1.001 else 0  # a card whose v runs over 1..2 still uses the texture once
     for k in copies:
-        q = P[:, :2] + [k, 0]
+        q = P[:, :2] + [k, kv]
         a, e1, e2 = uv[:, 0], uv[:, 1] - uv[:, 0], uv[:, 2] - uv[:, 0]
         det = e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]
         rel = q[:, None] - a[None]
