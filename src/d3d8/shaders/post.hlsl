@@ -22,8 +22,10 @@ float3 decode(float3 c) { return pow(max(c, 0), 2.2); }
 float4 ps_bright(Quad i) : COLOR
 {
     float2 t = TEXEL_SRC.xy;
-    float3 c = decode(tex2D(SRC, i.uv + t * float2(-1, -1)).rgb) + decode(tex2D(SRC, i.uv + t * float2(1, -1)).rgb)
-             + decode(tex2D(SRC, i.uv + t * float2(-1, 1)).rgb) + decode(tex2D(SRC, i.uv + t * float2(1, 1)).rgb);
+    // Characters write alpha 0 (hd_char_alpha) and don't feed the bloom; a paused frame's blur (threshold 0) keeps them.
+    float4 a = tex2D(SRC, i.uv + t * float2(-1, -1)), b = tex2D(SRC, i.uv + t * float2(1, -1)), d = tex2D(SRC, i.uv + t * float2(-1, 1)), e = tex2D(SRC, i.uv + t * float2(1, 1));
+    float4 keep = BLOOM.x > 0 ? float4(a.a, b.a, d.a, e.a) : 1;
+    float3 c = decode(a.rgb) * keep.x + decode(b.rgb) * keep.y + decode(d.rgb) * keep.z + decode(e.rgb) * keep.w;
     c = min(c * 0.25 * BLOOM.w, 32);
     float l = max(c.r, max(c.g, c.b));
     float soft = saturate((l - BLOOM.x + BLOOM.y) / (2 * BLOOM.y + 0.0001));

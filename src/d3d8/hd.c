@@ -680,12 +680,18 @@ void hd_redirect(hd_dev d)
     IDirect3DDevice9_GetViewport(d, &v);
     IDirect3DDevice9_SetRenderTarget(d, 0, hdr_surface());
     IDirect3DDevice9_SetViewport(d, &v);
+    // Alpha starts at 1 and only character draws write it (hd_char_alpha): the bloom leaves them out.
+    IDirect3DDevice9_SetRenderState(d, D3DRS_COLORWRITEENABLE, 8);
+    IDirect3DDevice9_Clear(d, 0, NULL, D3DCLEAR_TARGET, 0xff000000, 1.0f, 0);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_COLORWRITEENABLE, 7);
     redirected = 1;
 }
 
-void hd_rebind(hd_dev d)
+void hd_rebind(hd_dev d, int on_bb)
 {
     if (!redirected) return;
+    IDirect3DDevice9_SetRenderState(d, D3DRS_COLORWRITEENABLE, on_bb ? 7 : 15); // the game's own targets keep their alpha
+    if (!on_bb) return;
     D3DVIEWPORT9 v;
     IDirect3DDevice9_GetViewport(d, &v);
     IDirect3DDevice9_SetRenderTarget(d, 0, hdr_surface());
@@ -919,7 +925,7 @@ static void plain_states(hd_dev d)
     IDirect3DDevice9_SetRenderState(d, D3DRS_ALPHATESTENABLE, FALSE);
     IDirect3DDevice9_SetRenderState(d, D3DRS_FOGENABLE, FALSE);
     IDirect3DDevice9_SetRenderState(d, D3DRS_STENCILENABLE, FALSE);
-    IDirect3DDevice9_SetRenderState(d, D3DRS_COLORWRITEENABLE, 15);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_COLORWRITEENABLE, 7);
     IDirect3DDevice9_SetRenderState(d, D3DRS_SRGBWRITEENABLE, FALSE);
     IDirect3DDevice9_SetRenderState(d, D3DRS_DEPTHBIAS, 0);
     IDirect3DDevice9_SetRenderState(d, D3DRS_SLOPESCALEDEPTHBIAS, 0);
@@ -1034,7 +1040,7 @@ static void draw_near(hd_dev d)
     IDirect3DDevice9_SetPixelShaderConstantF(d, 32, fade, 1);
     IDirect3DDevice9_SetRenderState(d, D3DRS_COLORWRITEENABLE, 0);
     draw_instances(d, PASS_NEAR_Z);
-    IDirect3DDevice9_SetRenderState(d, D3DRS_COLORWRITEENABLE, 15);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_COLORWRITEENABLE, 7);
     IDirect3DDevice9_SetRenderState(d, D3DRS_ZWRITEENABLE, FALSE);
     IDirect3DDevice9_SetRenderState(d, D3DRS_ALPHABLENDENABLE, TRUE);
     IDirect3DDevice9_SetRenderState(d, D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
@@ -1124,6 +1130,7 @@ static void fullscreen(hd_dev d, const struct target *to, IDirect3DPixelShader9 
 static void quad_states(hd_dev d)
 {
     plain_states(d);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_COLORWRITEENABLE, 15);
     IDirect3DDevice9_SetDepthStencilSurface(d, NULL);
     IDirect3DDevice9_SetRenderState(d, D3DRS_ZENABLE, FALSE);
     IDirect3DDevice9_SetRenderState(d, D3DRS_ZWRITEENABLE, FALSE);
@@ -1437,6 +1444,31 @@ void hd_merge_draw(hd_dev d, unsigned nverts, unsigned first, unsigned tris)
     IDirect3DDevice9_DrawIndexedPrimitive(d, D3DPT_TRIANGLELIST, 0, 0, nverts, first, tris);
 }
 
+// Character draws write alpha 0, colour unchanged: the bloom's first step leaves those pixels out (hd_post).
+// Everything else keeps alpha at the 1 hd_redirect cleared to.
+static DWORD char_blend, char_src, char_dst;
+void hd_char_alpha(hd_dev d, int on)
+{
+    if (on) {
+        IDirect3DDevice9_GetRenderState(d, D3DRS_ALPHABLENDENABLE, &char_blend);
+        IDirect3DDevice9_GetRenderState(d, D3DRS_SRCBLEND, &char_src);
+        IDirect3DDevice9_GetRenderState(d, D3DRS_DESTBLEND, &char_dst);
+        if (!char_blend) // the same colour as unblended
+            IDirect3DDevice9_SetRenderState(d, D3DRS_ALPHABLENDENABLE, TRUE), IDirect3DDevice9_SetRenderState(d, D3DRS_SRCBLEND, D3DBLEND_ONE),
+            IDirect3DDevice9_SetRenderState(d, D3DRS_DESTBLEND, D3DBLEND_ZERO);
+        IDirect3DDevice9_SetRenderState(d, D3DRS_COLORWRITEENABLE, 15);
+        IDirect3DDevice9_SetRenderState(d, D3DRS_SEPARATEALPHABLENDENABLE, TRUE);
+        IDirect3DDevice9_SetRenderState(d, D3DRS_SRCBLENDALPHA, D3DBLEND_ZERO);
+        IDirect3DDevice9_SetRenderState(d, D3DRS_DESTBLENDALPHA, D3DBLEND_ZERO);
+    } else {
+        IDirect3DDevice9_SetRenderState(d, D3DRS_SEPARATEALPHABLENDENABLE, FALSE);
+        IDirect3DDevice9_SetRenderState(d, D3DRS_COLORWRITEENABLE, 7);
+        IDirect3DDevice9_SetRenderState(d, D3DRS_ALPHABLENDENABLE, char_blend);
+        IDirect3DDevice9_SetRenderState(d, D3DRS_SRCBLEND, char_src);
+        IDirect3DDevice9_SetRenderState(d, D3DRS_DESTBLEND, char_dst);
+    }
+}
+
 void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_colour, float scale, const float *style, struct IDirect3DTexture9 *fur)
 {
     float k[4] = { use_tex, use_colour, scale, 0 }, two[4][4] = { { 0 } }, hide[4];
@@ -1458,7 +1490,7 @@ void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_c
     IDirect3DDevice9_SetPixelShaderConstantF(d, 26, two[0], 4);
     float fill[4] = { lv.char_fill[0], lv.char_fill[1], lv.char_fill[2], lv.char_keep };
     IDirect3DDevice9_SetPixelShaderConstantF(d, 30, fill, 1);
-    float hold[4] = { lv.exposure, lv.contrast * 1.26f, (lv.bloom_t + 0.15f / (lv.bloom_s > 0.01f ? lv.bloom_s : 0.01f)) / lv.exposure, lv.sat > 0 ? 1 / lv.sat : 1 };
+    float hold[4] = { lv.exposure, lv.contrast * 1.26f, 0, 0 };
     IDirect3DDevice9_SetPixelShaderConstantF(d, 34, hold, 1);
     IDirect3DDevice9_SetPixelShaderConstantF(d, 31, style, 1);
     bind_common(d);
@@ -1525,6 +1557,7 @@ void hd_post(hd_dev d)
     fullscreen(d, &back, p_final, hdr.t, bloom[0].t, 1.0f / hdr.w, 1.0f / hdr.h);
     IDirect3DDevice9_SetTexture(d, 0, NULL), IDirect3DDevice9_SetTexture(d, 1, NULL);
     restore_state(d);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_COLORWRITEENABLE, 15);
     IDirect3DDevice9_SetDepthStencilSurface(d, ds);
     IDirect3DDevice9_SetViewport(d, &v);
     if (ds) IDirect3DSurface9_Release(ds);

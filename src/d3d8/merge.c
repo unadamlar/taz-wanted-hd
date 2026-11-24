@@ -366,7 +366,7 @@ static HRESULT WINAPI hook_SetRenderTarget(IDirect3DDevice8 *dev, IDirect3DSurfa
         IDirect3DDevice8_GetBackBuffer(dev, 0, D3DBACKBUFFER_TYPE_MONO, &bb);
         on_bb = rt == bb;
         if (bb) IDirect3DSurface8_Release(bb);
-        if (on_bb) look_bb_restored(dev);
+        look_target_set(dev, on_bb);
     }
     return hr;
 }

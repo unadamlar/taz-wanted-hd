@@ -16,7 +16,7 @@ int hd_hidden(unsigned long long hash); // a game texture whose world draws are 
 int hd_shade(unsigned long long hash);  // a baked shadow decal, dropped everywhere
 
 void hd_redirect(hd_dev d);             // the game's next 3D draws land in our HDR target
-void hd_rebind(hd_dev d);               // the game set the back buffer again
+void hd_rebind(hd_dev d, int on_bb);    // the game set a target: the back buffer again, or its own
 int hd_redirected(void);
 int hd_post_done(void);
 void hd_post(hd_dev d);                 // resolve, bloom, tone map to the back buffer
@@ -74,3 +74,4 @@ void hd_glow_end(hd_dev d, unsigned long dest_blend);
 struct IDirect3DTexture9;
 void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_colour, float scale, const float *style, struct IDirect3DTexture9 *fur);
 void hd_char_end(hd_dev d);
+void hd_char_alpha(hd_dev d, int on);
