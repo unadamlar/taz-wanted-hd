@@ -227,13 +227,13 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
 - Tazboss2: one crash on entry through the test trigger (jump to 0x01000006). The game's set-texture function (0x5737d0) called the callback of a texture
   record whose memory had been freed and reused, from its flat 2D quad drawer (FUN_004dd8f0, used by the map screen and map preview). Not repeated in 21
   entries; the mod's code paths don't touch the game's texture records (read from code, not tested). Likely the known boss-intro test-trigger crash.
-- Jumping out of westboss with the QA scene trigger before its fight has started crashes at taz.exe+0x15f785: the boss's teardown frees its marker
-  arrow without a null check, and the marker is only made on the first frame of play. Players can't reach it: 15 real exits (Return to Hub, win,
-  lose) and 3 second visits were clean, and pause does nothing during the intro. After such an early exit, the next westboss visit also crashes on
-  a freed texture. Rig workaround: press Jump until the fight runs, or restart. Notes: `extracted/look/reports/step7/cutscenes/notes.md`.
-- Leaving the zoo boss right after a quickload crashed at taz.exe+0x9abae (3 of 3 runs, old and new look data); a player can reach this with F5/F9.
-  Entering a boss or race level a second time through the test scene jump also crashes (zoo boss 4 of 4, safari race once, ice dome race once after F9). Neither tried on `master`.
-  Logs: `extracted/look/zoo-levels/zooboss/crash-*-taz-hd.log`, `extracted/look/zoo-levels/rcsafari/crash-entry-taz-hd.log`.
+- Boss levels set themselves up on the first frame of play, and their cleanup assumes that ran. Leaving with the QA scene trigger from a rules page
+  before pressing Jump therefore crashes: westboss at taz.exe+0x15f785 (null marker arrow), zoo boss after a Continue at taz.exe+0x9abae (stale freed
+  camera case at 0x736374). A second entry after such an exit crashes on a freed texture in the 2D quad drawer, probably the same family. Players can't
+  reach it: Escape does nothing on rules pages, setup runs within 0.25 s of Jump, and a quicksave from a rules page is refused once play starts.
+  Clean: 11 zoo boss F5/F9-then-exit runs over 3 processes, 2 Taz boss 1, 2 city boss, 15 westboss real exits. Rig workaround: press Jump first.
+  The city boss trigger entry crashes at taz.exe+0x1140a6; enter it the game's way. One d3d9.dll crash during a zoo boss Continue reload (5th visit
+  in one process) did not repeat. Notes: `extracted/look/reports/step7/cutscenes/notes.md`.
 - Bright saturated character paint (Daffy's bill, Sam's yellow shirt, Taz's helmet) leans orange and loses saturation through the pale-paint hold.
 - A 240-frame full-size screenshot burst crashed in d3d9.dll after 156 frames (`extracted/look/reports/step7/tazhub/burst-crash-taz-hd.log`). Smaller bursts are fine.
 - Test-camera shots differ between runs where the game places sprites on screen from its real camera (the safari waterfall's splash, a pink sprite in zoo-b).
