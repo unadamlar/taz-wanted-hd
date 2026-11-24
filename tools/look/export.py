@@ -470,7 +470,7 @@ else:
 
 # The dressing hides a fence texture only near kit fences, but the game can only hide a whole texture:
 # faces that stayed visible are redrawn from the look data with the same HD texture.
-HIDDEN_ROLES = ("hide", "fence_rail", "fence_post", "fence_cap", "tree", "palm", "water", "sky")
+HIDDEN_ROLES = ("hide", "fence_rail", "fence_post", "fence_cap", "tree", "palm", "drip", "water", "sky")
 kept = collections.defaultdict(list)
 for coll in dress.GAME_COLLS:
     for o in (bpy.data.collections[coll].objects if coll in bpy.data.collections else []):

@@ -218,7 +218,7 @@ SAFARI_RULES = [
     ("safari/skybox/*", "sky"), ("resTex/shadowsub", "hide"), ("safari/textures/safariwater", "water"),
     ("safari/textures/pestsaf01", "lawn"), ("safari/textures/pestsaf02", "lawn"), ("safari/textures/tazfern02", "lawn"), ("safari/textures/tazfern06", "lawn"),
     ("safari/textures/tazwood02a", "tree"), ("safari/textures/tazfern05*", "tree"), ("safari/textures/safarifruitree9", "palm"),
-    ("safari/textures/safarifruitree1[01]", "palm"),
+    ("safari/textures/safarifruitree1[01]", "palm"), ("safari/textures/safarifringe", "drip"), ("safari/textures/safarifringe02", "drip"),  # green only: 03 and 04 are purple and blue roofs
     ("safari/textures/pestsaf03", "ground"), ("safari/textures/pestsaf06", "ground"), ("safari/textures/pestsaf07", "ground"),
     ("safari/textures/grassedge*", "ground"), ("safari/textures/grassjoiner*", "ground"),
 ]
@@ -511,7 +511,7 @@ LEVELS = {
     "safari": dict(scene=5, pak="safari", blend="zoo-levels/safari/safari.blend", out="zoo-levels/safari/pass1", rules=SAFARI_RULES, hand=SAFARI_HAND,
                    look=SAFARI_LOOK, hdri=None, hdri_rotation=0.0, hub=(-79.0, -64.0, 71.0, 80.0), sky_panels=True, night_sky=False, grass_density=30.0, island_boxes=True,
                    captures=("zoo-levels/safari/world-hero.bin", "zoo-levels/safari/world-sweep-a.bin", "zoo-levels/safari/world-sweep-b.bin"),
-                   materials=tuple(SAFARI_TILES) + ("lawn", "dirt", "grass", "flat", "flat_wind", "water", "water_bed", "foam", "bark", "leaves", "leaf_core"), tiles=SAFARI_TILES,
+                   materials=tuple(SAFARI_TILES) + ("lawn", "dirt", "grass", "flat", "flat_wind", "water", "water_bed", "foam", "bark", "leaves", "leaf_core", "ivy"), tiles=SAFARI_TILES,
                    detail=SAFARI_DETAIL, binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05))}, sky_gain=1.3),
     "aqua": dict(scene=6, pak="aqua", blend="zoo-levels/aqua/aqua.blend", out="zoo-levels/aqua/pass1", rules=AQUA_RULES, hand=AQUA_HAND,
                  look=AQUA_LOOK, hdri=None, hdri_rotation=0.0, hub=(-96.0, -79.0, 116.0, 127.0), sky_panels=True, night_sky=False, clutter=False, island_boxes=True,
