@@ -562,7 +562,7 @@ def blender_main(argv):
         # 3c. water: a bed and walls under the hub's water so it can be see-through, and a foam rim
         if not a.pass1:
             bed, foam = kit.water_dress([o for o in live if poly_mask(o, ("water",)).any()],
-                                        lambda o: poly_mask(o, ("water",)), SCALE, depth=0.7, foam=L.get("foam", 0.35), walls=L.get("water_walls", True),
+                                        lambda o: poly_mask(o, ("water",)), SCALE, depth=L.get("water_depth", 0.7), foam=L.get("foam", 0.35), walls=L.get("water_walls", True),
                                         region=L["hub"], coll=props)
             if bed:
                 stats["water_bed_tris"] = kit.tri_count(bed) + kit.tri_count(foam)

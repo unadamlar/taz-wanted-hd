@@ -1058,7 +1058,7 @@ vals = [
     ("fog_end", fog_start + grade["fog_depth"] * SC * K / grade["fog"]),  # Blender's fog tops out at this 7%
     ("exposure", 2 ** grade["exposure"]), ("bloom_threshold", LEVEL.get("bloom_threshold", 0.9)), ("bloom_strength", grade["bloom"]),
     ("saturation", grade["saturation"]), ("contrast", LEVEL.get("contrast", 1.15)),
-    ("water_height", water_y), ("water_color", kit.srgb("#2aa6c8")), ("water_clarity", LEVEL.get("water_clarity", 0.72)),
+    ("water_height", water_y), ("water_color", kit.srgb(LEVEL.get("water_color", "#2aa6c8"))), ("water_clarity", LEVEL.get("water_clarity", 0.72)),
     ("grass_fade_start", 5000.0), ("grass_fade_end", 10000.0), ("sky_scale", sky_scale * LEVEL.get("sky_gain", 1.0)),
 ] + [(k, LEVEL[k]) for k in ("unbake", "char_fill", "char_keep", "hold", "shadow_floor") if k in LEVEL]
 with open(os.path.join(tmp, "level.ini"), "w") as f:
