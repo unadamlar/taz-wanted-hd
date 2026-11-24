@@ -25,7 +25,7 @@ static int level, loaded_scene = -1;
 #define FRONTEND 1
 static struct rec *recs; static UINT nrecs, cap_recs;     // this frame's character draws, for their sun map
 static HRESULT (WINAPI *draw_real)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT);
-static struct { int frames, want; double look_ms, frame_ms, present_ms; UINT world, game, pieces, merged; LARGE_INTEGER last; } m;
+static struct { int frames, want; UINT64 look, tsc; double present_ms; UINT world, game, pieces, merged; LARGE_INTEGER last; } m;
 static UINT stat_world, stat_game;
 
 // Costume pieces the game attaches to characters (a helmet, a hat) are world draws, made by FUN_0055fb50 from the
@@ -49,12 +49,8 @@ void look_install(void *dp)
     level = settings.tests && atoi(v) ? 4 : 0;
 }
 
-static double now_ms(void)
-{
-    LARGE_INTEGER t, f;
-    QueryPerformanceCounter(&t), QueryPerformanceFrequency(&f);
-    return t.QuadPart * 1000.0 / f.QuadPart;
-}
+// The CPU's cycle counter: under Wine QueryPerformanceCounter is a system call, and two per draw were a fifth of the frame.
+static UINT64 ticks(void) { return __builtin_ia32_rdtsc(); }
 
 static void drop_recs(void)
 {
@@ -542,9 +538,9 @@ int look_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start,
 {
     stat_game++;
     if (!remaster()) return 0;
-    double t0 = now_ms();
+    UINT64 t0 = ticks();
     int result = draw4(dev, api, type, start, count);
-    m.look_ms += now_ms() - t0;
+    m.look += ticks() - t0;
     return result;
 }
 
@@ -608,7 +604,7 @@ void look_frame(IDirect3DDevice8 *dev)
         memset(&m, 0, sizeof m);
         m.frames = -30, m.want = n;
     }
-    double t0 = now_ms();
+    UINT64 t0 = ticks();
     hd_set_paused(settings.exe_known && GAME_STATE == 3);
     merge_frame(dev);
     int scene = settings.exe_known ? look_scene(SCENE) : -1;
@@ -624,18 +620,18 @@ void look_frame(IDirect3DDevice8 *dev)
     if (scene < 1) loaded_scene = -1;
     if (remaster()) char_shadows(dev);
     else drop_recs();
-    m.look_ms += now_ms() - t0;
+    m.look += ticks() - t0;
     LARGE_INTEGER t;
     QueryPerformanceCounter(&t);
-    if (m.frames < 0 && ++m.frames == 0) QueryPerformanceCounter(&m.last), m.look_ms = 0, m.world = m.game = m.pieces = m.merged = 0;
+    if (m.frames < 0 && ++m.frames == 0) m.last = t, m.tsc = ticks(), m.look = 0, m.world = m.game = m.pieces = m.merged = 0;
     else if (m.frames >= 0 && m.last.QuadPart) {
         m.frames++, m.world += stat_world, m.game += stat_game, m.pieces += merge_stat_pieces, m.merged += merge_stat_draws;
         if (m.frames == m.want) {
             LARGE_INTEGER fq;
             QueryPerformanceFrequency(&fq);
-            double ms = (t.QuadPart - m.last.QuadPart) * 1000.0 / fq.QuadPart / m.frames;
+            double ms = (t.QuadPart - m.last.QuadPart) * 1000.0 / fq.QuadPart / m.frames, per_tick = ms * m.frames / (ticks() - m.tsc);
             log_line("look: measured level %d%s: %.2f ms/frame (%.1f fps), look code %.2f ms, Present %.2f ms, %u world draws, game issued %u draws, %u of them merged into %u, address space free %lu MB",
-                     level, remaster() ? "" : " (F11 away)", ms, 1000 / ms, m.look_ms / m.frames, m.present_ms / m.frames, m.world / m.frames, m.game / m.frames,
+                     level, remaster() ? "" : " (F11 away)", ms, 1000 / ms, m.look * per_tick / m.frames, m.present_ms / m.frames, m.world / m.frames, m.game / m.frames,
                      m.pieces / m.frames, m.merged / m.frames, avail_mb());
             m.last.QuadPart = 0;
         }

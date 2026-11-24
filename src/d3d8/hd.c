@@ -743,9 +743,6 @@ void hd_camera(hd_dev d)
     for (int i = 0; i < 4; i++)
         for (int j = 0; j < 4; j++) clip_rows[i][j] = t[j][i];
     for (int a = 0; a < 3; a++) eye[a] = -(v[3][0] * v[a][0] + v[3][1] * v[a][1] + v[3][2] * v[a][2]);
-    LARGE_INTEGER c, f;
-    QueryPerformanceCounter(&c), QueryPerformanceFrequency(&f);
-    now_s = (float)fmod((double)c.QuadPart / f.QuadPart, 3600.0);
 }
 
 const float *hd_view(void) { return view[0]; }
@@ -1600,6 +1597,9 @@ void hd_post(hd_dev d)
 
 void hd_frame_end(hd_dev d)
 {
+    LARGE_INTEGER c, f; // the shaders' clock, once a frame: under Wine each read is a system call
+    QueryPerformanceCounter(&c), QueryPerformanceFrequency(&f);
+    now_s = (float)fmod((double)c.QuadPart / f.QuadPart, 3600.0);
     hd_solid_flush(d);
     if (redirected) hd_post(d);
     unbind_common(d);
