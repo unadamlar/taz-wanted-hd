@@ -739,3 +739,30 @@ LEVELS = {
                      materials=tuple(TB2_TILES) + ("flat",), tiles=TB2_TILES, detail=TB2_DETAIL, glow=TB2_GLOW, fog_color="#7fc4f4",
                      hold=0.6, contrast=1.0, bloom_threshold=14.0, char_fill=(0.6, 0.5, 0.4), char_keep=1.0),
 }
+
+
+# ---- bonus levels (scenes 21-29): each is a story level's variant in its own pak. Its block is the twin's, with the twin's texture
+# paths pointed at the bonus pak; `first` adds rules ahead of the twin's (they win), anything else replaces the twin's value.
+def _bonus(twin, pak, scene, captures, first=(), **extra):
+    L, old = LEVELS[twin], LEVELS[twin]["pak"] + "/"
+    re = lambda p: pak + "/" + p[len(old):] if p.startswith(old) else p
+    B = dict(L, scene=scene, pak=pak, blend=f"westhub/bonus/s{scene}/{pak}.blend", out=f"westhub/bonus/s{scene}/pass1",
+             captures=tuple(f"westhub/bonus/s{scene}/world-{c}.bin" for c in captures), rules=list(first) + [(re(p), r) for p, r in L["rules"]])
+    for k in ("detail", "glow"):
+        if k in L:
+            B[k] = [(re(p), *rest) for p, *rest in L[k]]
+    for k in ("wire", "chain", "grill"):
+        if k in L:
+            B[k] = re(L[k])
+    if "trees" in L:
+        B["trees"] = tuple(re(p) for p in L["trees"])
+    if "solids" in L:
+        B["solids"] = dict(cards={re(p): v for p, v in L["solids"]["cards"].items()}, soft=tuple(re(p) for p in L["solids"]["soft"]))
+    if "relief" in L:
+        B["relief"] = dict(L["relief"], textures=tuple(re(p) for p in L["relief"]["textures"]))
+    B.update(extra)
+    return B
+
+
+LEVELS["vrgrandc"] = _bonus("grandc", "vrgrandc", 22, ("hero", "sweep-0"), first=[("vrgrandc/textures/goarrow*", "gameplay")],
+                            hub=(-115.0, -174.0, 233.0, 75.0))
