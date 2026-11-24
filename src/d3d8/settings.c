@@ -76,6 +76,7 @@ void settings_load(void)
     settings.draw = GetPrivateProfileIntA("taz-hd", "draw_distance", 4, INI);
     if (settings.draw != 1 && settings.draw != 2) settings.draw = 4;
     settings.mouse = GetPrivateProfileIntA("taz-hd", "mouse_sensitivity", 5, INI);
+    settings.aim_assist = GetPrivateProfileIntA("taz-hd", "aim_assist", 0, INI);
     GetPrivateProfileStringA("taz-hd", "controls", "wasd", res, sizeof res, INI);
     settings.wasd = _stricmp(res, "classic") != 0;
     settings.antialiasing = GetPrivateProfileIntA("taz-hd", "antialiasing", 4, INI);
@@ -120,6 +121,7 @@ static struct item items[] = {
     { "Controls", "WASD and mouse, or the original keys", "controls", "wasd", { "wasd", "classic" }, 2, 0, PAUSE | KEYS },
     { "Controls", "Keys, mouse look and layout", "keys", "", { "" }, 0, 0, FRONT },
     { "Mouse Look", "Camera speed when turning with the mouse", "mouse_sensitivity", "5", { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }, 11, 0, PAUSE | KEYS },
+    { "Aim Assist", "Last boss: a spit close to Mecha-Tweety goes straight at him", "aim_assist", "0", { "0", "1" }, 2, 0, KEYS },
     { "Menu Text Speed", "How fast menu text slides in. 1x is the original speed", "menu_text_speed", "3", { "1", "2", "3", "4" }, 4, 0, FRONT },
 };
 
@@ -222,6 +224,7 @@ void setting_step(int i, int dir)
     else if (!strcmp(it->key, "taz_style")) settings.taz_style = style_index(v);
     else if (!strcmp(it->key, "draw_distance")) settings.draw = atoi(v);
     else if (!strcmp(it->key, "mouse_sensitivity")) settings.mouse = atoi(v);
+    else if (!strcmp(it->key, "aim_assist")) settings.aim_assist = atoi(v);
     else if (!strcmp(it->key, "controls")) settings.wasd = strcmp(v, "classic") != 0, controls_apply();
     else if (!strcmp(it->key, "hd_textures")) settings.hd_textures = atoi(v), textures_apply();
     else if (!strcmp(it->key, "antialiasing")) settings.antialiasing = atoi(v), display_change(0, 0, settings.vsync);
