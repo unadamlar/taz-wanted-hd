@@ -1188,8 +1188,8 @@ if cfg["cards"] or cfg["soft"]:
                 pp, nn, cc = cactus_geo(W, colour, rng_)
                 for i in set(range(len(ds))) - set(cac):
                     q = T[i][0].reshape(-1, 3)
-                    fp, fn, fc = props3d.flower(q.mean(0), 0.5 * np.ptp(q, 0).max(), paint_families(game_rgba(label_of(ds[i][0]))[..., :3].reshape(-1, 3))[0], (0.95, 0.8, 0.2), rng_)
-                    pp, nn, cc = np.concatenate([pp, fp]), np.concatenate([nn, fn]), np.concatenate([cc, fc])
+                    f_p, f_n, f_c = props3d.flower(q.mean(0), 0.5 * np.ptp(q, 0).max(), paint_families(game_rgba(label_of(ds[i][0]))[..., :3].reshape(-1, 3))[0], (0.95, 0.8, 0.2), rng_)
+                    pp, nn, cc = np.concatenate([pp, f_p]), np.concatenate([nn, f_n]), np.concatenate([cc, f_c])
                 p, n, u, m, vc = pp, nn, np.zeros((len(pp), 2)), np.full(len(pp), MAT_ID["flat"]), dds.to_linear(cc)
             else:
                 p, n, u, mi = solid.rounded(np.concatenate([t[0] for t in T]), np.concatenate([t[1] for t in T]), tex)
@@ -1452,6 +1452,10 @@ report = dict(triangles=int(tris), instances=int(ninst), protos=len(protos), chu
               binds=len(bind_list), lights=len(lights), glows=len(glows), hidden=len(hide), shade=len(shade), texture_mb=round(sum(tex_bytes.values()) / 1e6, 1),
               sky_mb=round(sky_bytes / 1e6, 1), scene_mb=round(os.path.getsize(os.path.join(tmp, "scene.bin")) / 1e6, 1),
               water_y=water_y, sky_scale=sky_scale, brick_masks=mask_report)
+if not bind_list and any(LEVEL.get(k) for k in ("binds", "detail")):  # a level with material rules always binds some
+    raise RuntimeError("export bound no game textures to materials: the level would draw as plain HD paint")
+prev = json.load(open(os.path.join(cache, "report.json"))).get("binds") if os.path.exists(os.path.join(cache, "report.json")) else None
+print("export: %d binds (previous export %s)" % (len(bind_list), prev))
 json.dump(report, open(os.path.join(cache, "report.json"), "w"), indent=1)
 swap(tmp, out)
 print("export:", json.dumps({k: v for k, v in report.items() if k != "brick_masks"}))
