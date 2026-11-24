@@ -73,6 +73,11 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
   `extracted/look/city-levels/<level>/runtime/sceneNN`. Not in the user's playable copy. Not checked: finishing a level, win and lose
   screens, the museum's real entry, the 2 GB limit, uncapped frame time. Museum jumps drop Taz into a fall and city boss jumps crash,
   so test them through the routes in that folder's `notes.md`.
+- Zoo world done: ice dome, safari, aquarium and zoo boss (`extracted/look/reports/step7/zoo-levels/`). Data is in `extracted/look/runtime-step7/`.
+  Not in the user's playable copy. Safari and the aquarium were mostly seen from fixed cameras, because Taz got stuck early on the test walks.
+  Known leftovers: safari's flat tree canopies and palm leaves, painted green edges, a flat cyan water area in one view; faint straight
+  lines across the aquarium's sea; slightly hazy ice dome snow.
+- Zoo boss F5/F9 can crash when the load crosses the goal replay (with the look data 2 of 3 runs, without it 3 of 3). Cause unknown, plain `master` not tried.
 - For the user to judge in the city levels: real paint replaces baked colour (store's blue, museum's pink floor, construction huts teal to yellow).
 
 ## How the pieces fit
