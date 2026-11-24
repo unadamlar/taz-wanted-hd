@@ -790,7 +790,12 @@ LEVELS["rcgoldmine"]["glow"] += [("rcgoldmine/textures/minelights*", 2.0, (0.4, 
 LEVELS["rcsafari"] = _bonus("safari", "rcsafari", 29, ("hero", "sweep-0", "sweep-1", "sweep-2"), hub=(-53.0, -61.0, 60.0, 60.0),
                             first=[(f"rcsafari/textures/{p}", "gameplay") for p in _RACE_SIGNS] + [
                                 ("rcsafari/textures/sunsetwater", "water"), ("rcsafari/textures/grassblue*", "lawn"), ("rcsafari/textures/hubflowers04", "lawn"),
-                                ("rcsafari/textures/grassjoiner*", "ground"), ("rcsafari/textures/pathrock", "ground")], grass_density=24.0)
+                                ("rcsafari/textures/grassjoiner*", "ground"), ("rcsafari/textures/pathrock", "ground")], grass_density=24.0,
+                            card_models=tuple((f"rcsafari/textures/{n}", k) for n, k in (  # the safari's, without the race's stop boards
+                                ("*bush*", "bush"), ("plantspike*", "flower"), ("fred", "flower"), ("fpurp", "flower"), ("palmleaf", "leaf"),
+                                ("safsign*", "sign"), ("sign[0-9]*", "sign"), ("wardensign*", "sign"), ("electricfencesign*", "sign"), ("hitsignexplan", "sign"))))
+# Its blend was dressed before the safari's trees, palms, drips and vines were: those cards stay the game's.
+LEVELS["rcsafari"]["rules"] = [(p, r) for p, r in LEVELS["rcsafari"]["rules"] if r not in ("tree", "palm", "drip", "vine")]
 LEVELS["rcicedome"] = _bonus("icedome", "rcicedome", 27, ("hero", "sweep-0", "sweep-1", "sweep-2"), hub=(-68.0, -53.0, 64.0, 39.0),
                              first=[(f"rcicedome/textures/{p}", "gameplay") for p in _RACE_SIGNS])
 LEVELS["vrmuseum"] = _bonus("museum", "vrmuseum", 21, ("hero", "sweep-0", "sweep-1"), hub=(-14.0, -32.0, 20.0, 32.0),
