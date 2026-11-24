@@ -157,12 +157,12 @@ TAZHUB_RULES = [
     ("tazhub/textures/safariwater", "water"), ("tazhub/skybox/*", "sky"), ("resTex/shadowsub", "hide"),
 ]
 TAZHUB_DETAIL = [
-    ("tazhub/textures/tazwall*", "d_rock"), ("tazhub/textures/tazunder*", "d_rock"), ("tazhub/textures/tazvolc[0-9]*", "d_rock"),
-    ("tazhub/textures/rock_big*", "d_rock"), ("tazhub/textures/tazwood*", "d_bark"), ("tazhub/textures/loggin*", "d_bark"),
+    ("tazhub/textures/tazwall*", "d_cliff"), ("tazhub/textures/tazunder*", "d_cliff"), ("tazhub/textures/tazvolc[0-9]*", "d_cliff"),
+    ("tazhub/textures/rock_big*", "d_cliff"), ("tazhub/textures/tazwood*", "d_bark"), ("tazhub/textures/loggin*", "d_bark"),
     ("tazhub/textures/tazmill*", "d_stone"), ("tazhub/textures/taznest01", "d_bark"),
 ]
 TAZHUB_TILES = {
-    "d_rock": dict(set="rock061", period=3.0, px=1024, detail=0.4, triplanar=True, rough=0.85),
+    "d_cliff": dict(set="boulder_dry", period=5.5, px=1024, detail=0.34, triplanar=True, rough=0.85, normal=1.7),  # broad painted-rock planes
     "d_stone": dict(set="old_sandstone", period=2.6, px=1024, detail=0.45, triplanar=True, rough=0.8),
     "d_bark": dict(set="bark", period=1.6, px=1024, detail=0.45, triplanar=True, rough=0.75, normal=0.7),
 }
@@ -568,6 +568,45 @@ WBOSS_LOOK = dict(
 )
 WBOSS_HAND = dict(DEPT_HAND, camera_B=dict(loc=(-17.9, -9.7, -1.8), look_at=(-11.0, -2.6, -11.5), lens=16.0), camera_C=dict(loc=(-17.9, -9.7, -1.8), look_at=(-11.0, -2.6, -11.5), lens=16.0))
 
+# ---- Taz boss 1 (scene 19): Disco Volcano, a dance floor over lava inside the hub's volcano. Fogless; lit by its painted lava light.
+TB1_RULES = [
+    ("resobjs/*", "gameplay"), ("tazboss1/extras/*", "gameplay"), ("tazboss1/textures/plunger*", "gameplay"), ("tazboss1/textures/exp_*", "gameplay"),
+    ("tazboss1/textures/dynamite*", "gameplay"), ("tazboss1/textures/fuse", "gameplay"), ("tazboss1/textures/crateside01", "gameplay"),
+    ("tazboss1/textures/electricwarning", "gameplay"), ("tazboss1/textures/70'strip*", "gameplay"), ("tazboss1/textures/walkway_pillar*", "gameplay"),
+    ("resTex/shadowsub", "hide"),
+]
+TB1_GLOW = [(f"tazboss1/textures/{p}", g, r) for p, g, r in (
+    ("lavabubble*", 0.7, None), ("lavalampglass", 1.3, None), ("torch", 2.2, (0.45, 0.75)), ("walkway_rim*", 1.8, (0.55, 0.8)),
+    ("walkwaytop", 1.8, (0.55, 0.8)), ("lightcolours", 1.4, None), ("tv02", 0.8, None))]
+TB1_DETAIL = [(f"tazboss1/textures/{p}", m) for p, m in (
+    ("volcano*", "d_cliff"), ("walkway0*", "d_steel"), ("walkway_platform*", "d_steel"), ("companel*", "d_steel"), ("gurderendgrey", "d_steel"),
+    ("camera06", "d_steel"), ("cbfloodstand", "d_steel"), ("drainpipeend", "d_steel"), ("lavalampbase", "d_gloss"))]
+TB1_TILES = dict(d_cliff=TAZHUB_TILES["d_cliff"], d_steel=CONS_TILES["d_steel"], d_gloss=AQUA_TILES["d_gloss"])
+TB1_HAND = dict(TAZHUB_HAND, camera_B=dict(loc=(0.0, -18.0, 2.0), look_at=(0.0, 0.0, -5.0), lens=16.0), camera_C=dict(loc=(18.0, 0.0, 2.0), look_at=(0.0, 0.0, -5.0), lens=16.0))
+TB1_LOOK = dict(
+    sun=dict(sun_azimuth=60.0, sun_elevation=68.0, sun_strength=1.5, sun_color="#ffd8b0"),  # down the volcano's mouth
+    grade=dict(exposure=-0.1, look="AgX - Punchy", saturation=1.12, bloom=0.22, fog=0.01, fog_start=200.0, fog_depth=400.0, ambient_strength=0.72),
+    sky=dict(zenith="#3a1030", horizon="#a03040", horizon_warm="#ff8050", sky_strength=1.0, cloud_white=1.0, ambient="#e8c0c8"), cliff=dict(),
+)
+
+# ---- Taz boss 2 (scene 20): inside Sam's zeppelin, blue painted steel over the hub's sky. Fogless; its baked purple shading is kept.
+TB2_RULES = [
+    ("resobjs/*", "gameplay"), ("tazboss2/extras/*", "gameplay"), ("crashhelmet/*", "gameplay"), ("tazboss2/textures/zepp_taz_crate*", "gameplay"),
+    ("tazboss2/textures/crate_t*", "gameplay"), ("tazboss2/textures/warning_sign", "gameplay"), ("tazboss2/textures/zepp_switch", "gameplay"),
+    ("tazboss2/textures/final_backdoor*", "gameplay"), ("tazboss2/textures/doorhandle01", "gameplay"), ("tazboss2/textures/zepp_chart", "gameplay"),
+    ("tazboss2/skybox/*", "sky"), ("resTex/shadowsub", "hide"),
+]
+TB2_GLOW = [(f"tazboss2/textures/{p}", g, r) for p, g, r in (
+    ("zepp_light", 1.6, None), ("light", 1.2, (0.5, 0.8)), ("pestizepp0*", 0.9, (0.55, 0.85)), ("greenred03.gif", 1.2, None), ("elecloop", 1.4, None),
+    ("zepp_powerbox*", 0.5, (0.6, 0.85)))]
+TB2_DETAIL = [(f"tazboss2/textures/{p}", "d_steel") for p in (
+    "zepp_wall*", "zepp_room*", "zepp_panels*", "zepp_plates", "floor_bolt*", "end_room*", "zepp_girder*", "girder0*", "zepp_floor*", "floor_new",
+    "floor_stripes", "floor_trap_door", "zepp_mag*", "zepp_pipe*", "zepp_door*", "wall_taz_entry*", "zepp_coveyer*", "zepp_big_door*", "back_door*",
+    "zepp_bay_door", "zepp_flaps", "zepp_test", "fan", "panel")]
+TB2_TILES = dict(d_steel=CONS_TILES["d_steel"])
+TB2_HAND = dict(TAZHUB_HAND, camera_B=dict(loc=(0.0, -36.0, 2.0), look_at=(0.0, -20.0, -1.0), lens=16.0), camera_C=dict(loc=(0.0, 20.0, 2.0), look_at=(0.0, 40.0, -1.0), lens=16.0))
+TB2_LOOK = dict(TAZHUB_LOOK, grade=dict(TB1_LOOK["grade"], ambient_strength=0.8), sky=dict(TAZHUB_LOOK["sky"], ambient="#efe2d2"))  # warm: the roof shades the sun, and blue light turned Taz lilac
+
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", captures=("world-hero.bin", "world-sweep.bin"), rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
@@ -690,4 +729,13 @@ LEVELS = {
                      materials=tuple(WBOSS_TILES) + ("flat",), tiles=WBOSS_TILES, detail=WBOSS_DETAIL, glow=WBOSS_GLOW,
                      lamps=dict(DEPT_LAMPS, extra=room_lamps(((-6000, -4000, 2000, 4000, -2100, 3, 3),), 1900, 13.0, "#ffe2b8", 1.6)),
                      char_fill=(0.12, 0.12, 0.14)),
+    "tazboss1": dict(scene=19, pak="tazboss1", blend="tazhub/tazboss1/tazboss1.blend", out="tazhub/tazboss1/pass1", rules=TB1_RULES, hand=TB1_HAND,
+                     look=TB1_LOOK, hdri=None, hdri_rotation=0.0, hub=(-25.0, -19.5, 25.5, 19.5), game_sky=True, clutter=False,
+                     captures=("tazhub/tazboss1/world-hero.bin", "tazhub/tazboss1/world-sweep-a.bin"), materials=tuple(TB1_TILES) + ("flat",),
+                     tiles=TB1_TILES, detail=TB1_DETAIL, glow=TB1_GLOW, hold=0.6, contrast=1.0, bloom_threshold=14.0, char_fill=(0.55, 0.46, 0.42), char_keep=1.0),
+    "tazboss2": dict(scene=20, pak="tazboss2", blend="tazhub/tazboss2/tazboss2.blend", out="tazhub/tazboss2/pass1", rules=TB2_RULES, hand=TB2_HAND,
+                     look=TB2_LOOK, hdri=None, hdri_rotation=0.0, hub=(-14.0, -39.5, 14.5, 52.0), sky_panels=True, night_sky=False, sky_gain=1.05, clutter=False,
+                     captures=("tazhub/tazboss2/world-hero.bin", "tazhub/tazboss2/world-sweep-a.bin", "tazhub/tazboss2/world-sweep-b.bin"),
+                     materials=tuple(TB2_TILES) + ("flat",), tiles=TB2_TILES, detail=TB2_DETAIL, glow=TB2_GLOW, fog_color="#7fc4f4",
+                     hold=0.6, contrast=1.0, bloom_threshold=14.0, char_fill=(0.6, 0.5, 0.4), char_keep=1.0),
 }
