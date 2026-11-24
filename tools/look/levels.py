@@ -503,7 +503,10 @@ LEVELS = {
     "westhub": dict(scene=13, pak="westhub", blend="westhub/westhub.blend", out="westhub/pass1", rules=WEST_RULES, hand=WEST_HAND,
                     look=WEST_LOOK, hdri=None, hdri_rotation=0.0, hub=(-70.0, -35.0, 72.0, 95.0), sky_panels=True, night_sky=False, clutter_opts=dict(leaves=0.0, pebbles=5.0, stones=0.7), island_boxes=True,
                     captures=("westhub/world-hero.bin", "westhub/world-sweep-a.bin", "westhub/world-sweep-b.bin", "westhub/world-sweep-c.bin"),
-                    materials=tuple(WEST_TILES) + ("flat",), tiles=WEST_TILES, detail=WEST_DETAIL, binds={"ground": (("d_sand", 4, -1.0, 0.0),)},
-                    solids=dict(cards={}, soft=tuple(f"westhub/textures/{n}" for n in ("cactus07", "cactus_bit", "cactus_bit2"))),
+                    materials=tuple(WEST_TILES) + ("flat", "link"), tiles=WEST_TILES, detail=WEST_DETAIL, binds={"ground": (("d_sand", 4, -1.0, 0.0),)},
+                    flats={"link": ((0.42, 0.4, 0.38), 0.4)},
+                    solids=dict(cards={"westhub/textures/train_chain": dict(mat="link", links=True),
+                                       "westhub/textures/safarigrill01": dict(size=(90.0, 345.0), depth=4.5, tol=1.4, area=30.0, repeat=2, each_draw=True)},
+                                soft=tuple(f"westhub/textures/{n}" for n in ("cactus07", "cactus_bit", "cactus_bit2"))),
                     fog_color="#f4d8b0", ground_tint=(0.82, 0.62, 0.42), sky_gain=1.3, char_keep=0.55, tints={"d_sand": (2.0, 1.66, 1.05), "d_canyon": (1.8, 2.15, 2.5), "flat": (1.3, 0.86, 0.7)}),
 }
