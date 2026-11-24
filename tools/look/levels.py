@@ -605,7 +605,7 @@ TB2_DETAIL = [(f"tazboss2/textures/{p}", "d_steel") for p in (
     "zepp_bay_door", "zepp_flaps", "zepp_test", "fan", "panel")]
 TB2_TILES = dict(d_steel=CONS_TILES["d_steel"])
 TB2_HAND = dict(TAZHUB_HAND, camera_B=dict(loc=(0.0, -36.0, 2.0), look_at=(0.0, -20.0, -1.0), lens=16.0), camera_C=dict(loc=(0.0, 20.0, 2.0), look_at=(0.0, 40.0, -1.0), lens=16.0))
-TB2_LOOK = dict(TAZHUB_LOOK, grade=dict(TB1_LOOK["grade"], ambient_strength=0.8), sky=dict(TAZHUB_LOOK["sky"], ambient="#efe2d2"))  # warm: the roof shades the sun, and blue light turned Taz lilac
+TB2_LOOK = dict(TAZHUB_LOOK, sun=dict(TAZHUB_LOOK["sun"], sun_color="#ffffff", sun_strength=3.93), grade=dict(TB1_LOOK["grade"], ambient_strength=0.8, saturation=1.0), sky=dict(TAZHUB_LOOK["sky"], ambient="#d8d8dd"))  # neutral: blue light turned Taz lilac, warm light orange
 
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", captures=("world-hero.bin", "world-sweep.bin"), rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
@@ -737,5 +737,5 @@ LEVELS = {
                      look=TB2_LOOK, hdri=None, hdri_rotation=0.0, hub=(-14.0, -39.5, 14.5, 52.0), sky_panels=True, night_sky=False, sky_gain=1.05, clutter=False,
                      captures=("tazhub/tazboss2/world-hero.bin", "tazhub/tazboss2/world-sweep-a.bin", "tazhub/tazboss2/world-sweep-b.bin"),
                      materials=tuple(TB2_TILES) + ("flat",), tiles=TB2_TILES, detail=TB2_DETAIL, glow=TB2_GLOW, fog_color="#7fc4f4",
-                     hold=0.6, contrast=1.0, bloom_threshold=14.0, char_fill=(0.6, 0.5, 0.4), char_keep=1.0),
+                     hold=0.6, contrast=1.0, bloom_threshold=14.0, char_fill=(1.6, 1.75, 2.0), char_keep=0.4),
 }
