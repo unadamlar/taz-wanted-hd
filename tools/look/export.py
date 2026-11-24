@@ -1114,7 +1114,8 @@ def iron_geo(alpha, paint, pos, uv, col, size):
     if not lines:
         return []
     lit = np.clip(col.mean((0, 1)), 0, 1)
-    iron = np.clip(np.median(paint[alpha > 0.5], 0) * lit * 1.6, 0, 1)  # lighter than the paint's ink, so it shades round
+    iron = np.median(paint[alpha > 0.5], 0) * lit
+    iron = np.clip(iron * (1.6 if iron.max() < 0.15 else 1.15), 0, 1)  # black ink lifted a little, so it shades round
     rmed = np.median(np.concatenate([r for _, r, *_ in lines]))
     on = lambda q: 0 <= q[1] < h and alpha[int(q[1]), int(q[0]) % w] > 0.5
 
@@ -1122,7 +1123,27 @@ def iron_geo(alpha, paint, pos, uv, col, size):
         side = np.array([-d[1], d[0]])
         return min(next(k for k in range(1, 40) if not on(q + s_ * k * side)) for s_ in (1, -1)) - 0.5
 
-    P, N = [], []
+    P, N, C = [], [], []
+    nodes = []  # bolted plates where bars meet: the paint is wide every way round the joint
+    for q in (p_ + 0.5 for xy, *_ in lines for p_ in (xy[0], xy[-1])):
+        if all(np.abs(q - o).max() > 2 for o in nodes):
+            nodes.append(q)
+    for q in nodes:
+        reach = min(next((k for k in range(1, 40) if not on(q + k * np.array(d_))), 40) for d_ in
+                    ((1, 0), (-1, 0), (0, 1), (0, -1), (0.7, 0.7), (-0.7, 0.7), (0.7, -0.7), (-0.7, -0.7))) - 0.5
+        if reach < 2 * rmed or not 0 <= q[1] < h:
+            continue
+        c_, hw = q * px, reach * px.mean()
+        t_ = 1.3 * rmed * 0.85 * px.mean()
+        p, n, _ = props3d.board(np.array([[c_[0] - hw, c_[1] - hw, 0], [c_[0] + hw, c_[1] + hw, 0]]), (np.array([1.0, 0, 0]), np.array([0, 1.0, 0])), t_)
+        P.append(p); N.append(n); C.append(np.tile(iron, (len(p), 1)))
+        k_ = max(2, int(reach * 0.6))
+        near = paint[max(int(q[1]) - k_, 0):int(q[1]) + k_ + 1, (int(q[0]) + np.arange(-k_, k_ + 1)) % w].reshape(-1, 3)
+        bolt = np.clip(near[near.min(1).argmax()] * lit * 1.15, 0, 1)  # the bolt head's pale paint, not its slot
+        if np.abs(bolt - iron).max() > 0.15:  # a painted bolt head on both faces
+            for z_ in (1, -1):
+                p, n, _ = props3d.disc(np.array([c_[0], c_[1], z_ * t_ * 1.2]), hw * 0.45, np.array([0, 0, z_ * 1.0]), t_ * 0.3, sides=10)
+                P.append(p); N.append(n); C.append(np.tile(bolt, (len(p), 1)))
     for xy, r, *free in lines:
         xy = xy + 0.5
         heads = []
@@ -1149,7 +1170,7 @@ def iron_geo(alpha, paint, pos, uv, col, size):
             r = r[:k + 1] if end == -1 else r[len(r) - 1 - k:]
             m0, m1 = base * px, tip * px
             p, n = props3d._tube(np.c_[np.array([m0, m0 + (m1 - m0) * 1e-3, m1]), np.zeros(3)], np.array([0.0, 0.9 * wide * px.mean(), 0.0]), 4)
-            P.append(p); N.append(n)
+            P.append(p); N.append(n); C.append(np.tile(iron, (len(p), 1)))
         if len(xy) > 4:  # pixel steps smoothed out, ends kept
             sm = np.c_[[np.convolve(np.pad(xy[:, c], 2, mode="edge"), np.ones(5) / 5, "valid") for c in (0, 1)]].T
             sm[[0, -1]] = xy[[0, -1]]
@@ -1159,11 +1180,12 @@ def iron_geo(alpha, paint, pos, uv, col, size):
         if len(m) < 2 or np.linalg.norm(m[-1] - m[0]) < 1e-6:
             continue
         p, n = props3d._tube(np.c_[m, np.zeros(len(m))], np.full(len(m), np.clip(np.median(r), 0.5, 1.3 * rmed) * 0.85 * px.mean()), 6)  # forged bars: even
-        P.append(p); N.append(n)
+        P.append(p); N.append(n); C.append(np.tile(iron, (len(p), 1)))
     if not P:
         return []
-    p = np.concatenate(P); n = np.concatenate(N)
+    p, n, cc = np.concatenate(P), np.concatenate(N), np.concatenate(C)
     pw, nw, q, c = solid.on_card(p / [size[0], size[1], 1], n, pos, uv, col, size, tiled=True)
+    cc = np.tile(cc, (len(pw) // len(p), 1))  # one copy per texture repeat
     a_, e1, e2 = uv[:, 0], uv[:, 1] - uv[:, 0], uv[:, 2] - uv[:, 0]
     det = e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]
     rel = q[:, None] - a_[None]
@@ -1171,7 +1193,7 @@ def iron_geo(alpha, paint, pos, uv, col, size):
     l2 = (e1[:, 0] * rel[..., 1] - e1[:, 1] * rel[..., 0]) / det
     keep = (np.minimum(np.minimum(l1, l2), 1 - l1 - l2) > -0.01).any(1).reshape(-1, 3).all(1)
     k = (np.nonzero(keep)[0][:, None] * 3 + [0, 1, 2]).ravel()
-    return [(pw[k], nw[k], np.zeros((len(k), 2)), np.tile(iron, (len(k), 1)), np.full(len(k), MAT_ID["prop"]))]
+    return [(pw[k], nw[k], np.zeros((len(k), 2)), cc[k], np.full(len(k), MAT_ID["prop"]))]
 
 
 STRIPS = ("banister", "iron")  # painted along a run of cards that turns corners: any number of facings
