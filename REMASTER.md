@@ -226,9 +226,10 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
 - Tazboss2: one crash on entry through the test trigger (jump to 0x01000006). The game's set-texture function (0x5737d0) called the callback of a texture
   record whose memory had been freed and reused, from its flat 2D quad drawer (FUN_004dd8f0, used by the map screen and map preview). Not repeated in 21
   entries; the mod's code paths don't touch the game's texture records (read from code, not tested). Likely the known boss-intro test-trigger crash.
-- Jumping out of westboss with the QA scene trigger crashes at taz.exe+0x15f785 (reading 0x134) right after "saving on the way to scene 18",
-  reproducible (again on 8277f0c, westboss to tazboss2, 2026-11-24). The trigger calls the game's own scene change (FUN_004a9730), so a player leaving
-  westboss by winning or Exit Game may take the same path; not tested, and not tried on `master` or with passthrough. Notes: `extracted/look/reports/step7/tazhub/notes.md`, tenth batch.
+- Jumping out of westboss with the QA scene trigger before its fight has started crashes at taz.exe+0x15f785: the boss's teardown frees its marker
+  arrow without a null check, and the marker is only made on the first frame of play. Players can't reach it: 15 real exits (Return to Hub, win,
+  lose) and 3 second visits were clean, and pause does nothing during the intro. After such an early exit, the next westboss visit also crashes on
+  a freed texture. Rig workaround: press Jump until the fight runs, or restart. Notes: `extracted/look/reports/step7/cutscenes/notes.md`.
 - Leaving the zoo boss right after a quickload crashed at taz.exe+0x9abae (3 of 3 runs, old and new look data); a player can reach this with F5/F9.
   Entering a boss or race level a second time through the test scene jump also crashes (zoo boss 4 of 4, safari race once, ice dome race once after F9). Neither tried on `master`.
   Logs: `extracted/look/zoo-levels/zooboss/crash-*-taz-hd.log`, `extracted/look/zoo-levels/rcsafari/crash-entry-taz-hd.log`.
