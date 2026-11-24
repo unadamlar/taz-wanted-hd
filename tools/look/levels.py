@@ -505,5 +505,5 @@ LEVELS = {
                     captures=("westhub/world-hero.bin", "westhub/world-sweep-a.bin", "westhub/world-sweep-b.bin", "westhub/world-sweep-c.bin"),
                     materials=tuple(WEST_TILES) + ("flat",), tiles=WEST_TILES, detail=WEST_DETAIL, binds={"ground": (("d_sand", 4, -1.0, 0.0),)},
                     solids=dict(cards={}, soft=tuple(f"westhub/textures/{n}" for n in ("cactus07", "cactus_bit", "cactus_bit2"))),
-                    fog_color="#f4d8b0", ground_tint=(0.82, 0.62, 0.42), sky_gain=1.3, tints={"d_canyon": (1.8, 2.15, 2.5), "flat": (1.3, 0.86, 0.7)}),
+                    fog_color="#f4d8b0", ground_tint=(0.82, 0.62, 0.42), sky_gain=1.3, char_keep=0.55, tints={"d_sand": (2.0, 1.66, 1.05), "d_canyon": (1.8, 2.15, 2.5), "flat": (1.3, 0.86, 0.7)}),
 }
