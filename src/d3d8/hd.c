@@ -1399,17 +1399,28 @@ int hd_solid_claim(int proto, const float *world)
     return 1;
 }
 
+// Solid replacements wait here and are drawn together, with one state save, at the next game draw that isn't one:
+// one at a time, a few hundred placed plants cost up to 7 ms a frame.
+static struct { int proto; float world[12]; } solid_queue[512];
+static UINT nqueued;
+
 void hd_solid_draw(hd_dev d, int proto, const float *world)
 {
+    if (nqueued == sizeof solid_queue / sizeof *solid_queue) hd_solid_flush(d);
+    solid_queue[nqueued].proto = proto;
+    memcpy(solid_queue[nqueued++].world, world, 48);
+}
+
+void hd_solid_flush(hd_dev d)
+{
     static const float no_fade[4] = { 0, 0, 0, 0 };
-    const struct proto *q = &protos[proto];
+    if (!nqueued) return;
     hd_camera(d);
     save_state(d);
     plain_states(d);
     IDirect3DDevice9_SetRenderState(d, D3DRS_ZENABLE, TRUE);
     IDirect3DDevice9_SetRenderState(d, D3DRS_ZWRITEENABLE, TRUE);
     IDirect3DDevice9_SetRenderState(d, D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
-    vs_constants(d, clip_rows, world);
     ps_constants(d);
     bind_common(d);
     IDirect3DDevice9_SetPixelShaderConstantF(d, 32, no_fade, 1);
@@ -1417,13 +1428,20 @@ void hd_solid_draw(hd_dev d, int proto, const float *world)
     IDirect3DDevice9_SetStreamSource(d, 0, vb, 0, 36);
     IDirect3DDevice9_SetIndices(d, ib);
     sampler(d, 0, D3DTEXF_ANISOTROPIC, D3DTEXF_LINEAR, D3DTADDRESS_WRAP);
-    for (UINT s = q->sub0; s < q->sub0 + q->nsub; s++) {
-        if (subs[s].mat >= nmats || !subs[s].count) continue;
-        bind_material(d, &mats[subs[s].mat], PASS_COLOUR);
-        IDirect3DDevice9_SetVertexShader(d, v_world);
-        IDirect3DDevice9_SetRenderState(d, D3DRS_CULLMODE, D3DCULL_NONE); // the game's transforms can mirror
-        IDirect3DDevice9_DrawIndexedPrimitive(d, D3DPT_TRIANGLELIST, q->base, 0, q->nv, subs[s].first, subs[s].count / 3);
+    IDirect3DDevice9_SetVertexShader(d, v_world);
+    IDirect3DDevice9_SetRenderState(d, D3DRS_CULLMODE, D3DCULL_NONE); // the game's transforms can mirror
+    for (UINT k = 0; k < nqueued; k++) {
+        const struct proto *q = &protos[solid_queue[k].proto];
+        vs_constants(d, clip_rows, solid_queue[k].world);
+        for (UINT s = q->sub0; s < q->sub0 + q->nsub; s++) {
+            if (subs[s].mat >= nmats || !subs[s].count) continue;
+            bind_material(d, &mats[subs[s].mat], PASS_COLOUR);
+            IDirect3DDevice9_SetVertexShader(d, v_world);
+            IDirect3DDevice9_SetRenderState(d, D3DRS_CULLMODE, D3DCULL_NONE);
+            IDirect3DDevice9_DrawIndexedPrimitive(d, D3DPT_TRIANGLELIST, q->base, 0, q->nv, subs[s].first, subs[s].count / 3);
+        }
     }
+    nqueued = 0;
     restore_state(d);
 }
 
@@ -1532,6 +1550,7 @@ void hd_post(hd_dev d)
 
 void hd_frame_end(hd_dev d)
 {
+    hd_solid_flush(d);
     if (redirected) hd_post(d);
     unbind_common(d);
     post_done = additions_done = prepass_done = sky_done = 0;

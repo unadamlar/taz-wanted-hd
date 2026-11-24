@@ -426,6 +426,7 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
             backdrop |= h2 && !hd_hidden(h2);
             return 0;
         }
+        hd_solid_flush(d);
         merge_flush(dev);
         if (!hd_additions_done()) hd_additions(d);
         hd_post(d);
@@ -437,6 +438,7 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     if (!hd_redirected()) return 0;
     hd_sky(d);
     if (solid_draw(dev, api, type, start, count)) return 1;
+    hd_solid_flush(d);
     if (loaded_scene != PLANET_LOOK && merge_draw(dev, api, type, start, count)) return 1; // a few hundred draws: nothing to merge
     DWORD shader, zwrite, blend, fog, src, dst, op;
     IDirect3DDevice8_GetRenderState(dev, D3DRS_ALPHABLENDENABLE, &blend);
