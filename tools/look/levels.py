@@ -728,7 +728,7 @@ LEVELS = {
                      captures=("westhub/westboss/world-hero.bin", "westhub/westboss/world-sweep-a.bin"),
                      materials=tuple(WBOSS_TILES) + ("flat",), tiles=WBOSS_TILES, detail=WBOSS_DETAIL, glow=WBOSS_GLOW,
                      lamps=dict(DEPT_LAMPS, extra=room_lamps(((-6000, -4000, 2000, 4000, -2100, 3, 3),), 1900, 13.0, "#ffe2b8", 1.6)),
-                     char_fill=(0.12, 0.12, 0.14)),
+                     char_fill=(0.12, 0.12, 0.14), char_keep=1.0),
     "tazboss1": dict(scene=19, pak="tazboss1", blend="tazhub/tazboss1/tazboss1.blend", out="tazhub/tazboss1/pass1", rules=TB1_RULES, hand=TB1_HAND,
                      look=TB1_LOOK, hdri=None, hdri_rotation=0.0, hub=(-25.0, -19.5, 25.5, 19.5), game_sky=True, clutter=False,
                      captures=("tazhub/tazboss1/world-hero.bin", "tazhub/tazboss1/world-sweep-a.bin"), materials=tuple(TB1_TILES) + ("flat",),
