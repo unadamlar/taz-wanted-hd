@@ -179,6 +179,15 @@ def pole(top, bottom, radius, colour=(0.55, 0.57, 0.6)):
     return p, n, np.tile(np.asarray(colour, float), (len(p), 1))
 
 
+def spindle(top, bottom, radius, colour, sides=12):
+    """A turned baluster from top to bottom, radius at its bulb: collars and beads at both ends, a bulb low down."""
+    s = np.r_[0, 0.06, 0.07, 0.11, 0.12, 0.17, np.linspace(0.21, 0.87, 12), 0.91, 0.93, 0.94, 1]
+    bulb = 0.34 + 0.66 * np.clip(np.sin(np.pi * (s[6:18] - 0.21) / 0.66), 0, 1) ** 0.7
+    f = np.r_[0.5, 0.5, 0.62, 0.62, 0.5, 0.3, bulb, 0.3, 0.55, 0.5, 0.5]
+    p, n = _tube(top + np.outer(s, bottom - top), radius * f, sides)
+    return p, n, np.tile(np.asarray(colour, float), (len(p), 1))
+
+
 def _ribbed(path, radius, colour, ribs=14, depth=0.05, sides=42, cap=True):
     """A ribbed succulent trunk along a path with a rounded top: corners, normals, colours."""
     t = np.gradient(path, axis=0); t /= np.linalg.norm(t, axis=1, keepdims=True)

@@ -1062,6 +1062,49 @@ def bush_geo(base, height, radius, colour, rng):
     return p + base, n_, uv, dds.to_srgb(np.clip(c, 0, 1)), m  # in the order the card stand-ins use
 
 
+def banister_geo(alpha, paint, pos, uv, col, size):
+    """A painted banister (two rails along the texture's v, spindles across between them) as round rails and turned
+    balusters where the paint has spindles. Triangle by triangle: one piece of card can join two panels painted alike."""
+    on = alpha > 0.5
+    H, Wd = on.shape
+    rail = np.nonzero(on.mean(0) > 0.95)[0]
+    gap = np.nonzero(np.diff(rail) > 1)[0]
+    if len(gap) != 1:
+        return []
+    rails = (rail[:gap[0] + 1], rail[gap[0] + 1:])
+    lo, hi = rails[0][-1] + 1, rails[1][0]
+    rows = np.nonzero(on[:, lo:hi].any(1))[0]
+    blobs = [b for b in np.split(rows, np.nonzero(np.diff(rows) > 1)[0] + 1) if len(b) > 1] if len(rows) else []
+    lit = np.clip(col.mean((0, 1)), 0, 1)
+    tone = lambda px: np.clip(np.median(px.reshape(-1, 3), 0) * lit * 1.15, 0, 1)
+    out = []
+    for i in range(len(pos)):
+        tri = uv[i]
+
+        def world(q):  # absolute uvs: the extra point past 1 keeps on_card from shifting or copying them
+            P = np.r_[np.c_[q, np.zeros(len(q))], [[2.0, 2.0, 0]]]
+            return solid.on_card(P, np.tile([0, 0, 1.0], (len(P), 1)), pos[i:i + 1], uv[i:i + 1], col[i:i + 1], size)[0][:-1]
+
+        for r in rails:  # the rail's stretch across this triangle
+            u_ = (r[0] + r[-1] + 1) / 2 / Wd
+            vs = [a[1] + (u_ - a[0]) / (b[0] - a[0]) * (b[1] - a[1]) for a, b in ((tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0]))
+                  if a[0] != b[0] and (a[0] - u_) * (b[0] - u_) <= 0]
+            if len(vs) > 1 and max(vs) - min(vs) > 1e-3:
+                ends = world(np.array([[u_, min(vs)], [u_, max(vs)]]))
+                out.append(props3d.pole(ends[0], ends[1], len(r) / Wd * size[0] * 0.55, tone(paint[:, r])))
+        e1, e2 = tri[1] - tri[0], tri[2] - tri[0]
+        det = e1[0] * e2[1] - e1[1] * e2[0]
+        for b in blobs:
+            radius = max(on[b, x].sum() for x in range(lo, hi)) / H * size[1] / 2
+            for k in range(int(np.floor(tri[:, 1].min() + 1e-6)), int(np.ceil(tri[:, 1].max() - 1e-6))):
+                q = np.array([(lo + hi) / 2 / Wd, k + (b.mean() + 0.5) / H]) - tri[0]
+                l1, l2 = (q[0] * e2[1] - q[1] * e2[0]) / det, (e1[0] * q[1] - e1[1] * q[0]) / det
+                if min(l1, l2, 1 - l1 - l2) > 0:  # its middle is on this triangle
+                    ends = world(np.array([[lo / Wd, q[1] + tri[0][1]], [hi / Wd, q[1] + tri[0][1]]]))
+                    out.append(props3d.spindle(ends[0], ends[1], radius, tone(paint[b, lo:hi][on[b, lo:hi]])))
+    return [(p, n, np.zeros((len(p), 2)), c, np.full(len(p), MAT_ID["prop"])) for p, n, c in out]
+
+
 solids, static_hide, static_parts, static_done = {}, set(), [], set()
 cfg = dict(LEVEL.get("solids") or dict(cards={}, soft=()))
 cfg["cards"] = dict(cfg["cards"])
@@ -1157,6 +1200,9 @@ if cfg["cards"] or cfg["soft"]:
                                 for q0, q1 in ((W_[a], mid), (mid, W_[b])):
                                     p, n, col = props3d.pole(q0, q1, 0.06 * pts[a, 2] * size[0], (0.1, 0.25, 0.1))
                                     got.append((p, n, np.zeros((len(p), 2)), col, np.full(len(p), MAT_ID["prop"])))
+                            continue
+                        if kind == "banister":
+                            got += banister_geo(small, paint, dp[t], tu, dc[t], size)
                             continue
                         if kind == "banner":  # cloth in folds under a rod, the game's paint and cut-out kept
                             h_, v_ = solid.uv_axes(dp[t], tu)
