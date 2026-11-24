@@ -370,7 +370,8 @@ static int solid_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UIN
     IDirect3DVertexBuffer8 *vb = NULL;
     UINT stride = 0, n = type == D3DPT_TRIANGLESTRIP ? count + 2 : type == D3DPT_TRIANGLELIST ? count * 3 : 0;
     BYTE *v;
-    if (api || !n || !hd_solid_texture(textures_bound_hash(0))) return 0;
+    UINT64 tex = textures_bound_hash(0);
+    if (api || !n || !hd_solid_texture(tex)) return 0;
     IDirect3DDevice8_GetVertexShader(dev, &fvf);
     if (fvf != 0x152 || FAILED(IDirect3DDevice8_GetStreamSource(dev, 0, &vb, &stride)) || !vb) return 0;
     UINT64 key = 0xcbf29ce484222325ULL;
@@ -383,7 +384,7 @@ static int solid_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UIN
         IDirect3DVertexBuffer8_Unlock(vb);
     }
     IDirect3DVertexBuffer8_Release(vb);
-    int proto = ok ? hd_solid_proto(key) : -1;
+    int proto = ok ? hd_solid_proto(key, tex) : -1;
     if (proto < 0) return 0;
     float w[4][4], rows[3][4];
     IDirect3DDevice8_GetTransform(dev, D3DTS_WORLD, (D3DMATRIX *)w);

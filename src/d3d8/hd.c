@@ -55,7 +55,8 @@ static struct light *lights; static UINT nlights;
 static struct file_glow *glows; static UINT nglows;
 static struct { UINT64 hash; float p[3], r; } *swaps; static UINT nswaps;
 static struct solid { UINT64 key, tex; UINT proto; } *solids; static UINT nsolids;
-static UINT64 solid_tex[16]; static UINT nsolid_tex;
+static UINT64 solid_tex[256]; static UINT nsolid_tex; // sorted
+static int cmp_u64(const void *a, const void *b) { UINT64 x = *(const UINT64 *)a, y = *(const UINT64 *)b; return x < y ? -1 : x > y; }
 static struct { UINT proto; float world[12]; } solid_done[128]; static UINT ndone; // already drawn this frame
 static IDirect3DTexture9 *light_tex;
 static int skin_mat = -1, has_glass;
@@ -520,8 +521,9 @@ int hd_load(hd_dev d, int scene)
             memcpy(&solids[i].key, p, 8), memcpy(&solids[i].tex, p + 8, 8), memcpy(&solids[i].proto, p + 16, 4);
             UINT k = 0;
             while (k < nsolid_tex && solid_tex[k] != solids[i].tex) k++;
-            if (k == nsolid_tex && k < 16) solid_tex[nsolid_tex++] = solids[i].tex;
+            if (k == nsolid_tex && k < 256) solid_tex[nsolid_tex++] = solids[i].tex;
         }
+        qsort(solid_tex, nsolid_tex, sizeof *solid_tex, cmp_u64);
     }
     snprintf(path, sizeof path, "taz-hd\\look\\scene%02d\\sky.dds", scene);
     sky_tex = load_cube(d, path);
@@ -1372,21 +1374,20 @@ void hd_world_quick_end(hd_dev d)
 
 int hd_solid_texture(unsigned long long h)
 {
-    for (UINT i = 0; i < nsolid_tex; i++)
-        if (solid_tex[i] == h) return 1;
-    return 0;
+    UINT64 *p = bsearch(&h, solid_tex, nsolid_tex, sizeof *solid_tex, cmp_u64);
+    return p != NULL;
 }
 
-int hd_solid_proto(unsigned long long key)
+// Sorted by key, then texture: one model can be placed in several paints.
+int hd_solid_proto(unsigned long long key, unsigned long long tex)
 {
     UINT lo = 0, hi = nsolids;
     while (lo < hi) {
         UINT mid = (lo + hi) / 2;
-        if (solids[mid].key == key) return solids[mid].proto < nprotos ? (int)solids[mid].proto : -1;
-        if (solids[mid].key < key) lo = mid + 1;
+        if (solids[mid].key < key || (solids[mid].key == key && solids[mid].tex < tex)) lo = mid + 1;
         else hi = mid;
     }
-    return -1;
+    return lo < nsolids && solids[lo].key == key && solids[lo].tex == tex && solids[lo].proto < nprotos ? (int)solids[lo].proto : -1;
 }
 
 // A model is several game draws: the first one seen at a transform draws it all.
