@@ -87,6 +87,10 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
 - Taz hub done (`extracted/look/reports/step7/tazhub/`, data in `extracted/look/tazhub/runtime/scene18`): turf, dirt paths, clear ponds with fish, the game's
   sky. 6.25M scattered triangles, 7.93-8.06 ms uncapped. Planet X unchanged from this hub (3 real door trips). Not checked: the intro flyover frame by frame, the
   boss doors, a walk on foot, resize, the 2 GB limit. Leftovers: the palest pink cliffs read slightly like veined marble, pool banks follow low-poly sides.
+- West levels done: ghost town (night), goldmine (keeps its magenta), Grand Canyon, westboss; hub walls raised in relief, Taz's cream fixed by a
+  per-level fill. Grand Canyon is the heaviest level so far (11.7 ms uncapped under load, 7,715 world draws). Westboss starts on its rules page: press Jump.
+- Taz bosses done: tazboss1 (Disco Volcano; `glow_add` draws its additive flames as the game does) and tazboss2 (Sam's zeppelin). Taz's cream reads cooler
+  than HD in tazboss1, and the zeppelin's force field is clear glass where HD shows near-solid cyan.
 - For the user to judge in the west: the game's painted canyon stripes are kept on its own shapes. The zoo's rebuilt 3D rock would add depth but replace them,
   and the choice carries to ghost town, goldmine, Grand Canyon and westboss.
 - For the user to judge in the city levels: real paint replaces baked colour (store's blue, museum's pink floor, construction huts teal to yellow).
@@ -206,6 +210,10 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
 - Requesting screenshots about every 90 ms through level changes crashes the game after 4-5 changes, on the build before the screens too.
 - The pause menu's Exit Game prompt draws over the Exit Game row. Not compared with the build before the screens.
 - Main menu: the shore's orange looks salmon, the water is duller than the original, and the alarm clock and fridge are very bright.
+- Tazboss2: one Remaster frame showed Taz's helmeted head and claws without his body (2026-11-24, 4 s after entering). Not reproduced in ~80 same-moment
+  pairs and three bursts; a probe saw the HD model drawn every frame. Cause unknown.
+- A 240-frame full-size screenshot burst crashed in d3d9.dll after 156 frames (`extracted/look/reports/step7/tazhub/burst-crash-taz-hd.log`). Smaller bursts are fine.
+- Test-camera shots differ between runs where the game places sprites on screen from its real camera (the safari waterfall's splash, a pink sprite in zoo-b).
 - Test runs load any shader files left in `taz-hd\shaders` over the built-in ones. `qa/fast.sh start` now clears them.
 
 ## Working rules for this branch
