@@ -683,7 +683,9 @@ LEVELS = {
     "museum": dict(scene=10, pak="museum", blend="city-levels/museum/museum.blend", out="city-levels/museum/pass1", rules=MUSE_RULES, hand=MUSE_HAND,
                    look=DEPT_LOOK, hdri=None, hdri_rotation=0.0, hub=(-79.0, -68.0, 79.0, 68.0), game_sky=True, clutter=False,
                    materials=tuple(DEPT_TILES) + ("flat",), tiles=DEPT_TILES, detail=MUSE_DETAIL, tints={"d_tile": (1.5, 1.5, 1.58)},
-                   captures=("city-levels/museum/world-hero.bin",), fog_color="#20366f", glow=MUSE_GLOW, lamps=MUSE_LAMPS, unbake=0.5, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
+                   captures=tuple(f"city-levels/museum/world-{c}.bin" for c in ("hero", "sweep1", "sweep2", "sweep3", "sweep4", "sweep5")),
+                   card_models=(("museum/textures/banner*", "banner"),), solids=dict(cards={}, soft=("museum/textures/cactus05",)), cacti=("museum/textures/cactus05",), armed_cacti=("museum/textures/cactus05",),
+                   fog_color="#20366f", glow=MUSE_GLOW, lamps=MUSE_LAMPS, unbake=0.5, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
     "contruct": dict(scene=11, pak="contruct", blend="city-levels/contruct/contruct.blend", out="city-levels/contruct/pass1", rules=CONS_RULES, hand=CONS_HAND,
                      look=CONS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-121.0, -108.0, 105.0, 68.0), game_sky=True, clutter=False,
                      materials=tuple(CONS_TILES) + ("flat",), tiles=CONS_TILES, detail=CONS_DETAIL, tints={"d_conc": (1.25, 1.25, 1.35)}, captures=("city-levels/contruct/world-hero.bin",),
@@ -765,6 +767,11 @@ def _bonus(twin, pak, scene, captures, first=(), **extra):
         B["trees"] = tuple(re(p) for p in L["trees"])
     if "solids" in L:
         B["solids"] = dict(cards={re(p): v for p, v in L["solids"]["cards"].items()}, soft=tuple(re(p) for p in L["solids"]["soft"]))
+    if "card_models" in L:
+        B["card_models"] = tuple((re(p), kind) for p, kind in L["card_models"])
+    for k in ("cacti", "armed_cacti"):
+        if k in L:
+            B[k] = tuple(re(p) for p in L[k])
     if "relief" in L:
         B["relief"] = dict(L["relief"], textures=tuple(re(p) for p in L["relief"]["textures"]))
     B.update(extra)
