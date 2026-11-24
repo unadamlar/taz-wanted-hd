@@ -290,7 +290,7 @@ ZOOBOSS_RULES = [
 ]
 ZOOBOSS_DETAIL = [
     ("zooboss/textures/soccer_*", "d_sand"), ("zooboss/textures/zoo_citblock*", "d_stone"), ("zooboss/textures/safrock*", "d_rock"),
-    ("zooboss/textures/sharprock*", "d_rock"), ("zooboss/textures/farm_plot*", "d_bark"), ("zooboss/textures/jhut*", "d_bark"),
+    ("zooboss/textures/sharprock*", "d_rock"), ("zooboss/textures/farm_plot*", "d_bark"), ("zooboss/textures/jhuthatch*", "d_bark"),  # plain white jhut also paints the intro's light beam
 ]
 ZOOBOSS_TILES = dict(d_sand=dict(AQUA_TILES["d_sand"], period=1.5, detail=0.35, normal=0.3), d_stone=SAFARI_TILES["d_stone"], d_rock=SAFARI_TILES["d_rock"], d_bark=SAFARI_TILES["d_bark"])
 ZOOBOSS_HAND = {
