@@ -1477,6 +1477,8 @@ void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_c
     IDirect3DDevice9_SetPixelShaderConstantF(d, 26, two[0], 4);
     float fill[4] = { lv.char_fill[0], lv.char_fill[1], lv.char_fill[2], lv.char_keep };
     IDirect3DDevice9_SetPixelShaderConstantF(d, 30, fill, 1);
+    float hold[4] = { lv.exposure, lv.contrast * 1.26f, (lv.bloom_t + 0.15f / (lv.bloom_s > 0.01f ? lv.bloom_s : 0.01f)) / lv.exposure, lv.sat > 0 ? 1 / lv.sat : 1 };
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 34, hold, 1);
     IDirect3DDevice9_SetPixelShaderConstantF(d, 31, style, 1);
     bind_common(d);
     IDirect3DDevice9_SetTexture(d, SMP_FUR, (IDirect3DBaseTexture9 *)fur);
