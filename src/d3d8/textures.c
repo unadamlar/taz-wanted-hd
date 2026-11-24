@@ -563,7 +563,9 @@ static HANDLE WINAPI hook_CreateFileA(LPCSTR name, DWORD access, DWORD share, LP
         char pak[64];
         lstrcpynA(pak, slash ? slash + 1 : name, sizeof pak);
         _strlwr(pak);
-        cutscene_pak = strstr(pak, "intro") || strstr(pak, "outro") || strstr(pak, "startgame");
+        // _ecs: a level's own ending; done: the hub's scene after that level is won.
+        cutscene_pak = strstr(pak, "intro") || strstr(pak, "outro") || strstr(pak, "startgame") ||
+                       strstr(pak, "done") || strstr(pak, "_ecs") || strstr(pak, "endofgame");
     }
     return real_CreateFileA(name, access, share, sec, how, flags, tmpl);
 }
