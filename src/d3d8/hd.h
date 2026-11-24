@@ -53,9 +53,10 @@ int hd_swapped(unsigned long long h, const float *at); // at NULL: on any replac
 void hd_world_float(hd_dev d, float y); // after hd_world_quick: nothing below y
 void hd_world_quick_end(hd_dev d);
 int hd_solid_texture(unsigned long long hash);   // some draw with this texture has a solid replacement
-int hd_solid_proto(unsigned long long key);      // its prototype, by the draw's vertices; -1 none
+int hd_solid_proto(unsigned long long key, unsigned long long tex); // its prototype, by the draw's vertices and texture; -1 none
 int hd_solid_claim(int proto, const float *world); // 0: already drawn at this transform this frame
 void hd_solid_draw(hd_dev d, int proto, const float *world);
+void hd_solid_flush(hd_dev d);   // draws the queued solid replacements
 void hd_merge_buffers(hd_dev d, struct IDirect3DVertexBuffer9 *v, struct IDirect3DIndexBuffer9 *i);
 void hd_merge_draw(hd_dev d, unsigned nverts, unsigned first, unsigned tris);
 void hd_invalidate(void);                 // the game changed the camera or wrote our constants

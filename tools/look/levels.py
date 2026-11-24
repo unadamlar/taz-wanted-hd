@@ -218,7 +218,7 @@ SAFARI_RULES = [
     ("safari/skybox/*", "sky"), ("resTex/shadowsub", "hide"), ("safari/textures/safariwater", "water"),
     ("safari/textures/pestsaf01", "lawn"), ("safari/textures/pestsaf02", "lawn"), ("safari/textures/tazfern02", "lawn"), ("safari/textures/tazfern06", "lawn"),
     ("safari/textures/tazwood02a", "tree"), ("safari/textures/tazfern05*", "tree"), ("safari/textures/safarifruitree9", "palm"),
-    ("safari/textures/safarifruitree1[01]", "palm"), ("safari/textures/safarifringe", "drip"), ("safari/textures/safarifringe02", "drip"),  # green only: 03 and 04 are purple and blue roofs
+    ("safari/textures/safarifruitree1[01]", "palm"), ("safari/textures/safarifringe", "drip"), ("safari/textures/safarifringe02", "drip"), ("safari/textures/vine*", "vine"), ("safari/textures/purpvine*", "vine"), ("safari/textures/safaribannervines*", "vine"),  # green only: 03 and 04 are purple and blue roofs
     ("safari/textures/pestsaf03", "ground"), ("safari/textures/pestsaf06", "ground"), ("safari/textures/pestsaf07", "ground"),
     ("safari/textures/grassedge*", "ground"), ("safari/textures/grassjoiner*", "ground"),
 ]
@@ -645,7 +645,9 @@ LEVELS = {
                    materials=tuple(TAZHUB_TILES) + ("lawn", "dirt", "water", "water_bed", "foam", "grass", "flat", "flat_wind"),
                    tiles=TAZHUB_TILES, detail=TAZHUB_DETAIL, fog_color="#7fc4f4",
                    tints={"dirt": (1.5, 1.05, 0.62), "lawn": (0.32, 1.6, 0.3), "grass": (0.95, 1.5, 0.5), "water_bed": (0.85, 0.6, 0.42)}, night_sky=False, sky_gain=1.05, unbake=1.0, triplanar=("lawn",), island_boxes=True, water_flat=True, water_depth=2.5, water_color="#1c62d8", water_clarity=0.6, foam=0, water_walls=False,
-                   binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05)), "painted_lawn": (("lawn", 3, 0.085, 0.045),), "rock_lawn": (("lawn", 1, 0.0, -0.1),)}),
+                   binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05)), "painted_lawn": (("lawn", 3, 0.085, 0.045),), "rock_lawn": (("lawn", 1, 0.0, -0.1),)},
+                   card_models=(("tazhub/textures/flower*", "flower"), ("tazhub/textures/bigtazleaf", "leaf"), ("tazhub/textures/tazplacard*", "sign"),
+                                ("tazhub/textures/tlandshot*", "sign"), ("tazhub/textures/safarifruitree12", "leaf"), ("tazhub/textures/grass02", "leaf"))),
     "icedome": dict(scene=4, pak="icedome", blend="zoo-levels/icedome/icedome.blend", out="zoo-levels/icedome/pass1", rules=ICE_RULES, hand=ICE_HAND,
                     look=ICE_LOOK, hdri=None, hdri_rotation=0.0, hub=(-71.0, -58.0, 71.0, 50.0), sky_panels=True, clutter=False,
                     captures=("zoo-levels/icedome/world-hero.bin", "zoo-levels/icedome/world-sweep-a.bin", "zoo-levels/icedome/world-sweep-b.bin"),
@@ -654,6 +656,8 @@ LEVELS = {
                     lumps=dict(roles=("snow",), density=0.2, colour="#f4f9ff"), island_boxes=True, sky_gain=1.35, night_sky=False, ground_tint=(0.74, 0.67, 0.59), tints={"snowfield": (0.88, 0.9, 0.94)}),
     "safari": dict(scene=5, pak="safari", blend="zoo-levels/safari/safari.blend", out="zoo-levels/safari/pass1", rules=SAFARI_RULES, hand=SAFARI_HAND,
                    look=SAFARI_LOOK, hdri=None, hdri_rotation=0.0, hub=(-79.0, -64.0, 71.0, 80.0), sky_panels=True, night_sky=False, grass_density=30.0, island_boxes=True, sea="#0f6f9a",
+                   card_models=(("safari/textures/*bush*", "bush"), ("safari/textures/plantspike*", "flower"), ("safari/textures/bigtazleaf", "leaf"),
+                                ("safari/textures/leaf01", "leaf"), ("safari/textures/*sign*", "sign"), ("safari/textures/american_arrow", "sign")),
                    captures=("zoo-levels/safari/world-hero.bin", "zoo-levels/safari/world-sweep-a.bin", "zoo-levels/safari/world-sweep-b.bin"),
                    materials=tuple(SAFARI_TILES) + ("lawn", "dirt", "grass", "flat", "flat_wind", "water", "water_bed", "foam", "bark", "leaves", "leaf_core", "ivy"), tiles=SAFARI_TILES,
                    detail=SAFARI_DETAIL, binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05))}, sky_gain=1.3),
@@ -695,7 +699,10 @@ LEVELS = {
                     flats={"link": ((0.42, 0.4, 0.38), 0.4)},
                     solids=dict(cards={"westhub/textures/train_chain": dict(mat="link", links=True),
                                        "westhub/textures/safarigrill01": dict(size=(90.0, 345.0), depth=4.5, tol=1.4, area=30.0, repeat=2, each_draw=True)},
-                                soft=tuple(f"westhub/textures/{n}" for n in ("cactus07", "cactus_bit", "cactus_bit2"))),
+                                soft=tuple(f"westhub/textures/{n}" for n in ("cactus05", "cactus06", "cactus07", "cactus_bit", "cactus_bit2"))),
+                    card_models=(("westhub/textures/plantspike*", "flower"), ("westhub/textures/cactus04", "cactus")) + tuple((f"westhub/textures/{n}", "sign") for n in (
+                        "sign_landscape", "sign_dynamite", "ammo_dumpsign", "arrowbend", "plainsigndiamond", "ticket_sign_04", "warning_sign", "speedsign", "barrierstart")),
+                    cacti=("westhub/textures/cactus*",),
                     relief=dict(textures=("westhub/textures/vert_strips*", "westhub/textures/wwrock*"), tint=(0.9, 1.075, 1.25), min_area=6.0, cell=0.4, depth=0.3, band=1.1, block=1.6, foot=1.8, border=0.8),
                     fog_color="#f4d8b0", ground_tint=(0.82, 0.62, 0.42), sky_gain=1.3, char_keep=0.55, char_fill=(-0.65, -0.6, -0.5), tints={"d_sand": (2.0, 1.66, 1.05), "d_canyon": (1.8, 2.15, 2.5), "d_cliff": (1.8, 2.15, 2.5), "flat": (1.3, 0.86, 0.7)}),
     "ghost": dict(scene=14, pak="ghost", blend="westhub/ghost/ghost.blend", out="westhub/ghost/pass1", rules=GHOST_RULES, hand=GHOST_HAND,

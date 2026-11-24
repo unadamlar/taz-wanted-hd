@@ -162,6 +162,87 @@ def plate(alpha, size, depth, tol=1.0, min_area=8.0, repeat=1):
     return np.concatenate([x for x, _ in parts]), np.concatenate([x for _, x in parts])
 
 
+def repeat_size(pos, uv):
+    """World size of one texture repeat on a card, from its best-shaped triangle."""
+    e1, e2 = uv[:, 1] - uv[:, 0], uv[:, 2] - uv[:, 0]
+    det = e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]
+    k = int(np.abs(det).argmax())
+    d1, d2 = pos[k, 1] - pos[k, 0], pos[k, 2] - pos[k, 0]
+    return (np.linalg.norm((d1 * e2[k, 1] - d2 * e1[k, 1]) / det[k]), np.linalg.norm((d2 * e1[k, 0] - d1 * e2[k, 0]) / det[k]))
+
+
+def uv_mask(uv, shape):
+    """Texels of a (h, w) texture that the card's triangles (uvs within one repeat) cover: a card may use part of an atlas."""
+    h, w = shape
+    m = np.zeros(shape, bool)
+    yy, xx = np.mgrid[0:h, 0:w]
+    px, py = (xx + 0.5) / w, (yy + 0.5) / h
+    for a, b, c in uv:
+        x0, x1 = int(max(min(a[0], b[0], c[0]) * w - 1, 0)), int(min(max(a[0], b[0], c[0]) * w + 2, w))
+        y0, y1 = int(max(min(a[1], b[1], c[1]) * h - 1, 0)), int(min(max(a[1], b[1], c[1]) * h + 2, h))
+        if x1 <= x0 or y1 <= y0:
+            continue
+        X, Y = px[y0:y1, x0:x1], py[y0:y1, x0:x1]
+        d = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+        if abs(d) < 1e-12:
+            continue
+        l1 = ((b[1] - c[1]) * (X - c[0]) + (c[0] - b[0]) * (Y - c[1])) / d
+        l2 = ((c[1] - a[1]) * (X - c[0]) + (a[0] - c[0]) * (Y - c[1])) / d
+        e = 1.5 / max(w, h)
+        m[y0:y1, x0:x1] |= (l1 > -e) & (l2 > -e) & (1 - l1 - l2 > -e)
+    return m
+
+
+def uv_axes(pos, uv):
+    """World directions of a card's texture u and v, from its best-shaped triangle."""
+    e1, e2 = uv[:, 1] - uv[:, 0], uv[:, 2] - uv[:, 0]
+    det = e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]
+    k = int(np.abs(det).argmax())
+    d1, d2 = pos[k, 1] - pos[k, 0], pos[k, 2] - pos[k, 0]
+    du, dv = (d1 * e2[k, 1] - d2 * e1[k, 1]) / det[k], (d2 * e1[k, 0] - d1 * e2[k, 0]) / det[k]
+    return du / np.linalg.norm(du), dv / np.linalg.norm(dv)
+
+
+def orientations(parts):
+    """How many differently facing planes some triangle lists hold (a card and its back count once)."""
+    seen = []
+    for pos in parts:
+        n = np.cross(pos[:, 1] - pos[:, 0], pos[:, 2] - pos[:, 0])
+        for v in n[np.linalg.norm(n, axis=1) > 1e-6]:
+            v = v / np.linalg.norm(v)
+            if all(abs(v @ u) < 0.97 for u in seen):
+                seen.append(v)
+    return len(seen)
+
+
+def card_pieces(pos, uv):
+    """A draw's flat cards, crossed ones split apart: lists of triangle indices, or None if it is a modelled object."""
+    e1, e2 = uv[:, 1] - uv[:, 0], uv[:, 2] - uv[:, 0]
+    good = np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]) > 1e-8  # slivers with no texture area carry nothing
+    n = np.cross(pos[:, 1] - pos[:, 0], pos[:, 2] - pos[:, 0])
+    good &= np.linalg.norm(n, axis=1) > 1e-6
+    n = n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+    out = []
+    for t in islands(pos):
+        t = t[good[t]]
+        groups = []
+        for i in t:
+            for g in groups:
+                if abs(n[g[0]] @ n[i]) > 0.97:
+                    g.append(i); break
+            else:
+                groups.append([i])
+        if len(groups) > 2:
+            return None
+        for g in groups:
+            q = pos[g].reshape(-1, 3)
+            s = np.linalg.svd(q - q.mean(0), compute_uv=False)
+            if s[-1] > 0.02 * s[0]:
+                return None
+            out.append(np.array(g))
+    return out
+
+
 def link(alpha, size):
     """One round chain link with the painted link's outline: corners (u, v, side offset) and normals, as plate()."""
     h, w = alpha.shape
@@ -210,8 +291,9 @@ def on_card(P, N, pos, uv, col, size):
     """Moves plate() corners onto a game card given as triangles; the texture repeats where the card's uvs do."""
     parts = []
     copies = range(int(math.floor(uv[..., 0].min() + 1e-6)), int(math.ceil(uv[..., 0].max() - 1e-6))) if P[:, 0].max() <= 1.001 else (0,)
+    kv = math.floor(uv[..., 1].min() + 1e-6) if P[:, 1].max() <= 1.001 else 0  # a card whose v runs over 1..2 still uses the texture once
     for k in copies:
-        q = P[:, :2] + [k, 0]
+        q = P[:, :2] + [k, kv]
         a, e1, e2 = uv[:, 0], uv[:, 1] - uv[:, 0], uv[:, 2] - uv[:, 0]
         det = e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]
         rel = q[:, None] - a[None]
