@@ -647,7 +647,7 @@ LEVELS = {
                    tints={"dirt": (1.5, 1.05, 0.62), "lawn": (0.32, 1.6, 0.3), "grass": (0.95, 1.5, 0.5), "water_bed": (0.85, 0.6, 0.42)}, night_sky=False, sky_gain=1.05, unbake=1.0, triplanar=("lawn",), island_boxes=True, water_flat=True, water_depth=2.5, water_color="#1c62d8", water_clarity=0.6, foam=0, water_walls=False,
                    binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05)), "painted_lawn": (("lawn", 3, 0.085, 0.045),), "rock_lawn": (("lawn", 1, 0.0, -0.1),)},
                    card_models=(("tazhub/textures/flower*", "flower"), ("tazhub/textures/bigtazleaf", "leaf"), ("tazhub/textures/tazplacard*", "sign"),
-                                ("tazhub/textures/tlandshot*", "sign"))),
+                                ("tazhub/textures/tlandshot*", "sign"), ("tazhub/textures/safarifruitree12", "leaf"), ("tazhub/textures/grass02", "leaf"))),
     "icedome": dict(scene=4, pak="icedome", blend="zoo-levels/icedome/icedome.blend", out="zoo-levels/icedome/pass1", rules=ICE_RULES, hand=ICE_HAND,
                     look=ICE_LOOK, hdri=None, hdri_rotation=0.0, hub=(-71.0, -58.0, 71.0, 50.0), sky_panels=True, clutter=False,
                     captures=("zoo-levels/icedome/world-hero.bin", "zoo-levels/icedome/world-sweep-a.bin", "zoo-levels/icedome/world-sweep-b.bin"),
