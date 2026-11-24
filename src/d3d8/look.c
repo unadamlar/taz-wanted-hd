@@ -440,13 +440,15 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     if (!hd_redirected()) return 0;
     hd_sky(d);
     if (solid_draw(dev, api, type, start, count)) return 1;
-    hd_solid_flush(d);
     if (loaded_scene != PLANET_LOOK && merge_draw(dev, api, type, start, count)) return 1; // a few hundred draws: nothing to merge
     DWORD shader, zwrite, blend, fog, src, dst, op;
     IDirect3DDevice8_GetRenderState(dev, D3DRS_ALPHABLENDENABLE, &blend);
     IDirect3DDevice8_GetRenderState(dev, D3DRS_SRCBLEND, &src);
     IDirect3DDevice8_GetRenderState(dev, D3DRS_DESTBLEND, &dst);
     IDirect3DDevice8_GetTextureStageState(dev, 0, D3DTSS_COLOROP, &op);
+    // Replacements are opaque: they only need drawing before what blends over them. Flushed at every other draw,
+    // a bed of flowers interleaved with its stems paid a state save per flower (3 ms for 176).
+    if (blend) hd_solid_flush(d);
     // The tutorial book's halo is one big alpha-blended quad of the ribbon's texture: it is what hazes the view up close.
     UINT64 sprite = api == 2 && blend && src == D3DBLEND_SRCALPHA && dst == D3DBLEND_INVSRCALPHA ? textures_bound_hash(0) : 0;
     int halo = sprite == 0x78c161107296791dULL || sprite == 0x23416f5ebf5678ffULL;

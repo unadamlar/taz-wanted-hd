@@ -119,9 +119,12 @@ def leaf(root, axis, side, length, width, colour, droop=0.25, cup=0.18, steps=9)
     return _faces(*zip(*parts))
 
 
-def flower(centre, radius, petal, middle, rng, petals=9, rings=2):
+def flower(centre, radius, petal, middle, rng, petals=9, rings=2, cheap=False):
     """A modelled flower: a cup of shaped petals (narrow at the base, round at the tip, curving up), a domed centre
-    and short stamens."""
+    and short stamens. cheap: fewer petals and points and no stamens, for beds of many flowers (a quarter of the
+    triangles)."""
+    if cheap:
+        petals = min(petals, 7)
     up = np.array([0, 1.0, 0])
     petal, middle = np.asarray(petal, float), np.asarray(middle, float)
     parts = []
@@ -130,7 +133,7 @@ def flower(centre, radius, petal, middle, rng, petals=9, rings=2):
             a = 2 * np.pi * (k + 0.5 * ring) / n_ + rng.uniform(-0.12, 0.12)
             d = np.array([np.cos(a), lift, np.sin(a)]); d /= np.linalg.norm(d)
             side = np.cross(d, up); side /= np.linalg.norm(side)
-            t = np.linspace(0, 1, 6)[:, None]; across = np.linspace(-1, 1, 4)[None, :]
+            t = np.linspace(0, 1, 4 if cheap else 6)[:, None]; across = np.linspace(-1, 1, 3 if cheap else 4)[None, :]
             half = radius * 0.4 * np.sqrt(np.clip(np.sin(np.pi * (0.12 + 0.88 * t)), 0, 1)) * (0.3 + 0.7 * t) ** 0.6  # narrow foot, broad round tip
             normal = np.cross(side, d); normal *= np.sign(normal[1] or 1)
             spine = centre + t * radius * length * d + (0.12 * radius * t ** 2) * up
@@ -138,11 +141,11 @@ def flower(centre, radius, petal, middle, rng, petals=9, rings=2):
             col = np.clip(petal * (0.82 + 0.25 * t[..., None]) * (1.0 if ring == 0 else 0.9), 0, 1) * np.ones(g.shape)
             for sheet in (g, g[:, ::-1] - normal * radius * 0.01):
                 parts.append(_sheet(sheet, col))
-    th = np.linspace(0, np.pi / 2, 5)[:, None]; ph = np.linspace(0, 2 * np.pi, 13)[None, :]
+    th = np.linspace(0, np.pi / 2, 3 if cheap else 5)[:, None]; ph = np.linspace(0, 2 * np.pi, 9 if cheap else 13)[None, :]
     dome = centre + radius * 0.34 * np.stack([np.cos(th) * np.cos(ph), 0.8 * np.sin(th) * np.ones_like(ph) + 0.15, np.cos(th) * np.sin(ph)], -1)
     dcol = np.clip(middle * (0.75 + 0.35 * np.sin(th))[..., None] * np.ones(dome.shape), 0, 1)
     parts.append(_sheet(dome, dcol))
-    for k in range(6):  # stamens
+    for k in range(0 if cheap else 6):  # stamens
         a = 2 * np.pi * k / 6
         d = np.array([np.cos(a) * 0.5, 1.0, np.sin(a) * 0.5]); d /= np.linalg.norm(d)
         p, n = _tube(np.array([centre + up * radius * 0.1, centre + up * radius * 0.1 + d * radius * 0.3]), np.array([radius * 0.025, radius * 0.02]), 4)
@@ -190,18 +193,22 @@ def _ribbed(path, radius, colour, ribs=14, depth=0.05, sides=42, cap=True):
     return _sheet(grid[:, ::-1], col)
 
 
-def saguaro(base, height, radius, colour, rng):
-    """A saguaro: a ribbed trunk with a domed top and one to three arms that bend upward."""
+def saguaro(base, height, radius, colour, rng, arms=None):
+    """A saguaro: a ribbed trunk with a domed top and arms that bend upward: one to three at random, or one per
+    (angle, height fraction, reach) in arms."""
     up = np.array([0, 1.0, 0])
     k = np.r_[np.linspace(0, 0.85, 12), 0.85 + 0.15 * np.sin(np.linspace(0, np.pi / 2, 9)[1:])]  # rings bunched into the domed top
     top = (k - 0.85) / 0.15
     prof = radius * np.where(k > 0.85, np.sqrt(np.clip(1 - top ** 2, 0.0, 1)), 1.0) * (1.04 - 0.08 * k)
     parts = [_ribbed(base + np.outer(k * height, up), prof, colour)]
-    for j in range(rng.integers(1, 4)):
-        a = rng.uniform(0, 2 * np.pi) if j == 0 else a + np.pi * rng.uniform(0.7, 1.3)
+    for j in range(rng.integers(1, 4) if arms is None else len(arms)):
+        if arms is None:
+            a = rng.uniform(0, 2 * np.pi) if j == 0 else a + np.pi * rng.uniform(0.7, 1.3)
+            y0, reach = height * rng.uniform(0.35, 0.6), radius * rng.uniform(1.8, 2.6)
+        else:
+            a, y0, reach = arms[j][0], height * arms[j][1], arms[j][2]
         out = np.array([np.cos(a), 0, np.sin(a)])
-        y0 = height * rng.uniform(0.35, 0.6)
-        reach, rise = radius * rng.uniform(1.8, 2.6), height * rng.uniform(0.25, 0.38)
+        rise = height * rng.uniform(0.25, 0.38)
         q = np.r_[np.linspace(0, 0.85, 12), 0.85 + 0.15 * np.sin(np.linspace(0, np.pi / 2, 7)[1:])]
         path = base + up * y0 + np.outer(np.minimum(q * 2, 1) * reach, out) + np.outer(np.clip(q * 1.6 - 0.45, 0, 1) ** 1.2 * rise + q * radius * 0.6, up)
         pr = radius * 0.62 * np.where(q > 0.85, np.sqrt(np.clip(1 - ((q - 0.85) / 0.15) ** 2, 0.0, 1)), 1.0)
@@ -220,3 +227,23 @@ def barrel(base, height, radius, colour, flower_colour, rng):
         c = base + np.array([np.cos(a) * radius * 0.35, height * 0.97, np.sin(a) * radius * 0.35])
         parts.append(flower(c, radius * 0.22, flower_colour, (0.95, 0.8, 0.2), rng, petals=5, rings=1))
     return _faces(*zip(*parts))
+
+
+def cloth(u, v, size, along_u, top, folds, amp, steps=(24, 12)):
+    """A hanging banner over a card's texture rectangle u=(u0, u1), v=(v0, v1): corners (u, v, offset) and normals as
+    solid.plate gives them, waved into folds across it (along u if along_u) that deepen away from its top edge
+    (texture coordinate top on the hanging axis)."""
+    a_r, d_r = (u, v) if along_u else (v, u)
+    A, D = np.meshgrid(np.linspace(*a_r, steps[0]), np.linspace(*d_r, steps[1]), indexing="ij")
+    fa = (A - a_r[0]) / (a_r[1] - a_r[0])
+    fd = np.abs(D - top) / (d_r[1] - d_r[0])
+    k = 2 * np.pi * folds
+    w = amp * (0.25 + 0.75 * fd)
+    Z = w * np.sin(k * fa)
+    slope = w * np.cos(k * fa) * k / ((a_r[1] - a_r[0]) * size[0 if along_u else 1])
+    grid = np.stack([A, D, Z], -1) if along_u else np.stack([D, A, Z], -1)
+    nrm = np.stack([-slope, np.zeros_like(slope), np.ones_like(slope)], -1) if along_u else np.stack([np.zeros_like(slope), -slope, np.ones_like(slope)], -1)
+    nrm /= np.linalg.norm(nrm, axis=-1, keepdims=True)
+    I, J = np.mgrid[:steps[0] - 1, :steps[1] - 1]
+    corner = ((I, J), (I + 1, J), (I + 1, J + 1), (I, J), (I + 1, J + 1), (I, J + 1))
+    return np.stack([grid[i, j] for i, j in corner], 2).reshape(-1, 3), np.stack([nrm[i, j] for i, j in corner], 2).reshape(-1, 3)

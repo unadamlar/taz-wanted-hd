@@ -670,7 +670,8 @@ LEVELS = {
                     island_boxes=True, grass_density=40.0, skin=dict(tile=520.0, grain=0.18), char_keep=0.8, fog_color="#ffc090", ground_tint=(0.72, 0.6, 0.5), sky_gain=1.25,
                     captures=("zoo-levels/zooboss/world-hero.bin", "zoo-levels/zooboss/world-sweep-a.bin", "zoo-levels/zooboss/world-sweep-b.bin"),
                     materials=tuple(ZOOBOSS_TILES) + ("lawn", "dirt", "brick", "trim", "bark", "leaves", "leaf_core", "grass", "flat", "flat_wind", "water", "water_bed", "foam", "skin"),
-                    tiles=ZOOBOSS_TILES, detail=ZOOBOSS_DETAIL, binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05))}),
+                    tiles=ZOOBOSS_TILES, detail=ZOOBOSS_DETAIL, binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05))},
+                    card_models=(("zooboss/textures/gbush", "bush"),)),
     "frontend": dict(scene=1, pak="frontend", blend="screens/capture/frontend.blend", out="screens/pass1", rules=FRONT_RULES, hand=FRONT_HAND,
                      look=FRONT_LOOK, hdri=None, hdri_rotation=0.0, hub=(-25.0, -10.0, 62.0, 42.0), clutter=False, game_sky=True,
                      captures=("screens/capture/world-sweep.bin",), materials=("lawn", "dirt", "grass", "flat", "flat_wind", "water", "water_bed", "foam"),
@@ -679,11 +680,14 @@ LEVELS = {
     "deptstr": dict(scene=9, pak="deptstr", blend="city-levels/deptstr/deptstr.blend", out="city-levels/deptstr/pass1", rules=DEPT_RULES, hand=DEPT_HAND,
                     look=DEPT_LOOK, hdri=None, hdri_rotation=0.0, hub=(-90.0, -44.0, 162.0, 53.0), game_sky=True, clutter=False,
                     materials=tuple(DEPT_TILES) + ("flat",), tiles=DEPT_TILES, detail=DEPT_DETAIL, tints={"d_tile": (1.5, 1.5, 1.58)}, captures=("city-levels/deptstr/world-hero.bin", "city-levels/deptstr/world-sweep.bin"),
+                    card_models=tuple((f"deptstr/textures/{n}", "flower") for n in ("fred", "fpurp", "fblu")),
                     fog_color="#20366f", glow=DEPT_GLOW, lamps=DEPT_LAMPS, unbake=0.5, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
     "museum": dict(scene=10, pak="museum", blend="city-levels/museum/museum.blend", out="city-levels/museum/pass1", rules=MUSE_RULES, hand=MUSE_HAND,
                    look=DEPT_LOOK, hdri=None, hdri_rotation=0.0, hub=(-79.0, -68.0, 79.0, 68.0), game_sky=True, clutter=False,
                    materials=tuple(DEPT_TILES) + ("flat",), tiles=DEPT_TILES, detail=MUSE_DETAIL, tints={"d_tile": (1.5, 1.5, 1.58)},
-                   captures=("city-levels/museum/world-hero.bin",), fog_color="#20366f", glow=MUSE_GLOW, lamps=MUSE_LAMPS, unbake=0.5, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
+                   captures=tuple(f"city-levels/museum/world-{c}.bin" for c in ("hero", "sweep1", "sweep2", "sweep3", "sweep4", "sweep5")),
+                   card_models=(("museum/textures/banner*", "banner"),), solids=dict(cards={}, soft=("museum/textures/cactus05",)), cacti=("museum/textures/cactus05",), armed_cacti=("museum/textures/cactus05",),
+                   fog_color="#20366f", glow=MUSE_GLOW, lamps=MUSE_LAMPS, unbake=0.5, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
     "contruct": dict(scene=11, pak="contruct", blend="city-levels/contruct/contruct.blend", out="city-levels/contruct/pass1", rules=CONS_RULES, hand=CONS_HAND,
                      look=CONS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-121.0, -108.0, 105.0, 68.0), game_sky=True, clutter=False,
                      materials=tuple(CONS_TILES) + ("flat",), tiles=CONS_TILES, detail=CONS_DETAIL, tints={"d_conc": (1.25, 1.25, 1.35)}, captures=("city-levels/contruct/world-hero.bin",),
@@ -725,7 +729,10 @@ LEVELS = {
                    captures=tuple(f"westhub/grandc/world-{n}.bin" for n in ("hero", "sweep-a", "sweep-b")),
                    materials=tuple(WEST_TILES) + ("flat",), tiles=WEST_TILES, detail=GRANDC_DETAIL, binds={"ground": (("d_sand", 4, -1.0, 0.0),)},
                    clutter_opts=dict(leaves=0.0, pebbles=5.0, stones=0.7), grass_min=2.0, unbake=0.2,
-                   solids=dict(cards={}, soft=("grandc/textures/cactus07",)),  # the barbed wire stays the game's: its strips are not the zoo's pairs
+                   solids=dict(cards={}, soft=tuple(f"grandc/textures/{n}" for n in ("cactus04", "cactus06", "cactus07"))),  # the barbed wire stays the game's: its strips are not the zoo's pairs
+                   cacti=("grandc/textures/cactus0[467]",), armed_cacti=tuple(f"grandc/textures/{n}" for n in ("cactus06", "cactus07", "smallcack")),
+                   card_models=(("grandc/textures/smallcack", "cactus"), ("grandc/textures/plantspike*", "flower")) + tuple((f"grandc/textures/{n}", "sign") for n in (
+                       "plainsigndiamond", "wood_keepout", "wood_keepout02", "sign_landscape_wood", "telephone_pole_sign", "telephone_pole_sign02")),
                    relief=dict(textures=tuple(f"grandc/textures/{p}" for p in ("wwrock*", "vert_strips*", "monolith*", "pestwest*")), tint=(0.9, 1.075, 1.25), min_area=6.0,
                                cell=0.4, depth=0.3, band=1.1, block=1.6, foot=1.8, border=0.8),
                    fog_color="#f4d8b0", ground_tint=(0.82, 0.62, 0.42), sky_gain=1.3, char_keep=0.55, char_fill=(-0.65, -0.6, -0.5),
@@ -765,6 +772,11 @@ def _bonus(twin, pak, scene, captures, first=(), **extra):
         B["trees"] = tuple(re(p) for p in L["trees"])
     if "solids" in L:
         B["solids"] = dict(cards={re(p): v for p, v in L["solids"]["cards"].items()}, soft=tuple(re(p) for p in L["solids"]["soft"]))
+    if "card_models" in L:
+        B["card_models"] = tuple((re(p), kind) for p, kind in L["card_models"])
+    for k in ("cacti", "armed_cacti"):
+        if k in L:
+            B[k] = tuple(re(p) for p in L[k])
     if "relief" in L:
         B["relief"] = dict(L["relief"], textures=tuple(re(p) for p in L["relief"]["textures"]))
     B.update(extra)
@@ -782,7 +794,12 @@ LEVELS["rcgoldmine"]["glow"] += [("rcgoldmine/textures/minelights*", 2.0, (0.4, 
 LEVELS["rcsafari"] = _bonus("safari", "rcsafari", 29, ("hero", "sweep-0", "sweep-1", "sweep-2"), hub=(-53.0, -61.0, 60.0, 60.0),
                             first=[(f"rcsafari/textures/{p}", "gameplay") for p in _RACE_SIGNS] + [
                                 ("rcsafari/textures/sunsetwater", "water"), ("rcsafari/textures/grassblue*", "lawn"), ("rcsafari/textures/hubflowers04", "lawn"),
-                                ("rcsafari/textures/grassjoiner*", "ground"), ("rcsafari/textures/pathrock", "ground")], grass_density=24.0)
+                                ("rcsafari/textures/grassjoiner*", "ground"), ("rcsafari/textures/pathrock", "ground")], grass_density=24.0,
+                            card_models=tuple((f"rcsafari/textures/{n}", k) for n, k in (  # the safari's, without the race's stop boards
+                                ("*bush*", "bush"), ("plantspike*", "flower"), ("fred", "flower"), ("fpurp", "flower"), ("palmleaf", "leaf"),
+                                ("safsign*", "sign"), ("sign[0-9]*", "sign"), ("wardensign*", "sign"), ("electricfencesign*", "sign"), ("hitsignexplan", "sign"))))
+# Its blend was dressed before the safari's trees, palms, drips and vines were: those cards stay the game's.
+LEVELS["rcsafari"]["rules"] = [(p, r) for p, r in LEVELS["rcsafari"]["rules"] if r not in ("tree", "palm", "drip", "vine")]
 LEVELS["rcicedome"] = _bonus("icedome", "rcicedome", 27, ("hero", "sweep-0", "sweep-1", "sweep-2"), hub=(-68.0, -53.0, 64.0, 39.0),
                              first=[(f"rcicedome/textures/{p}", "gameplay") for p in _RACE_SIGNS])
 LEVELS["vrmuseum"] = _bonus("museum", "vrmuseum", 21, ("hero", "sweep-0", "sweep-1"), hub=(-14.0, -32.0, 20.0, 32.0),
