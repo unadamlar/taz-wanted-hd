@@ -98,9 +98,10 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
 - Real 3D objects in place of painted cards so far: safari, Taz hub, west hub, museum (cloth banners, saguaro), department store (one 3D flower per
   painted flower in the beds), safari race, Grand Canyon and its race (saguaros, barrel cacti, signs on boards), zoo boss (leafy bushes), museum race (cloth
   banners), ice dome and its race (real bulbs on a sagging wire), ghost town (round rails with turned balusters, an iron fence of real
-  bars), Taz boss 1 (a real red tube truss). The construction site, westboss, goldmine, city boss, aquarium and Taz boss 2 were surveyed and left
+  bars), Taz boss 1 (a real red tube truss), goldmine (real sawn plank fences), deconstruct (real chain links on the crane). The construction site, westboss, goldmine, city boss, aquarium, Taz boss 2, main menu and detasmania were surveyed and left
   alone: their flat art is lit signs, gameplay signs, posters, crates, effects, floor panels or models. The playable copy has these (2026-11-24).
   For the user to judge: the saguaros are smooth green tubes, plainer than the painted cartoon cactus.
+  Candle flames stay the game's animated cards (3D would lose the flicker); burning crates and campfires are 2D sprites the look data can't reach.
 - For the user to judge in the west: the game's painted canyon stripes are kept on its own shapes. The zoo's rebuilt 3D rock would add depth but replace them,
   and the choice carries to ghost town, goldmine, Grand Canyon and westboss.
 - For the user to judge in the city levels: real paint replaces baked colour (store's blue, museum's pink floor, construction huts teal to yellow).
