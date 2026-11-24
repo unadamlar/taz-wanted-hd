@@ -944,13 +944,18 @@ if cfg["cards"] or cfg["soft"]:
                         q = solid.on_card(P, N, dp[t], tu, dc[t], size)
                         if len(q) and len(q[0]) and np.isfinite(q[0]).all():
                             got.append((*q, np.full(len(q[0]), solid_mat(label_of(d[0])))))  # a placed plant can mix textures
-                    if got:  # a draw that gave nothing stays the game's own
-                        parts += got
-                        kept.append(d)
-                ds = kept
-                if not parts:
-                    continue
-                p, n, u, c, auto_m = (np.concatenate(x) for x in zip(*parts))
+                    if not got:  # a draw that gave nothing stays the game's own
+                        continue
+                    # each draw its own prototype: a placed plant's leaves are shared by its red and blue copies
+                    p, n, u, c, m = (np.concatenate(x) for x in zip(*got))
+                    if "unbake" in LEVEL:
+                        c = c ** LEVEL["unbake"]
+                    pi = add_proto("solid%d" % len(protos), p.astype(np.float32), n.astype(np.float32), dds.to_linear(c).astype(np.float32), u.astype(np.float32), m)
+                    solids.setdefault((solid.key_of(d[4]), d[0]), pi)
+                    kept.append(d)
+                if kept:
+                    print("export: rounds %d flat game draws, %s" % (len(kept), sorted({labels[d[0]][0].rsplit("/", 1)[1] for d in kept})))
+                continue
             else:
                 # the same thickness in the world, whatever scale the game places this model at
                 P, N = solid.plate(game_rgba(label_of(ds[0][0]))[..., 3], spec["size"], spec["depth"] / np.linalg.norm(ds[0][1][:3]),
@@ -960,7 +965,7 @@ if cfg["cards"] or cfg["soft"]:
             if "unbake" in LEVEL:  # a night level bakes its light into these: the moon does the shading now
                 c = c ** LEVEL["unbake"]
             vc = dds.to_linear(c) if spec.get("mat") is None else np.ones_like(p)
-            m = auto_m if spec.get("auto") else np.full(len(p), solid_mat(label_of(ds[0][0]), spec.get("tint", (1, 1, 1))) if spec.get("mat") is None else MAT_ID[spec["mat"]])
+            m = np.full(len(p), solid_mat(label_of(ds[0][0]), spec.get("tint", (1, 1, 1))) if spec.get("mat") is None else MAT_ID[spec["mat"]])
         else:
             mats = [solid_mat(label_of(d[0])) for d in ds]
             tex = np.concatenate([np.full(len(t[0]), i) for i, t in enumerate(T)])
