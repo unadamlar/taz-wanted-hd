@@ -288,18 +288,25 @@ def tube_link(size, centre, ax, ay, r, sides=7, steps=22):
 
 def chain_on_cards(pos, uv, col):
     """Two crossed cards painted with a repeating chain, as real links turning 90 degrees from one card to the other."""
-    parts = []
-    for c, t in enumerate(sorted(islands(pos), key=lambda t: t[0])):
+    parts, ends, first = [], [], None
+    for t in sorted(islands(np.concatenate([pos, uv], 2)), key=lambda t: t[0]):  # a chain hung in stacked lengths: each length its own repeats
         e1, e2 = uv[t[0], 1] - uv[t[0], 0], uv[t[0], 2] - uv[t[0], 0]
         d1, d2 = pos[t[0], 1] - pos[t[0], 0], pos[t[0], 2] - pos[t[0], 0]
+        n_ = np.cross(d1, d2) / np.linalg.norm(np.cross(d1, d2))
+        first = n_ if first is None else first
+        c = int(abs(n_ @ first) < 0.7)  # the crossed cards hold the links in between
         det = e1[0] * e2[1] - e1[1] * e2[0]
         size = (np.linalg.norm((d1 * e2[1] - d2 * e1[1]) / det), np.linalg.norm((d2 * e1[0] - d1 * e2[0]) / det))
         r = size[0] * 0.085
         ay, ax = size[1] / 4 + r, size[0] * 0.27
         tiles = int(round(uv[t][..., 1].max()))
-        for v in (np.arange(tiles) + 0.5 if c == 0 else np.arange(1, tiles)):
+        for v in (np.arange(tiles) + 0.5 if c == 0 else np.arange(0, tiles + 1)):
             P, N = tube_link(size, (0.5, v), ax, ay, r, sides=6, steps=16)
-            parts.append(on_card(P, N, pos[t], uv[t], col[t], size))
+            q = on_card(P, N, pos[t], uv[t], col[t], size)
+            (parts if 0 < v < tiles or c == 0 else ends).append(q)
+    for i, q in enumerate(ends):  # a link across the joint of two stacked lengths, once; the chain's own two ends get none
+        if any(np.abs(q[0].mean(0) - o[0].mean(0)).max() < 1.0 for o in ends[:i]):
+            parts.append(q)
     return [np.concatenate(x) for x in zip(*parts)]
 
 
@@ -451,7 +458,7 @@ def _tidy(lines, w, wrap):
 
 def islands(pos):
     """Triangle indices of each connected piece: one game draw can hold two separate gates."""
-    _, ids = np.unique(np.round(pos.reshape(-1, 3), 1), axis=0, return_inverse=True)
+    _, ids = np.unique(np.round(pos.reshape(-1, pos.shape[-1]), 1), axis=0, return_inverse=True)
     ids = ids.reshape(-1, 3)
     root = list(range(ids.max() + 1))
 
