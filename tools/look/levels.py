@@ -772,3 +772,7 @@ LEVELS["rcgoldmine"] = _bonus("goldmine", "rcgoldmine", 28, ("hero", "sweep-0", 
 LEVELS["rcgoldmine"]["detail"] += [("rcgoldmine/textures/crystals", "d_gloss"), ("rcgoldmine/textures/spookhouse_wood", "d_plank"),
                                    ("rcgoldmine/textures/loggin*", "d_plank")]
 LEVELS["rcgoldmine"]["glow"] += [("rcgoldmine/textures/minelights*", 2.0, (0.4, 0.7)), ("rcgoldmine/textures/crystals", 0.7, None)]
+LEVELS["rcsafari"] = _bonus("safari", "rcsafari", 29, ("hero", "sweep-0", "sweep-1", "sweep-2"), hub=(-53.0, -61.0, 60.0, 60.0),
+                            first=[(f"rcsafari/textures/{p}", "gameplay") for p in _RACE_SIGNS] + [
+                                ("rcsafari/textures/sunsetwater", "water"), ("rcsafari/textures/grassblue*", "lawn"), ("rcsafari/textures/hubflowers04", "lawn"),
+                                ("rcsafari/textures/grassjoiner*", "ground"), ("rcsafari/textures/pathrock", "ground")], grass_density=24.0)
