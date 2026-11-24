@@ -516,7 +516,7 @@ LEVELS = {
     "aqua": dict(scene=6, pak="aqua", blend="zoo-levels/aqua/aqua.blend", out="zoo-levels/aqua/pass1", rules=AQUA_RULES, hand=AQUA_HAND,
                  look=AQUA_LOOK, hdri=None, hdri_rotation=0.0, hub=(-96.0, -79.0, 116.0, 127.0), sky_panels=True, night_sky=False, clutter=False, island_boxes=True,
                  captures=("zoo-levels/aqua/world-hero.bin", "zoo-levels/aqua/world-sweep-a.bin", "zoo-levels/aqua/world-sweep-b.bin"),
-                 materials=tuple(AQUA_TILES) + ("dirt", "water", "water_bed"), tiles=AQUA_TILES, detail=AQUA_DETAIL, sky_gain=1.3, foam=0, water_walls=False, ground_tint=(0.69, 0.6, 0.47)),
+                 materials=tuple(AQUA_TILES) + ("dirt", "water", "water_bed"), tiles=AQUA_TILES, detail=AQUA_DETAIL, sky_gain=1.3, foam=0, water_walls=False, sea="#5f9a9c", sea_horizon="#58aab8", ground_tint=(0.69, 0.6, 0.47)),
     "zooboss": dict(scene=7, pak="zooboss", blend="zoo-levels/zooboss/zooboss.blend", out="zoo-levels/zooboss/pass1", rules=ZOOBOSS_RULES, hand=ZOOBOSS_HAND,
                     look=ZOOBOSS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-30.0, -30.0, 30.0, 27.0), sky_panels=True, night_sky=False, clutter=False,
                     island_boxes=True, grass_density=40.0, skin=dict(tile=520.0, grain=0.18), char_keep=0.8, fog_color="#ffc090", ground_tint=(0.72, 0.6, 0.5), sky_gain=1.25,

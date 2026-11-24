@@ -181,9 +181,15 @@ def fill_ceiling(sky):
     return sky
 
 
-def sea_below(sky, deep, seed=3):
-    """A painted box whose lower half is one flat sea colour: deepen it away from the horizon and give it long wave streaks."""
+def sea_below(sky, deep, horizon=None, seed=3):
+    """A painted box whose lower half is one flat sea colour: deepen it away from the horizon and give it long wave streaks.
+    horizon: first recolour that flat sea (not what is painted on it) to meet a real water surface's far colour."""
     h, w = sky.shape[:2]
+    if horizon is not None:
+        low = sky[h // 2:]
+        near = np.clip(1.5 - np.abs(low - np.median(low.reshape(-1, 3), 0)).sum(2, keepdims=True) / 0.06, 0, 1)
+        sky = sky.copy()
+        sky[h // 2:] = low * (1 - near) + np.asarray(horizon, np.float32) * near
     below = (np.arange(h // 2, h) + 0.5) / h * 180 - 90  # degrees under the horizon
     m = np.clip(below / 30, 0, 1)[:, None, None] ** 0.7
     rng = np.random.default_rng(seed)
