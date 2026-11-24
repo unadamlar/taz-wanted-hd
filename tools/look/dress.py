@@ -636,7 +636,7 @@ def blender_main(argv):
             return r["P"][g < 0.05]
         leaf_centers = [((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, max(1.5, min(hi.x - lo.x, hi.y - lo.y) * 0.45)) for lo, hi in trees]
         clutter = kit.scatter_clutter(live, SCALE, sampler=clutter_sampler, blockers=covers, exclude=gameplay_boxes, seed=4,
-                                      leaves=2.5 if not a.pass1 else 5.0, leaf_centers=None if a.pass1 else leaf_centers) if L.get("clutter", True) else []
+                                      leaves=L.get("fallen_leaves", 2.5) if not a.pass1 else 5.0, leaf_centers=None if a.pass1 else leaf_centers) if L.get("clutter", True) else []
         cliffs = [o for o in live if poly_mask(o, ("cliff", "cliff_lilac")).any()]
         solid = [o for o in live if not poly_mask(o, ("hide", "sky", "fence_rail", "tree")).all()]
         edges = kit.top_edges_open(cliffs, ("cliff", "cliff_lilac"), blockers=solid) if cliffs else []

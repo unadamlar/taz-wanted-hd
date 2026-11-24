@@ -396,6 +396,36 @@ BOSS_LOOK = dict(
 )
 BOSS_HAND = dict(DEPT_HAND, camera_B=dict(loc=(0.0, -20.0, -2.0), look_at=(0.0, 10.0, -7.0), lens=16.0), camera_C=dict(loc=(20.0, 0.0, -2.0), look_at=(-5.0, 0.0, -7.0), lens=16.0))
 
+# ---- west hub (scene 13): a sunlit desert canyon. WEST_TILES and WEST_LOOK are the base for the other Wild West levels.
+WEST_RULES = [
+    ("resobjs/*", "gameplay"), ("westhub/extras/*", "gameplay"), ("westhub/textures/westcube*", "gameplay"), ("westhub/textures/exp_*", "gameplay"),
+    ("westhub/textures/crateside*", "gameplay"), ("westhub/textures/tnt", "gameplay"), ("westhub/textures/dynamite*", "gameplay"),
+    ("westhub/textures/*sign*", "gameplay"), ("westhub/textures/warning*", "gameplay"), ("westhub/textures/arrowbend", "gameplay"),
+    ("westhub/textures/roadnarrows", "gameplay"), ("westhub/textures/barrier*", "gameplay"), ("westhub/textures/train_barrier*", "gameplay"),
+    ("westhub/textures/train_waring_sign", "gameplay"), ("westhub/textures/tazshapedhole*", "gameplay"), ("westhub/textures/tumble", "gameplay"),
+    ("westhub/skybox/*", "sky"), ("resTex/shadowsub", "hide"), ("westhub/textures/sand", "ground"), ("westhub/textures/sandrock*", "ground"),
+]
+WEST_DETAIL = [(f"westhub/textures/{p}", m) for p, m in (
+    ("vert_strips*", "d_canyon"), ("wwrock*", "d_canyon"), ("wwsml*", "d_canyon"), ("wwroad", "d_road"), ("roadstart", "d_road"),
+    ("sleeper", "d_plank"), ("track_wood", "d_plank"), ("mine_wood*", "d_plank"), ("spookhouse_wood", "d_plank"), ("spookhouse_side*", "d_plank"),
+    ("spookhouse_newroof*", "d_plank"), ("spookhouse_roof_tile", "d_plank"), ("station_side*", "d_plank"), ("station_backside", "d_plank"),
+    ("station_floor", "d_plank"), ("station_stair*", "d_plank"), ("station_roof*", "d_plank"), ("hut_*", "d_plank"), ("teepee_wood", "d_plank"),
+    ("ammodump_woodbase*", "d_plank"), ("ammo_dump_*wall*", "d_plank"), ("totem*", "d_plank"),
+    ("train0*", "d_iron"), ("train1*", "d_iron"), ("train2*", "d_iron"), ("train3*", "d_iron"), ("track", "d_iron"), ("kannon*", "d_iron"), ("bearing*", "d_iron"))]
+WEST_TILES = dict(
+    d_sand=dict(made="sand", period=2.6, px=1024, detail=0.7, triplanar=True, rough=0.92, normal=0.65),
+    d_canyon=dict(set="rock061", period=3.4, px=1024, detail=0.5, triplanar=True, rough=0.88, normal=0.9),
+    d_road=dict(set="asphalt", period=3.0, px=1024, detail=0.3, triplanar=True, rough=0.85, normal=0.5),
+    d_plank=dict(set="bark", period=1.6, px=1024, detail=0.45, triplanar=True, rough=0.78, normal=0.7),
+    d_iron=dict(set="asphalt", period=1.2, px=1024, detail=0.1, triplanar=True, rough=0.38, normal=0.2),
+)
+WEST_HAND = dict(DEPT_HAND, camera_B=dict(loc=(10.0, 40.0, 16.0), look_at=(20.0, 60.0, 14.0), lens=16.0), camera_C=dict(loc=(-20.0, 10.0, 16.0), look_at=(10.0, 30.0, 14.0), lens=16.0))
+WEST_LOOK = dict(
+    sun=dict(sun_azimuth=250.0, sun_elevation=52.0, sun_strength=5.0, sun_color="#fff0d8"),
+    grade=dict(exposure=0.3, look="AgX - Punchy", saturation=1.25, bloom=0.35, fog=0.05, fog_start=80.0, fog_depth=380.0, ambient_strength=1.0),
+    sky=dict(zenith="#1a68e0", horizon="#a6dcff", horizon_warm="#ffe9c8", sky_strength=1.3, cloud_white=1.3, ambient="#e8d8cc"), cliff=dict(),
+)
+
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", captures=("world-hero.bin", "world-sweep.bin"), rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
@@ -470,4 +500,9 @@ LEVELS = {
                      look=BOSS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-73.0, -73.0, 73.0, 72.0), game_sky=True, clutter=False,
                      materials=tuple(DEPT_TILES) + ("flat",), tiles=DEPT_TILES, detail=BOSS_DETAIL, tints={"d_tile": (1.7, 1.7, 1.7)},
                      captures=("city-levels/cityboss/world-hero.bin",), glow=BOSS_GLOW, hold=0.75, contrast=1.0, bloom_threshold=14.0),
+    "westhub": dict(scene=13, pak="westhub", blend="westhub/westhub.blend", out="westhub/pass1", rules=WEST_RULES, hand=WEST_HAND,
+                    look=WEST_LOOK, hdri=None, hdri_rotation=0.0, hub=(-70.0, -35.0, 72.0, 95.0), sky_panels=True, night_sky=False, fallen_leaves=0.0, island_boxes=True,
+                    captures=("westhub/world-hero.bin", "westhub/world-sweep-a.bin", "westhub/world-sweep-b.bin", "westhub/world-sweep-c.bin"),
+                    materials=tuple(WEST_TILES) + ("flat",), tiles=WEST_TILES, detail=WEST_DETAIL, binds={"ground": (("d_sand", 4, -1.0, 0.0),)},
+                    fog_color="#f4d8b0", ground_tint=(0.82, 0.62, 0.42), sky_gain=1.3, tints={"d_canyon": (1.8, 2.15, 2.5)}),
 }
