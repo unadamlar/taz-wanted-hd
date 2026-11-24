@@ -218,7 +218,7 @@ SAFARI_RULES = [
     ("safari/skybox/*", "sky"), ("resTex/shadowsub", "hide"), ("safari/textures/safariwater", "water"),
     ("safari/textures/pestsaf01", "lawn"), ("safari/textures/pestsaf02", "lawn"), ("safari/textures/tazfern02", "lawn"), ("safari/textures/tazfern06", "lawn"),
     ("safari/textures/tazwood02a", "tree"), ("safari/textures/tazfern05*", "tree"), ("safari/textures/safarifruitree9", "palm"),
-    ("safari/textures/safarifruitree1[01]", "palm"), ("safari/textures/safarifringe", "drip"), ("safari/textures/safarifringe02", "drip"),  # green only: 03 and 04 are purple and blue roofs
+    ("safari/textures/safarifruitree1[01]", "palm"), ("safari/textures/safarifringe", "drip"), ("safari/textures/safarifringe02", "drip"), ("safari/textures/vine*", "vine"), ("safari/textures/purpvine*", "vine"), ("safari/textures/safaribannervines*", "vine"),  # green only: 03 and 04 are purple and blue roofs
     ("safari/textures/pestsaf03", "ground"), ("safari/textures/pestsaf06", "ground"), ("safari/textures/pestsaf07", "ground"),
     ("safari/textures/grassedge*", "ground"), ("safari/textures/grassjoiner*", "ground"),
 ]
@@ -654,6 +654,8 @@ LEVELS = {
                     lumps=dict(roles=("snow",), density=0.2, colour="#f4f9ff"), island_boxes=True, sky_gain=1.35, night_sky=False, ground_tint=(0.74, 0.67, 0.59), tints={"snowfield": (0.88, 0.9, 0.94)}),
     "safari": dict(scene=5, pak="safari", blend="zoo-levels/safari/safari.blend", out="zoo-levels/safari/pass1", rules=SAFARI_RULES, hand=SAFARI_HAND,
                    look=SAFARI_LOOK, hdri=None, hdri_rotation=0.0, hub=(-79.0, -64.0, 71.0, 80.0), sky_panels=True, night_sky=False, grass_density=30.0, island_boxes=True, sea="#0f6f9a",
+                   card_models=(("safari/textures/*bush*", "bush"), ("safari/textures/plantspike*", "flower"), ("safari/textures/bigtazleaf", "leaf"),
+                                ("safari/textures/leaf01", "leaf"), ("safari/textures/*sign*", "sign"), ("safari/textures/american_arrow", "sign")),
                    captures=("zoo-levels/safari/world-hero.bin", "zoo-levels/safari/world-sweep-a.bin", "zoo-levels/safari/world-sweep-b.bin"),
                    materials=tuple(SAFARI_TILES) + ("lawn", "dirt", "grass", "flat", "flat_wind", "water", "water_bed", "foam", "bark", "leaves", "leaf_core", "ivy"), tiles=SAFARI_TILES,
                    detail=SAFARI_DETAIL, binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05))}, sky_gain=1.3),
