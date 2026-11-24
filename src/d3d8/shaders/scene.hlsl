@@ -269,12 +269,14 @@ float3 uv_normal(float3 n, float3 w, float2 uv)
 }
 
 // The scene value the tone curve (post.hlsl film) turns into this colour.
-float3 held(float3 c)
+float3 held_by(float3 c, float exposure, float contrast)
 {
-    float3 s = clamp(pow(saturate(to_gamma(c)), 1 / HOLD.z) - 0.5, -0.47, 0.44);
+    float3 s = clamp(pow(saturate(to_gamma(c)), 1 / contrast) - 0.5, -0.47, 0.44);
     float3 x = s / sqrt(1 - 4 * s * s) / 2.4 + 0.606;
-    return 0.18 * pow(2, 16.5 * x - 10) / HOLD.y;
+    return 0.18 * pow(2, 16.5 * x - 10) / exposure;
 }
+
+float3 held(float3 c) { return held_by(c, HOLD.y, HOLD.z); }
 
 float4 ps_world(V2P i, float2 vpos : VPOS) : COLOR
 {
@@ -496,6 +498,7 @@ struct CharIn { float2 uv : TEXCOORD0; float3 w : TEXCOORD2; float3 n : TEXCOORD
 float4 CHAR_LIGHT[4] : register(c26);  // the two nearest lamps: position, 1 / r^2; colour
 float4 CHAR_STYLE    : register(c31);  // shading band offset, slope, fur strength, highlight
 sampler2D FUR : register(s5);
+float4 CHAR_HOLD     : register(c34);  // exposure, contrast, brightest held value, 1 / saturation: pale paint keeps its colour through the tone curve
 float4 CHAR_FILL     : register(c30);  // keeps characters readable away from the lamps of a night level
 
 float4 ps_char(CharIn i) : COLOR
@@ -541,6 +544,15 @@ float4 ps_char(CharIn i) : COLOR
     float3 rim = (SKY_AMB.rgb + CHAR_FILL.rgb + 0.5 * SUN_COL.rgb * sh) * edge * edge * edge * edge * 1.1;
     float3 c = albedo * 0.7 * (amb + CHAR_FILL.rgb * (0.55 + 0.75 * shoulder) + 0.85 * SUN_COL.rgb * band * sh * (0.55 + 0.45 * shoulder) + lamp + rim);
     c = lerp(dot(c, float3(0.3, 0.59, 0.11)) * float3(1.08, 0.94, 0.72), c, 0.62 + 0.38 * CHAR_FILL.w) * lerp(float3(1.02, 0.93, 0.76), 1, CHAR_FILL.w);  // w: a level whose characters are pure paint keeps it
+    // The tone curve compresses highlights, so cream and white paint came out grey at about 190 of HD's 230
+    // while dark fur matched. Pale paint keeps its colour, shaded by the same light; dark paint is left alone.
+    float pale = smoothstep(0.2, 0.45, dot(albedo, float3(0.3, 0.59, 0.11)));
+    float3 lit = albedo * lerp(0.62, 1, band * sh) * saturate(0.85 + 0.3 * shoulder);
+    // Capped so each level's bloom adds the same small glow to a pale face, whatever its threshold and strength.
+    float3 h = held_by(min(lit, 0.68), CHAR_HOLD.x, CHAR_HOLD.y);
+    h *= min(1, CHAR_HOLD.z / max(max(h.r, max(h.g, h.b)), 0.0001));
+    h = lerp(dot(h, float3(0.3, 0.59, 0.11)), h, CHAR_HOLD.w);  // the grade's saturation comes later
+    c = lerp(c, h + albedo * lamp * 0.7, pale);
     float nh = saturate(dot(n, normalize(v + SUN.xyz)));
     float gloss = nh * nh; gloss *= gloss; gloss *= gloss; gloss *= gloss; gloss *= gloss; gloss *= gloss;   // ^64
     c += CHAR_STYLE.w * gloss * sh * saturate(1 - dot(tex.rgb, 0.45)) * (SUN_COL.rgb + CHAR_FILL.rgb);       // on dark paint: eyes, nose
