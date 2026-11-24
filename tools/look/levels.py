@@ -469,5 +469,5 @@ LEVELS = {
     "cityboss": dict(scene=12, pak="cityboss", blend="city-levels/cityboss/cityboss.blend", out="city-levels/cityboss/pass1", rules=BOSS_RULES, hand=BOSS_HAND,
                      look=BOSS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-73.0, -73.0, 73.0, 72.0), game_sky=True, clutter=False,
                      materials=tuple(DEPT_TILES) + ("flat",), tiles=DEPT_TILES, detail=BOSS_DETAIL, tints={"d_tile": (1.7, 1.7, 1.7)},
-                     captures=("city-levels/cityboss/world-hero.bin",), glow=BOSS_GLOW, hold=0.75, contrast=1.0, bloom_threshold=14.0),
+                     captures=("city-levels/cityboss/world-hero.bin",), glow=BOSS_GLOW, hold=0.75, contrast=1.0, bloom_threshold=14.0, char_fill=(0.42, 0.36, 0.3), char_keep=1.0),
 }
