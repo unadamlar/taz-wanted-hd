@@ -705,9 +705,55 @@ int hd_post_done(void) { return post_done; }
 int hd_additions_done(void) { return additions_done; }
 
 // --- common pass state --------------------------------------------------------------------------
+// A block of only what our passes change (each set once while recording). D3DSBT_ALL also copied every transform
+// and constant: 40 us per capture and again per apply, 18 of each a frame in the zoo hub.
+static void record_block(hd_dev d)
+{
+    DWORD v;
+    float c[128][4];
+    IDirect3DDevice9_BeginStateBlock(d);
+    for (DWORD s = D3DRS_ZENABLE; s <= D3DRS_BLENDOPALPHA; s++)
+        if (SUCCEEDED(IDirect3DDevice9_GetRenderState(d, s, &v))) IDirect3DDevice9_SetRenderState(d, s, v);
+    for (DWORD i = 0; i < 16; i++) {
+        IDirect3DBaseTexture9 *t = NULL;
+        IDirect3DDevice9_GetTexture(d, i, &t);
+        IDirect3DDevice9_SetTexture(d, i, t);
+        if (t) IDirect3DBaseTexture9_Release(t);
+        for (DWORD s = D3DSAMP_ADDRESSU; s <= D3DSAMP_DMAPOFFSET; s++)
+            if (SUCCEEDED(IDirect3DDevice9_GetSamplerState(d, i, s, &v))) IDirect3DDevice9_SetSamplerState(d, i, s, v);
+        for (DWORD s = D3DTSS_COLOROP; i < 8 && s <= D3DTSS_CONSTANT; s++)
+            if (SUCCEEDED(IDirect3DDevice9_GetTextureStageState(d, i, s, &v))) IDirect3DDevice9_SetTextureStageState(d, i, s, v);
+    }
+    IDirect3DVertexShader9 *vs = NULL;
+    IDirect3DPixelShader9 *ps = NULL;
+    IDirect3DVertexDeclaration9 *decl = NULL;
+    IDirect3DIndexBuffer9 *ix = NULL;
+    IDirect3DDevice9_GetVertexShader(d, &vs), IDirect3DDevice9_SetVertexShader(d, vs);
+    IDirect3DDevice9_GetPixelShader(d, &ps), IDirect3DDevice9_SetPixelShader(d, ps);
+    IDirect3DDevice9_GetVertexDeclaration(d, &decl), IDirect3DDevice9_SetVertexDeclaration(d, decl);
+    IDirect3DDevice9_GetIndices(d, &ix), IDirect3DDevice9_SetIndices(d, ix);
+    if (vs) IDirect3DVertexShader9_Release(vs);
+    if (ps) IDirect3DPixelShader9_Release(ps);
+    if (decl) IDirect3DVertexDeclaration9_Release(decl);
+    if (ix) IDirect3DIndexBuffer9_Release(ix);
+    for (UINT i = 0; i < 2; i++) {
+        IDirect3DVertexBuffer9 *b = NULL;
+        UINT off = 0, stride = 0;
+        IDirect3DDevice9_GetStreamSource(d, i, &b, &off, &stride), IDirect3DDevice9_SetStreamSource(d, i, b, off, stride);
+        if (b) IDirect3DVertexBuffer9_Release(b);
+        UINT freq = 1;
+        IDirect3DDevice9_GetStreamSourceFreq(d, i, &freq), IDirect3DDevice9_SetStreamSourceFreq(d, i, freq);
+    }
+    D3DVIEWPORT9 vp;
+    IDirect3DDevice9_GetViewport(d, &vp), IDirect3DDevice9_SetViewport(d, &vp);
+    IDirect3DDevice9_GetVertexShaderConstantF(d, 0, c[0], 128), IDirect3DDevice9_SetVertexShaderConstantF(d, 0, c[0], 128);
+    IDirect3DDevice9_GetPixelShaderConstantF(d, 0, c[0], 40), IDirect3DDevice9_SetPixelShaderConstantF(d, 0, c[0], 40);
+    IDirect3DDevice9_EndStateBlock(d, &sb);
+}
+
 static void save_state(hd_dev d)
 {
-    if (!sb) IDirect3DDevice9_CreateStateBlock(d, D3DSBT_ALL, &sb);
+    if (!sb) record_block(d);
     else IDirect3DStateBlock9_Capture(sb);
 }
 
