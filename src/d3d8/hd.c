@@ -44,7 +44,7 @@ struct target { IDirect3DTexture9 *t; IDirect3DSurface9 *s; UINT w, h; };
 
 static struct level {
     float sun[3], sun_col[3], sky[3], ground[3], soft, ao_radius, ao_strength, fog[3], fog_start, fog_end;
-    float exposure, bloom_t, bloom_s, sat, contrast, water_h, water[3], clarity, fade0, fade1, sky_scale, unbake, char_fill[3], char_keep, hold, shadow_y;
+    float exposure, bloom_t, bloom_s, sat, contrast, water_h, water[3], clarity, fade0, fade1, sky_scale, unbake, unbake_keep, char_fill[3], char_keep, hold, shadow_y;
 } lv;
 
 static int scene_no = -1;
@@ -235,7 +235,7 @@ static void read_ini(void)
         K("fog_color", fog, 3), K("fog_start", fog_start, 1), K("fog_end", fog_end, 1), K("exposure", exposure, 1),
         K("bloom_threshold", bloom_t, 1), K("bloom_strength", bloom_s, 1), K("saturation", sat, 1), K("contrast", contrast, 1),
         K("water_height", water_h, 1), K("water_color", water, 3), K("water_clarity", clarity, 1),
-        K("grass_fade_start", fade0, 1), K("grass_fade_end", fade1, 1), K("sky_scale", sky_scale, 1), K("unbake", unbake, 1), K("char_fill", char_fill, 3), K("char_keep", char_keep, 1), K("hold", hold, 1), K("shadow_floor", shadow_y, 1),
+        K("grass_fade_start", fade0, 1), K("grass_fade_end", fade1, 1), K("sky_scale", sky_scale, 1), K("unbake", unbake, 1), K("unbake_keep", unbake_keep, 1), K("char_fill", char_fill, 3), K("char_keep", char_keep, 1), K("hold", hold, 1), K("shadow_floor", shadow_y, 1),
     };
     while (fgets(line, sizeof line, f)) {
         char *eq = strchr(line, '=');
@@ -1296,6 +1296,8 @@ void hd_world_material(hd_dev d, unsigned long long hash)
             emit[0] = glows[i].strength, emit[1] = glows[i].mask ? glows[i].lo : -1, emit[2] = glows[i].mask ? 1 / (fabsf(span) < 0.001f ? 0.001f : span) : 1;
         }
     IDirect3DDevice9_SetPixelShaderConstantF(d, 26, emit, 1);
+    float keep[4] = { lv.unbake_keep, 0, 0, 0 };
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 29, keep, 1);
     float hold[4] = { lv.hold, lv.exposure, lv.contrast * 1.26f, lv.shadow_y + origin[1] };
     IDirect3DDevice9_SetPixelShaderConstantF(d, 28, hold, 1);
     for (UINT i = 0; i < nbinds && n < 2; i++)

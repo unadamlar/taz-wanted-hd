@@ -415,7 +415,8 @@ CONS_TILES = {
     "d_wall": DEPT_TILES["d_wall"],
     "d_steel": dict(set="asphalt", period=1.2, px=1024, detail=0.12, triplanar=True, rough=0.4, normal=0.25),
 }
-CONS_LOOK = dict(CITY_LOOK, grade=dict(CITY_LOOK["grade"], ambient_strength=0.72))  # the tower's floors have no lamps of their own
+CONS_LOOK = dict(CITY_LOOK, sun=dict(CITY_LOOK["sun"], sun_strength=1.82, sun_color="#7ea2ff"),  # bluer moonlight: it still reads as night
+                 grade=dict(CITY_LOOK["grade"], ambient_strength=0.52), sky=dict(CITY_LOOK["sky"], ambient="#6e96ff"))  # the tower's floors have no lamps of their own
 CONS_HAND = dict(DEPT_HAND, camera_B=dict(loc=(0.0, -40.0, -46.0), look_at=(0.0, 0.0, -40.0), lens=16.0), camera_C=dict(loc=(-30.0, 20.0, 14.0), look_at=(0.0, 10.0, 12.0), lens=16.0))
 
 # ---- city boss (scene 12): a lit TV arena. Its colour is painted into the vertices, so it is kept (no unbake) and held through the tone curve.
@@ -539,7 +540,7 @@ LEVELS = {
     "contruct": dict(scene=11, pak="contruct", blend="city-levels/contruct/contruct.blend", out="city-levels/contruct/pass1", rules=CONS_RULES, hand=CONS_HAND,
                      look=CONS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-121.0, -108.0, 105.0, 68.0), game_sky=True, clutter=False,
                      materials=tuple(CONS_TILES) + ("flat",), tiles=CONS_TILES, detail=CONS_DETAIL, tints={"d_conc": (1.25, 1.25, 1.35)}, captures=("city-levels/contruct/world-hero.bin",),
-                     fog_color="#20366f", glow=CONS_GLOW, lamps=dict(CITY_LAMPS, power=1.7, cone=0.35, pool_power=0.45, extra=()), unbake=0.5, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
+                     fog_color="#20366f", glow=CONS_GLOW, lamps=dict(CITY_LAMPS, power=1.7, cone=0.35, pool_power=0.45, extra=()), unbake=0.5, unbake_keep=0.4, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
     "cityboss": dict(scene=12, pak="cityboss", blend="city-levels/cityboss/cityboss.blend", out="city-levels/cityboss/pass1", rules=BOSS_RULES, hand=BOSS_HAND,
                      look=BOSS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-73.0, -73.0, 73.0, 72.0), game_sky=True, clutter=False,
                      materials=tuple(DEPT_TILES) + ("flat",), tiles=DEPT_TILES, detail=BOSS_DETAIL, tints={"d_tile": (1.7, 1.7, 1.7)},

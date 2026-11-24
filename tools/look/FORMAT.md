@@ -110,6 +110,7 @@ grass_fade_start, grass_fade_end
 sky_scale
 unbake     optional. Above 0 the game's vertex colours are baked light (a night level): their tint is dropped
            and their brightness v becomes v^unbake
+unbake_keep  optional, 0 to 1: how much of the baked light's tint stays, at the unbaked brightness
 char_fill  optional, three numbers: extra ambient on characters only, so they read away from a night level's lamps
 shadow_floor  optional: the height below which `hold` surfaces take no sun shadow
 hold       optional. Above 0 game surfaces keep their painted colour through the tone curve; light only shades it
