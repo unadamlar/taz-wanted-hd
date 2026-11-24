@@ -498,6 +498,35 @@ GHOST_LOOK = dict(
 )
 GHOST_HAND = dict(DEPT_HAND, camera_B=dict(loc=(20.0, -10.0, 10.0), look_at=(24.0, 2.0, 8.0), lens=16.0), camera_C=dict(loc=(5.0, 45.0, -4.0), look_at=(13.0, 51.0, -6.0), lens=16.0))
 
+# ---- goldmine (scene 15): an underground mine lit by lanterns and glowing crystals. Its magenta light is baked into the vertices.
+GOLD_RULES = [
+    ("resobjs/*", "gameplay"), ("goldmine/extras/*", "gameplay"), ("goldmine/textures/*crate*", "gameplay"), ("goldmine/textures/*sign*", "gameplay"),
+    ("goldmine/textures/tazwanted", "gameplay"), ("goldmine/textures/westhub", "gameplay"), ("goldmine/textures/exp_*", "gameplay"),
+    ("goldmine/textures/dyna-might", "gameplay"), ("goldmine/textures/gm_barrier*", "gameplay"), ("goldmine/textures/barrierstart", "gameplay"),
+    ("goldmine/textures/arrow_orange", "gameplay"), ("goldmine/textures/trac_*", "gameplay"), ("goldmine/textures/lantern*", "lamp"),
+    ("resTex/shadowsub", "hide"), ("goldmine/textures/minefloor*", "ground"), ("goldmine/textures/minejoiner*", "ground"), ("goldmine/textures/gm_soil", "ground"),
+]
+GOLD_DETAIL = [(f"goldmine/textures/{p}", m) for p, m in (
+    ("minerock*", "d_canyon"), ("specminerock*", "d_canyon"), ("stalatites*", "d_canyon"), ("minetunn*", "d_canyon"), ("sandrock*", "d_canyon"), ("wwrock*", "d_canyon"),
+    ("mineunderground*", "d_canyon"), ("minemodedge*", "d_canyon"),
+    ("supportwood*", "d_plank"), ("plank_01", "d_plank"), ("12gaugeplanks*", "d_plank"), ("beam_support", "d_plank"), ("wood_*", "d_plank"), ("bench_plank*", "d_plank"),
+    ("gmbridgewood", "d_plank"), ("gm_bluey_wood*", "d_plank"), ("sleeper*", "d_plank"), ("supportbase", "d_plank"), ("minehut*", "d_plank"), ("track_wood", "d_plank"),
+    ("vat_support", "d_plank"), ("gm_tabletop", "d_plank"),
+    ("minerailside", "d_iron"), ("minemodtrack", "d_iron"), ("track", "d_iron"), ("vat_panel*", "d_iron"), ("mc_*", "d_iron"), ("mcart_wheel*", "d_iron"),
+    ("newcart_side", "d_iron"), ("turntable*", "d_iron"), ("maglift_panel", "d_iron"), ("minesafe*", "d_iron"), ("lift_top", "d_iron"), ("cargo_*", "d_iron"),
+    ("crystal*", "d_gloss"), ("minewater", "d_gloss"))]
+GOLD_TILES = dict(d_minefloor=dict(set="rocky_trail", period=2.6, px=1024, detail=0.5, triplanar=True, rough=0.9, normal=0.8),
+                  d_canyon=WEST_TILES["d_canyon"], d_plank=WEST_TILES["d_plank"], d_iron=WEST_TILES["d_iron"], d_gloss=AQUA_TILES["d_gloss"])
+GOLD_GLOW = [(f"goldmine/textures/{p}", g, r) for p, g, r in (
+    ("crystal*", 0.7, None), ("goldglint*", 1.2, None), ("gm_taz_lightbeam", 1.0, None), ("lantern*", 2.2, (0.4, 0.7)), ("conveyor.gif", 0.3, None),
+    ("gb_shine", 1.0, None), ("crystal_sheen*", 1.2, None))]
+GOLD_LOOK = dict(
+    sun=dict(sun_azimuth=210.0, sun_elevation=60.0, sun_strength=0.9, sun_color="#ffd9b0"),
+    grade=dict(exposure=1.4, look="AgX - Punchy", saturation=1.15, bloom=0.6, fog=0.15, fog_start=40.0, fog_depth=260.0, ambient_strength=1.3),
+    sky=dict(zenith="#1a0a24", horizon="#3a1040", horizon_warm="#4a1a40", sky_strength=1.0, cloud_white=0.2, ambient="#b090c8"), cliff=dict(),
+)
+GOLD_HAND = dict(DEPT_HAND, camera_B=dict(loc=(0.0, -1.0, -10.0), look_at=(0.0, -11.0, -11.0), lens=16.0), camera_C=dict(loc=(20.0, 10.0, -10.0), look_at=(28.0, 16.0, -11.0), lens=16.0))
+
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", captures=("world-hero.bin", "world-sweep.bin"), rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
@@ -596,4 +625,11 @@ LEVELS = {
                   clutter_opts=dict(leaves=1.6, pebbles=3.0, stones=0.4), grass_min=2.0, glow=GHOST_GLOW, lamps=dict(CITY_LAMPS, color="#ffcf8a", power=4.0, extra=()),
                   relief=dict(textures=("ghost/textures/spookyrock*",), min_area=6.0, cell=0.4, depth=0.3, band=1.1, block=1.6, foot=1.8, border=0.8),
                   fog_color="#2a1d5c", unbake=0.5, sky_gain=2.0, char_fill=(0.2, 0.2, 0.3)),
+    "goldmine": dict(scene=15, pak="goldmine", blend="westhub/goldmine/goldmine.blend", out="westhub/goldmine/pass1", rules=GOLD_RULES, hand=GOLD_HAND,
+                     look=GOLD_LOOK, hdri=None, hdri_rotation=0.0, hub=(-286.0, -316.0, 74.0, 64.0), game_sky=True, island_boxes=True,
+                     captures=tuple(f"westhub/goldmine/world-{n}.bin" for n in ("hero", "sweep-a", "sweep-b")),
+                     materials=tuple(GOLD_TILES) + ("flat",), tiles=GOLD_TILES, detail=GOLD_DETAIL, binds={"ground": (("d_minefloor", 4, -1.0, 0.0),)},
+                     clutter_opts=dict(leaves=0.0, pebbles=4.0, stones=0.6), grass_min=2.0, glow=GOLD_GLOW, lamps=dict(CITY_LAMPS, color="#ffc27a", power=4.0, extra=()),
+                     relief=dict(textures=("goldmine/textures/minerock*",), min_area=6.0, cell=0.4, depth=0.3, band=1.1, block=1.6, foot=1.8, border=0.8),
+                     fog_color="#3a1040", char_fill=(0.2, 0.18, 0.25)),  # the baked magenta light is the mine's mood: kept
 }

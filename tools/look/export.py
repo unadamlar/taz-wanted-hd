@@ -750,15 +750,15 @@ def game_rgba(label):
     return px.reshape(h, w, 4)[::-1].copy()
 
 
-def solid_mat(label, tint=(1, 1, 1), rough=0.6):
+def solid_mat(label, tint=(1, 1, 1), rough=0.6, flags=TWO_SIDED):
     """A game texture as an opaque material for real geometry: colour bled past the cut-out's edge."""
-    name = "game_" + label.rsplit("/", 1)[1][:26]
+    name = "game_" + label.rsplit("/", 1)[1][:26] + ("" if flags == TWO_SIDED else "_%d" % flags)
     if name not in MAT_ID:
         rgba = game_rgba(label)
         rgba[..., :3] = dds.bleed(rgba[..., :3], rgba[..., 3])
         rgba[..., 3] = 1
         put_tex(name, dds.mips(rgba), b"DXT1")
-        MATS[name] = (name, False, OPAQUE, TWO_SIDED, 0.0, tint, rough, 0, 0)
+        MATS[name] = (name, False, OPAQUE, flags, 0.0, tint, rough, 0, 0)
         MAT_ID[name] = len(MAT_ID)
     return MAT_ID[name]
 
@@ -868,7 +868,7 @@ if "relief" in LEVEL:
         if P and "unbake" in LEVEL:  # as for solids: the baked night tint goes, the moon shades
             C = [c ** LEVEL["unbake"] for c in C]
         if P:
-            place_static("relief_" + label.rsplit("/", 1)[1], *(np.concatenate(x) for x in (P, N, U, C)), solid_mat(label, LEVEL["relief"].get("tint", (1, 1, 1)), 0.88))
+            place_static("relief_" + label.rsplit("/", 1)[1], *(np.concatenate(x) for x in (P, N, U, C)), solid_mat(label, LEVEL["relief"].get("tint", (1, 1, 1)), 0.88, 0))  # one-sided: a camera pressed into it sees the game's wall
 if "chain" in LEVEL or "grill" in LEVEL:
     want = {tex_hash[LEVEL[k]]: k for k in ("chain", "grill") if k in LEVEL}
     cards = {h: {} for h in want}
