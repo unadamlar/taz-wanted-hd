@@ -737,7 +737,7 @@ LEVELS = {
                      look=TB2_LOOK, hdri=None, hdri_rotation=0.0, hub=(-14.0, -39.5, 14.5, 52.0), sky_panels=True, night_sky=False, sky_gain=1.05, clutter=False,
                      captures=("tazhub/tazboss2/world-hero.bin", "tazhub/tazboss2/world-sweep-a.bin", "tazhub/tazboss2/world-sweep-b.bin"),
                      materials=tuple(TB2_TILES) + ("flat",), tiles=TB2_TILES, detail=TB2_DETAIL, glow=TB2_GLOW, fog_color="#7fc4f4",
-                     hold=0.6, contrast=1.0, bloom_threshold=14.0, char_fill=(1.6, 1.75, 2.0), char_keep=0.4),
+                     hold=0.6, contrast=1.0, bloom_threshold=14.0, char_fill=(1.6, 1.75, 2.0), char_keep=1.0),
 }
 
 
