@@ -91,6 +91,10 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
   per-level fill. Grand Canyon is the heaviest level so far (11.7 ms uncapped under load, 7,715 world draws). Westboss starts on its rules page: press Jump.
 - Taz bosses done: tazboss1 (Disco Volcano; `glow_add` draws its additive flames as the game does) and tazboss2 (Sam's zeppelin). Taz's cream reads cooler
   than HD in tazboss1, and the zeppelin's force field is clear glass where HD shows near-solid cyan.
+- Bonus levels done (21-29): eight reuse their story level's block through `_bonus()` in `levels.py`; detasmania has its own on the Taz hub's surfaces.
+  rcgoldmine, rcicedome and deconstruct drop Taz into an endless fall from every entry; tests place him with the scripts in `extracted/look/westhub/bonus/`.
+  Deconstruct is dark and Taz reads as a dark shape there; deaqua's flat deep-blue sea is now clear turquoise water over sand.
+- Every scene now has Remaster data, and the user's playable copy has all of it (2026-11-24, e1852b5).
 - For the user to judge in the west: the game's painted canyon stripes are kept on its own shapes. The zoo's rebuilt 3D rock would add depth but replace them,
   and the choice carries to ghost town, goldmine, Grand Canyon and westboss.
 - For the user to judge in the city levels: real paint replaces baked colour (store's blue, museum's pink floor, construction huts teal to yellow).
