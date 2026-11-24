@@ -69,6 +69,11 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
   from `extracted/look/screens/runtime/` into `<game>/taz-hd/look/`. Not yet in the user's playable copy.
 - For the user to judge: the deep blue loading screens, and the menu's brown dirt path where the original is flat orange.
 - Not done: the level intro page, map and game-over screens. Not checked: bonus-level loading art, a gamepad in these menus.
+- City world done: department store, museum, construction site and city boss (`extracted/look/reports/step7/city-levels/`). Data is in
+  `extracted/look/city-levels/<level>/runtime/sceneNN`. Not in the user's playable copy. Not checked: finishing a level, win and lose
+  screens, the museum's real entry, the 2 GB limit, uncapped frame time. Museum jumps drop Taz into a fall and city boss jumps crash,
+  so test them through the routes in that folder's `notes.md`.
+- For the user to judge in the city levels: real paint replaces baked colour (store's blue, museum's pink floor, construction huts teal to yellow).
 
 ## How the pieces fit
 
