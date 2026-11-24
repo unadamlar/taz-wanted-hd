@@ -158,6 +158,8 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
   (original procedural work) at 4096 px: same layout, lit planets, more stars, still turning with the game's own transform.
   Painted surfaces there keep their HD colour through the tone curve (`hold`), and light only shades them.
 - Sun is per level and placed for looks; baked vertex shadows are dropped.
+- User, 2026-11-24: the goal is a reimagined look, so flat 2D objects (painted cards, bushes, flowers, signs, low-poly props) become real 3D
+  objects. Rounded or thickened copies of the painted cards were tried and rejected ("don't look great"). Gameplay objects stay readable.
 - User, 2026-11-24: keep the deep blue loading screens and the menu's dirt path. West levels keep the game's painted canyon stripes on its
   own shapes, with depth added only on the biggest flat walls. City store and museum keep their real paint; the construction site gets some of
   its night blue back. The playable copy now has everything merged up to f52df7b (backup: `~/Games/taz-agents/play-backup-2026-11-24`).
