@@ -751,15 +751,15 @@ def game_rgba(label):
     return px.reshape(h, w, 4)[::-1].copy()
 
 
-def solid_mat(label, tint=(1, 1, 1)):
+def solid_mat(label, tint=(1, 1, 1), rough=0.6, flags=TWO_SIDED):
     """A game texture as an opaque material for real geometry: colour bled past the cut-out's edge."""
-    name = "game_" + label.rsplit("/", 1)[1][:26]
+    name = "game_" + label.rsplit("/", 1)[1][:26] + ("" if flags == TWO_SIDED else "_%d" % flags)
     if name not in MAT_ID:
         rgba = game_rgba(label)
         rgba[..., :3] = dds.bleed(rgba[..., :3], rgba[..., 3])
         rgba[..., 3] = 1
         put_tex(name, dds.mips(rgba), b"DXT1")
-        MATS[name] = (name, False, OPAQUE, TWO_SIDED, 0.0, tint, 0.6, 0, 0)
+        MATS[name] = (name, False, OPAQUE, flags, 0.0, tint, rough, 0, 0)
         MAT_ID[name] = len(MAT_ID)
     return MAT_ID[name]
 
@@ -782,7 +782,94 @@ def place_static(name, p, n, uv, c, mat):
     print("export: %s, %d triangles" % (name, len(p) // 3))
 
 
+def relief(cfg):
+    """The biggest flat painted walls raised in their own paint: blocks that follow the strata, always in front of the game's
+    face, flat at the foot (where Taz walks) and at the wall's open edges. Sizes in Blender units."""
+    from mathutils.bvhtree import BVHTree
+    x0, z0, x1, z1 = (v * K for v in LEVEL["hub"])
+    faces, edge_n = [], collections.Counter()
+    found = {}
+    for coll in dress.GAME_COLLS:  # game_faces, plus each corner's paint colour (baked shade dropped), as world draws show it (2x)
+        for o in (bpy.data.collections[coll].objects if coll in bpy.data.collections else []):
+            if o.type != "MESH" or "kit_vcol" not in o.data.color_attributes:
+                continue
+            M, uvl, col = np.array(S @ o.matrix_world, np.float64), o.data.uv_layers[0].data, o.data.color_attributes["kit_vcol"].data
+            for f in o.data.polygons:
+                m = o.data.materials[f.material_index]
+                if m and any(fnmatch.fnmatch(dress.base_name(m.name.split(":", 1)[-1]), p) for p in cfg["textures"]) and len(f.loop_indices) >= 3:
+                    c = np.array([(np.array(o.data.vertices[o.data.loops[l].vertex_index].co) @ M[:3, :3].T + M[:3, 3]) * K for l in f.loop_indices])
+                    found[tuple(sorted(tuple(np.round(q, 1)) for q in c))] = (c, [tuple(uvl[l].uv) for l in f.loop_indices],
+                                                                              np.minimum(np.array([tuple(col[l].color)[:3] for l in f.loop_indices]) * 2, 1))
+    for a_, uv_, vc_ in found.values():
+        n = -np.cross(a_[1] - a_[0], a_[2] - a_[0]) * (-1 if cfg.get("flip") else 1)  # game space is left-handed
+        area = sum(np.linalg.norm(np.cross(a_[k] - a_[0], a_[k + 1] - a_[0])) for k in range(1, len(a_) - 1)) / 2
+        n /= max(np.linalg.norm(n), 1e-9)
+        cen = a_.mean(0)
+        if area < cfg["min_area"] * K * K or abs(n[1]) > 0.45 or not (x0 < cen[0] < x1 and z0 < cen[2] < z1):
+            continue
+        keys = [tuple(np.round(q, 0)) for q in a_]
+        for i in range(len(a_)):
+            edge_n[frozenset((keys[i], keys[(i + 1) % len(a_)]))] += 1
+        faces.append((a_, np.array(uv_) * (1, -1) + (0, 1), n, keys, vc_))  # Direct3D's v runs down
+    g = [c for c, _ in game_faces(lambda l: dress.role_of(l) == "ground")]
+    tris = [t for c in g for t in ([c[[0, 1, 2]]] + ([c[[0, 2, 3]]] if len(c) == 4 else []))]
+    ground = BVHTree.FromPolygons(np.concatenate(tris).tolist(), np.arange(3 * len(tris)).reshape(-1, 3).tolist()) if tris else None
+    hash_ = lambda a, b: np.modf(np.sin(a * 12.9898 + b * 78.233) * 43758.5453)[0] % 1.0
+    P, N, U, C = [], [], [], []
+    for a_, uv_, n, keys, vc_ in faces:
+        t = np.cross((0, 1, 0), n); t /= max(np.linalg.norm(t), 1e-9)
+        bound = [(a_[i], a_[(i + 1) % len(a_)]) for i in range(len(a_)) if edge_n[frozenset((keys[i], keys[(i + 1) % len(a_)]))] == 1]
+        for f3 in ([0, k, k + 1] for k in range(1, len(a_) - 1)):
+            A, UV, VC = a_[f3], uv_[f3], vc_[f3]
+            m = int(np.ceil(max(np.linalg.norm(A[1] - A[0]), np.linalg.norm(A[2] - A[0]), np.linalg.norm(A[2] - A[1])) / (cfg["cell"] * K)))
+            I, J = [x.ravel() for x in np.mgrid[:m + 1, :m + 1]]
+            k = I + J <= m
+            I, J = I[k], J[k]
+            p = A[0] + np.outer(I / m, A[1] - A[0]) + np.outer(J / m, A[2] - A[0])
+            uv = UV[0] + np.outer(I / m, UV[1] - UV[0]) + np.outer(J / m, UV[2] - UV[0])
+            vc = VC[0] + np.outer(I / m, VC[1] - VC[0]) + np.outer(J / m, VC[2] - VC[0])
+            s = p[:, [0, 2]] @ t[[0, 2]]
+            L = p[:, 1] / (cfg["band"] * K) + 0.35 * np.sin(s / (2.3 * K)) + 0.2 * np.sin(s / (0.9 * K) + 1.7)
+            row = np.floor(L)
+            blk = np.floor(s / (cfg["block"] * K) + hash_(row, 3.1))
+            d = cfg["depth"] * K * (0.25 + 0.75 * hash_(row, blk))
+            foot = np.ones(len(p))
+            if ground:
+                for q in range(len(p)):
+                    hit = ground.ray_cast(p[q] + (0, 5, 0), (0, -1, 0), 20 * K)[0]
+                    foot[q] = np.clip((p[q, 1] - hit[1]) / (cfg["foot"] * K), 0, 1) if hit is not None else 1
+            edge = np.ones(len(p))
+            for e0, e1 in bound:
+                v = e1 - e0
+                w = np.clip(((p - e0) @ v) / max(v @ v, 1e-9), 0, 1)
+                edge = np.minimum(edge, np.linalg.norm(p - e0 - np.outer(w, v), axis=1) / (cfg["border"] * K))
+            p = p + np.outer(d * np.minimum(foot, np.clip(edge, 0, 1)) ** 1.5 + 2.0, n)
+            ix = {(i, j): q for q, (i, j) in enumerate(zip(I, J))}
+            tri = [(ix[i, j], ix[i + 1, j], ix[i, j + 1]) for i, j in zip(I, J) if i + j < m] + \
+                  [(ix[i + 1, j], ix[i + 1, j + 1], ix[i, j + 1]) for i, j in zip(I, J) if i + j < m - 1]
+            tri = np.array(tri)
+            T = p[tri]
+            fn = np.cross(T[:, 1] - T[:, 0], T[:, 2] - T[:, 0])
+            fn *= np.sign((fn @ n))[:, None]  # facing out, flat per facet: hard edges read as chiselled
+            fn /= np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-9)
+            P.append(T.reshape(-1, 3)); N.append(np.repeat(fn, 3, 0)); U.append(uv[tri].reshape(-1, 2))
+            C.append(vc[tri].reshape(-1, 3))
+    return P, N, U, C
+
+
 captures = [os.path.join(ext, "look", f) for f in LEVEL.get("captures", ())]
+if "relief" in LEVEL:
+    by_label = collections.defaultdict(list)
+    for pat in LEVEL["relief"]["textures"]:
+        for label in sorted({dress.base_name(m.name.split(":", 1)[1]) for m in bpy.data.materials if m.name.startswith(("lit:", "lit+:"))}):
+            if fnmatch.fnmatch(label, pat):
+                by_label[label] = True
+    for label in by_label:
+        P, N, U, C = relief(dict(LEVEL["relief"], textures=(label,)))
+        if P and "unbake" in LEVEL:  # as for solids: the baked night tint goes, the moon shades
+            C = [c ** LEVEL["unbake"] for c in C]
+        if P:
+            place_static("relief_" + label.rsplit("/", 1)[1], *(np.concatenate(x) for x in (P, N, U, C)), solid_mat(label, LEVEL["relief"].get("tint", (1, 1, 1)), 0.88, 0))  # one-sided: a camera pressed into it sees the game's wall
 if "chain" in LEVEL or "grill" in LEVEL:
     want = {tex_hash[LEVEL[k]]: k for k in ("chain", "grill") if k in LEVEL}
     cards = {h: {} for h in want}
@@ -810,8 +897,8 @@ if "solids" in LEVEL:
     known = {dress.base_name(m.name.split(":", 1)[1]) for m in bpy.data.materials if m.name.startswith(("lit:", "lit+:"))}
     soft_h = {tex_hash[l] for l in cfg["soft"]}
     found = solid.models(solid.capture(captures, card_h | soft_h, soft_h), card_h)
-    label_of = lambda h: next(l for l in labels[h] if l in known)
-    solid_tex = {h: game_rgba(label_of(h))[..., 3].mean() > 0.98 for h in {d[0] for ds in found.values() for d in ds}}
+    label_of = lambda h: next((l for l in labels[h] if l in known), None)  # None: a texture from another pak, left as the game's draw
+    solid_tex = {h: label_of(h) is not None and game_rgba(label_of(h))[..., 3].mean() > 0.98 for h in {d[0] for ds in found.values() for d in ds}}
     for keys, ds in sorted(found.items(), key=lambda kv: -len(kv[0])):  # a sweep frame can hold part of a model
         ds = [d for d in ds if d[0] in card_h or solid_tex[d[0]]]  # see-through parts stay the game's own draws
         if {solid.key_of(d[4]) for d in ds} <= solids.keys():

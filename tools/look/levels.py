@@ -444,7 +444,7 @@ WEST_RULES = [
     ("westhub/skybox/*", "sky"), ("resTex/shadowsub", "hide"), ("westhub/textures/sand", "ground"), ("westhub/textures/sandrock*", "ground"),
 ]
 WEST_DETAIL = [(f"westhub/textures/{p}", m) for p, m in (
-    ("vert_strips*", "d_canyon"), ("wwrock*", "d_canyon"), ("wwsml*", "d_canyon"), ("wwroad", "d_road"), ("roadstart", "d_road"),
+    ("vert_strips*", "d_cliff"), ("wwrock*", "d_canyon"), ("wwsml*", "d_canyon"), ("wwroad", "d_road"), ("roadstart", "d_road"),
     ("sleeper", "d_plank"), ("track_wood", "d_plank"), ("mine_wood*", "d_plank"), ("spookhouse_wood", "d_plank"), ("spookhouse_side*", "d_plank"),
     ("spookhouse_newroof*", "d_plank"), ("spookhouse_roof_tile", "d_plank"), ("station_side*", "d_plank"), ("station_backside", "d_plank"),
     ("station_floor", "d_plank"), ("station_stair*", "d_plank"), ("station_roof*", "d_plank"), ("hut_*", "d_plank"), ("teepee_wood", "d_plank"),
@@ -453,6 +453,7 @@ WEST_DETAIL = [(f"westhub/textures/{p}", m) for p, m in (
 WEST_TILES = dict(
     d_sand=dict(made="sand", period=2.6, px=1024, detail=0.7, triplanar=True, rough=0.92, normal=0.65),
     d_canyon=dict(set="old_sandstone", period=4.2, px=1024, detail=0.55, triplanar=True, rough=0.88, normal=0.9),
+    d_cliff=dict(set="rock061", period=7.5, px=1024, detail=0.5, triplanar=True, rough=0.9, normal=1.6),  # the big flat walls: broad relief
     d_road=dict(set="asphalt", period=3.0, px=1024, detail=0.3, triplanar=True, rough=0.85, normal=0.5),
     d_plank=dict(set="bark", period=1.6, px=1024, detail=0.45, triplanar=True, rough=0.78, normal=0.7),
     d_iron=dict(set="asphalt", period=1.2, px=1024, detail=0.1, triplanar=True, rough=0.38, normal=0.2),
@@ -463,6 +464,109 @@ WEST_LOOK = dict(
     grade=dict(exposure=0.26, look="AgX - Punchy", saturation=1.25, bloom=0.35, fog=0.05, fog_start=80.0, fog_depth=380.0, ambient_strength=1.22),
     sky=dict(zenith="#1a68e0", horizon="#a6dcff", horizon_warm="#ffe9c8", sky_strength=1.3, cloud_white=1.3, ambient="#e8d8cc"), cliff=dict(),
 )
+
+# ---- ghost town (scene 14): the west at night. Its blue is baked into the vertices like the city's, so the city's night recipe
+# (unbake, moon, glows) goes over the west hub's surfaces.
+GHOST_RULES = [
+    ("resobjs/*", "gameplay"), ("ghost/extras/*", "gameplay"), ("ghost/textures/tazwanted", "gameplay"), ("ghost/textures/tazanted02", "gameplay"),
+    ("ghost/textures/*crate*", "gameplay"), ("ghost/textures/tumblebox*", "gameplay"), ("ghost/textures/plasticbox*", "gameplay"),
+    ("ghost/textures/cardbox", "gameplay"), ("ghost/textures/*sign*", "gameplay"), ("ghost/textures/noentrydoor*", "gameplay"),
+    ("ghost/textures/donotenter", "gameplay"), ("ghost/textures/gongwanted", "gameplay"), ("ghost/textures/wantedtrainposter", "gameplay"),
+    ("ghost/textures/ghlamp*", "lamp"), ("ghost/skybox/*", "sky"), ("resTex/shadowsub", "hide"), ("resTex/haar", "hide"),
+    ("ghost/textures/spookyfloor*", "ground"), ("ghost/textures/spookypath*", "ground"), ("ghost/textures/spookycob*", "ground"),
+]
+GHOST_DETAIL = [(f"ghost/textures/{p}", m) for p, m in (
+    ("spookyrock*", "d_canyon"), ("ghostrockroof", "d_canyon"), ("spookyentrance*", "d_canyon"), ("bh_slates*", "d_canyon"), ("gh_roof*", "d_canyon"),
+    ("ghostiles*", "d_tile"), ("ghtilefloor*", "d_tile"), ("labtunfloor*", "d_tile"), ("saloonfloor", "d_plank"), ("bh_floor", "d_plank"), ("ghlibaryfloor", "d_plank"),
+    ("spookyboards*", "d_plank"), ("spookystake*", "d_plank"), ("ghrafters*", "d_plank"), ("gh_wood", "d_plank"), ("ghplanks*", "d_plank"), ("mine_wood*", "d_plank"),
+    ("bh_*planks*", "d_plank"), ("saloonwalls*", "d_plank"), ("saloonvara*", "d_plank"), ("ghroofedge", "d_plank"), ("gh_green_wood*", "d_plank"),
+    ("spookytree*", "d_plank"), ("spookytrunk*", "d_plank"), ("slippytree", "d_plank"), ("treeinternal", "d_plank"), ("ghtreestump", "d_plank"),
+    ("spookytrack*", "d_iron"), ("gold_*", "d_iron"), ("labpipe*", "d_iron"), ("ghostspinnycog*", "d_iron"), ("boiler_side", "d_iron"), ("gh_boilder*", "d_iron"),
+    ("knight_armour", "d_iron"), ("scarymetalplank", "d_iron"), ("gh_metaldoor", "d_iron"), ("labtank*", "d_iron"),
+    ("ghostwalls*", "d_plaster"), ("ghwallpaper*", "d_plaster"), ("ghpanels*", "d_plaster"), ("labroom*", "d_plaster"), ("labtunnel*", "d_plaster"),
+    ("ghcellerwall", "d_plaster"), ("ghatticwall", "d_plaster"), ("ghbeamwall", "d_plaster"), ("bh_anc_wall", "d_plaster"), ("ghlibarypanels*", "d_plaster"))]
+GHOST_TILES = dict(d_cobble=dict(set="stone_wall", period=2.2, px=1024, detail=0.45, triplanar=True, rough=0.85, normal=0.7),
+                   d_canyon=WEST_TILES["d_canyon"], d_plank=WEST_TILES["d_plank"], d_iron=WEST_TILES["d_iron"],
+                   d_tile=DEPT_TILES["d_tile"], d_plaster=DEPT_TILES["d_wall"])
+GHOST_GLOW = [(f"ghost/textures/{p}", g, r) for p, g, r in (
+    ("spookyneon*", 2.0, None), ("spookyeyes*", 1.6, None), ("spookywindows*", 1.2, None), ("spookypunkin*", 1.6, None), ("candleflame*", 2.2, None),
+    ("ghwindows*", 0.9, (0.45, 0.75)), ("saloonwindows", 0.9, (0.45, 0.75)), ("twwindow", 0.9, (0.45, 0.75)), ("ghlamp*", 2.2, (0.4, 0.7)),
+    ("lablight*", 2.0, (0.45, 0.75)), ("labtanklight", 1.8, None), ("lab*bubbly*", 1.4, None), ("labtankswitch*", 1.0, None), ("datacomp*", 0.8, None),
+    ("spookycpu*", 0.8, None), ("labcomputer*", 0.8, None), ("flashblue", 1.6, None), ("pumkin*", 1.2, (0.45, 0.75)), ("ghchandal*", 1.6, (0.45, 0.75)),
+    ("ghfireplace*", 1.2, (0.4, 0.7)), ("juke*", 1.0, None))]
+GHOST_LOOK = dict(
+    sun=dict(sun_azimuth=200.0, sun_elevation=40.0, sun_strength=2.4, sun_color="#c8c0ff"),  # moonlight from the painted skull moon's side
+    grade=dict(exposure=0.8, look="AgX - Punchy", saturation=1.15, bloom=0.5, fog=0.2, fog_start=40.0, fog_depth=220.0, ambient_strength=0.95),
+    sky=dict(zenith="#120a38", horizon="#2a1d68", horizon_warm="#3a2a80", sky_strength=1.0, cloud_white=0.3, ambient="#9a88e8"), cliff=dict(),
+)
+GHOST_HAND = dict(DEPT_HAND, camera_B=dict(loc=(20.0, -10.0, 10.0), look_at=(24.0, 2.0, 8.0), lens=16.0), camera_C=dict(loc=(5.0, 45.0, -4.0), look_at=(13.0, 51.0, -6.0), lens=16.0))
+
+# ---- goldmine (scene 15): an underground mine lit by lanterns and glowing crystals. Its magenta light is baked into the vertices.
+GOLD_RULES = [
+    ("resobjs/*", "gameplay"), ("goldmine/extras/*", "gameplay"), ("goldmine/textures/*crate*", "gameplay"), ("goldmine/textures/*sign*", "gameplay"),
+    ("goldmine/textures/tazwanted", "gameplay"), ("goldmine/textures/westhub", "gameplay"), ("goldmine/textures/exp_*", "gameplay"),
+    ("goldmine/textures/dyna-might", "gameplay"), ("goldmine/textures/gm_barrier*", "gameplay"), ("goldmine/textures/barrierstart", "gameplay"),
+    ("goldmine/textures/arrow_orange", "gameplay"), ("goldmine/textures/trac_*", "gameplay"), ("goldmine/textures/lantern*", "lamp"),
+    ("resTex/shadowsub", "hide"), ("goldmine/textures/minefloor*", "ground"), ("goldmine/textures/minejoiner*", "ground"), ("goldmine/textures/gm_soil", "ground"),
+]
+GOLD_DETAIL = [(f"goldmine/textures/{p}", m) for p, m in (
+    ("minerock*", "d_canyon"), ("specminerock*", "d_canyon"), ("stalatites*", "d_canyon"), ("minetunn*", "d_canyon"), ("sandrock*", "d_canyon"), ("wwrock*", "d_canyon"),
+    ("mineunderground*", "d_canyon"), ("minemodedge*", "d_canyon"),
+    ("supportwood*", "d_plank"), ("plank_01", "d_plank"), ("12gaugeplanks*", "d_plank"), ("beam_support", "d_plank"), ("wood_*", "d_plank"), ("bench_plank*", "d_plank"),
+    ("gmbridgewood", "d_plank"), ("gm_bluey_wood*", "d_plank"), ("sleeper*", "d_plank"), ("supportbase", "d_plank"), ("minehut*", "d_plank"), ("track_wood", "d_plank"),
+    ("vat_support", "d_plank"), ("gm_tabletop", "d_plank"),
+    ("minerailside", "d_iron"), ("minemodtrack", "d_iron"), ("track", "d_iron"), ("vat_panel*", "d_iron"), ("mc_*", "d_iron"), ("mcart_wheel*", "d_iron"),
+    ("newcart_side", "d_iron"), ("turntable*", "d_iron"), ("maglift_panel", "d_iron"), ("minesafe*", "d_iron"), ("lift_top", "d_iron"), ("cargo_*", "d_iron"),
+    ("crystal*", "d_gloss"), ("minewater", "d_gloss"))]
+GOLD_TILES = dict(d_minefloor=dict(set="rocky_trail", period=2.6, px=1024, detail=0.5, triplanar=True, rough=0.9, normal=0.8),
+                  d_canyon=WEST_TILES["d_canyon"], d_plank=WEST_TILES["d_plank"], d_iron=WEST_TILES["d_iron"], d_gloss=AQUA_TILES["d_gloss"])
+GOLD_GLOW = [(f"goldmine/textures/{p}", g, r) for p, g, r in (
+    ("crystal*", 0.7, None), ("goldglint*", 1.2, None), ("gm_taz_lightbeam", 1.0, None), ("lantern*", 2.2, (0.4, 0.7)), ("conveyor.gif", 0.3, None),
+    ("gb_shine", 1.0, None), ("crystal_sheen*", 1.2, None))]
+GOLD_LOOK = dict(
+    sun=dict(sun_azimuth=210.0, sun_elevation=60.0, sun_strength=0.9, sun_color="#ffd9b0"),
+    grade=dict(exposure=1.4, look="AgX - Punchy", saturation=1.15, bloom=0.6, fog=0.15, fog_start=40.0, fog_depth=260.0, ambient_strength=1.3),
+    sky=dict(zenith="#1a0a24", horizon="#3a1040", horizon_warm="#4a1a40", sky_strength=1.0, cloud_white=0.2, ambient="#b090c8"), cliff=dict(),
+)
+GOLD_HAND = dict(DEPT_HAND, camera_B=dict(loc=(0.0, -1.0, -10.0), look_at=(0.0, -11.0, -11.0), lens=16.0), camera_C=dict(loc=(20.0, 10.0, -10.0), look_at=(28.0, 16.0, -11.0), lens=16.0))
+
+# ---- Grand Canyon (scene 16): the west hub's desert by day, with roads. Its baked shade is a warm brown: mostly dropped for real shadows.
+GRANDC_RULES = [
+    ("resobjs/*", "gameplay"), ("grandc/extras/*", "gameplay"), ("grandc/textures/westcube*", "gameplay"), ("grandc/textures/exp_*", "gameplay"),
+    ("grandc/textures/*sign*", "gameplay"), ("grandc/textures/billboard*", "gameplay"), ("grandc/textures/1000ring", "gameplay"),
+    ("grandc/textures/catapult*", "gameplay"), ("grandc/textures/anvil*", "gameplay"), ("grandc/textures/tire_tred", "gameplay"),
+    ("grandc/textures/tazwanted", "gameplay"), ("grandc/textures/tazanted02", "gameplay"), ("grandc/textures/popup_wall*", "gameplay"),
+    ("grandc/skybox/*", "sky"), ("resTex/shadowsub", "hide"),
+    ("grandc/textures/sand*", "ground"), ("grandc/textures/basesand", "ground"),
+]
+GRANDC_DETAIL = [(f"grandc/textures/{p}", m) for p, m in (
+    ("wwrock*", "d_canyon"), ("vert_strips*", "d_canyon"), ("monolith*", "d_canyon"), ("tunrock*", "d_canyon"), ("pestwest*", "d_canyon"), ("stonewall*", "d_canyon"),
+    ("road_*", "d_road"), ("sleeper", "d_plank"), ("hut_*", "d_plank"), ("guard_hut_wall", "d_plank"), ("wood_ramp*", "d_plank"), ("sam_moving_buildboard_wood", "d_plank"),
+    ("bridge_*", "d_plank"), ("totem*", "d_plank"), ("trough01", "d_plank"), ("teepee0*", "d_plank"),
+    ("train0*", "d_iron"), ("train1*", "d_iron"), ("train2*", "d_iron"), ("train3*", "d_iron"), ("track01", "d_iron"), ("girder*", "d_iron"),
+    ("watertank*", "d_iron"), ("ufo_floor*", "d_iron"), ("powerplant", "d_iron"), ("pestyoilcan*", "d_iron"))]
+GRANDC_HAND = dict(DEPT_HAND, camera_B=dict(loc=(-2.0, -22.0, -18.0), look_at=(-2.0, -32.0, -19.0), lens=16.0), camera_C=dict(loc=(40.0, 20.0, -18.0), look_at=(48.0, 26.0, -19.0), lens=16.0))
+
+# ---- westboss (scene 17): Yosemite Sam's dynamite warehouse, seen from above. Its skylight pools are baked into the vertices and kept;
+# the roof would shade a sun, so ceiling lamps over the maze do the modelling.
+WBOSS_RULES = [
+    ("resobjs/*", "gameplay"), ("westboss/extras/*", "gameplay"), ("westboss/textures/exp_bigbomb*", "gameplay"), ("westboss/textures/exp_crate_tnt*", "gameplay"),
+    ("westboss/textures/exp_dynamite", "gameplay"), ("westboss/textures/exp_crate_fire*", "gameplay"), ("westboss/textures/special_crate*", "gameplay"),
+    ("westboss/textures/dynamite*", "gameplay"), ("westboss/textures/red_cross*", "gameplay"), ("resTex/shadowsub", "hide"),
+]
+WBOSS_DETAIL = [(f"westboss/textures/{p}", m) for p, m in (
+    ("pallet*", "d_plank"), ("ware_floor*", "d_plank"), ("exp_crate*", "d_plank"), ("exp_tall_crate*", "d_plank"), ("exp_mini_crate", "d_plank"),
+    ("exp_barrel*", "d_iron"), ("exp_torpedo*", "d_iron"), ("exp_rocket*", "d_iron"), ("wood_strut*", "d_plank"), ("ware_main_door*", "d_plank"), ("ware_arch*", "d_plank"),
+    ("warehouse wall*", "d_plaster"), ("ware_window*", "d_plaster"))]
+WBOSS_TILES = dict(d_plank=WEST_TILES["d_plank"], d_iron=WEST_TILES["d_iron"], d_plaster=DEPT_TILES["d_wall"])
+WBOSS_GLOW = [(f"westboss/textures/{p}", g, r) for p, g, r in (
+    ("volume_light", 0.6, None), ("warehouse_light", 2.2, (0.45, 0.75)), ("sky_light0*", 0.8, None), ("skylight_window", 0.8, None), ("window_wb_big", 0.8, None))]
+WBOSS_LOOK = dict(
+    sun=dict(sun_azimuth=215.0, sun_elevation=60.0, sun_strength=1.0, sun_color="#fff0d8"),
+    grade=dict(exposure=0.2, look="AgX - Punchy", saturation=1.15, bloom=0.4, fog=0.01, fog_start=200.0, fog_depth=400.0, ambient_strength=1.0),
+    sky=dict(zenith="#1a68e0", horizon="#a6dcff", horizon_warm="#ffe9c8", sky_strength=1.0, cloud_white=1.0, ambient="#e0d4c8"), cliff=dict(),
+)
+WBOSS_HAND = dict(DEPT_HAND, camera_B=dict(loc=(-17.9, -9.7, -1.8), look_at=(-11.0, -2.6, -11.5), lens=16.0), camera_C=dict(loc=(-17.9, -9.7, -1.8), look_at=(-11.0, -2.6, -11.5), lens=16.0))
 
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", captures=("world-hero.bin", "world-sweep.bin"), rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
@@ -553,5 +657,37 @@ LEVELS = {
                     solids=dict(cards={"westhub/textures/train_chain": dict(mat="link", links=True),
                                        "westhub/textures/safarigrill01": dict(size=(90.0, 345.0), depth=4.5, tol=1.4, area=30.0, repeat=2, each_draw=True)},
                                 soft=tuple(f"westhub/textures/{n}" for n in ("cactus07", "cactus_bit", "cactus_bit2"))),
-                    fog_color="#f4d8b0", ground_tint=(0.82, 0.62, 0.42), sky_gain=1.3, char_keep=0.55, tints={"d_sand": (2.0, 1.66, 1.05), "d_canyon": (1.8, 2.15, 2.5), "flat": (1.3, 0.86, 0.7)}),
+                    relief=dict(textures=("westhub/textures/vert_strips*", "westhub/textures/wwrock*"), tint=(0.9, 1.075, 1.25), min_area=6.0, cell=0.4, depth=0.3, band=1.1, block=1.6, foot=1.8, border=0.8),
+                    fog_color="#f4d8b0", ground_tint=(0.82, 0.62, 0.42), sky_gain=1.3, char_keep=0.55, char_fill=(-0.65, -0.6, -0.5), tints={"d_sand": (2.0, 1.66, 1.05), "d_canyon": (1.8, 2.15, 2.5), "d_cliff": (1.8, 2.15, 2.5), "flat": (1.3, 0.86, 0.7)}),
+    "ghost": dict(scene=14, pak="ghost", blend="westhub/ghost/ghost.blend", out="westhub/ghost/pass1", rules=GHOST_RULES, hand=GHOST_HAND,
+                  look=GHOST_LOOK, hdri=None, hdri_rotation=0.0, hub=(-62.0, -93.0, 62.0, 96.0), sky_panels=True, island_boxes=True,
+                  captures=tuple(f"westhub/ghost/world-{n}.bin" for n in ("hero", "sweep-a", "sweep-b", "sweep-c")),
+                  materials=tuple(GHOST_TILES) + ("flat",), tiles=GHOST_TILES, detail=GHOST_DETAIL, binds={"ground": (("d_cobble", 4, -1.0, 0.0),)},
+                  clutter_opts=dict(leaves=1.6, pebbles=3.0, stones=0.4), grass_min=2.0, glow=GHOST_GLOW, lamps=dict(CITY_LAMPS, color="#ffcf8a", power=4.0, extra=()),
+                  relief=dict(textures=("ghost/textures/spookyrock*",), min_area=6.0, cell=0.4, depth=0.3, band=1.1, block=1.6, foot=1.8, border=0.8),
+                  fog_color="#2a1d5c", unbake=0.5, sky_gain=2.0, char_fill=(0.2, 0.2, 0.3)),
+    "goldmine": dict(scene=15, pak="goldmine", blend="westhub/goldmine/goldmine.blend", out="westhub/goldmine/pass1", rules=GOLD_RULES, hand=GOLD_HAND,
+                     look=GOLD_LOOK, hdri=None, hdri_rotation=0.0, hub=(-286.0, -316.0, 74.0, 64.0), game_sky=True, island_boxes=True,
+                     captures=tuple(f"westhub/goldmine/world-{n}.bin" for n in ("hero", "sweep-a", "sweep-b")),
+                     materials=tuple(GOLD_TILES) + ("flat",), tiles=GOLD_TILES, detail=GOLD_DETAIL, binds={"ground": (("d_minefloor", 4, -1.0, 0.0),)},
+                     clutter_opts=dict(leaves=0.0, pebbles=4.0, stones=0.6), grass_min=2.0, glow=GOLD_GLOW, lamps=dict(CITY_LAMPS, color="#ffc27a", power=4.0, extra=()),
+                     relief=dict(textures=("goldmine/textures/minerock*",), min_area=6.0, cell=0.4, depth=0.3, band=1.1, block=1.6, foot=1.8, border=0.8),
+                     fog_color="#3a1040", char_fill=(0.2, 0.18, 0.25)),  # the baked magenta light is the mine's mood: kept
+    "grandc": dict(scene=16, pak="grandc", blend="westhub/grandc/grandc.blend", out="westhub/grandc/pass1", rules=GRANDC_RULES, hand=GRANDC_HAND,
+                   look=dict(WEST_LOOK, grade=dict(WEST_LOOK["grade"], exposure=0.1, fog=0.02, fog_start=140.0, fog_depth=600.0)),  # wider views than the hub
+                   hdri=None, hdri_rotation=0.0, hub=(-65.0, -85.0, 85.0, 65.0), sky_panels=True, night_sky=False, island_boxes=True,
+                   captures=tuple(f"westhub/grandc/world-{n}.bin" for n in ("hero", "sweep-a", "sweep-b")),
+                   materials=tuple(WEST_TILES) + ("flat",), tiles=WEST_TILES, detail=GRANDC_DETAIL, binds={"ground": (("d_sand", 4, -1.0, 0.0),)},
+                   clutter_opts=dict(leaves=0.0, pebbles=5.0, stones=0.7), grass_min=2.0, unbake=0.2,
+                   solids=dict(cards={}, soft=("grandc/textures/cactus07",)),  # the barbed wire stays the game's: its strips are not the zoo's pairs
+                   relief=dict(textures=tuple(f"grandc/textures/{p}" for p in ("wwrock*", "vert_strips*", "monolith*", "pestwest*")), tint=(0.9, 1.075, 1.25), min_area=6.0,
+                               cell=0.4, depth=0.3, band=1.1, block=1.6, foot=1.8, border=0.8),
+                   fog_color="#f4d8b0", ground_tint=(0.82, 0.62, 0.42), sky_gain=1.3, char_keep=0.55, char_fill=(-0.65, -0.6, -0.5),
+                   tints={"d_sand": (2.0, 1.66, 1.05), "d_canyon": (1.8, 2.15, 2.5), "d_cliff": (1.8, 2.15, 2.5), "flat": (1.3, 0.86, 0.7)}),
+    "westboss": dict(scene=17, pak="westboss", blend="westhub/westboss/westboss.blend", out="westhub/westboss/pass1", rules=WBOSS_RULES, hand=WBOSS_HAND,
+                     look=WBOSS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-42.0, -49.0, 42.0, 49.0), game_sky=True, clutter=False, island_boxes=True, grass_min=2.0,
+                     captures=("westhub/westboss/world-hero.bin", "westhub/westboss/world-sweep-a.bin"),
+                     materials=tuple(WBOSS_TILES) + ("flat",), tiles=WBOSS_TILES, detail=WBOSS_DETAIL, glow=WBOSS_GLOW,
+                     lamps=dict(DEPT_LAMPS, extra=room_lamps(((-6000, -4000, 2000, 4000, -2100, 3, 3),), 1900, 13.0, "#ffe2b8", 1.6)),
+                     char_fill=(0.12, 0.12, 0.14)),
 }
