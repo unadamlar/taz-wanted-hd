@@ -222,7 +222,8 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
   record whose memory had been freed and reused, from its flat 2D quad drawer (FUN_004dd8f0, used by the map screen and map preview). Not repeated in 21
   entries; the mod's code paths don't touch the game's texture records (read from code, not tested). Likely the known boss-intro test-trigger crash.
 - Jumping out of westboss with the QA scene trigger crashes at taz.exe+0x15f785 (reading 0x134) right after "saving on the way to scene 18",
-  reproducible. Test-tool path; whether a player can hit it is not known. Notes: `extracted/look/reports/step7/tazhub/notes.md`, tenth batch.
+  reproducible (again on 8277f0c, westboss to tazboss2, 2026-11-24). The trigger calls the game's own scene change (FUN_004a9730), so a player leaving
+  westboss by winning or Exit Game may take the same path; not tested, and not tried on `master` or with passthrough. Notes: `extracted/look/reports/step7/tazhub/notes.md`, tenth batch.
 - Bright saturated character paint (Daffy's bill, Sam's yellow shirt, Taz's helmet) leans orange and loses saturation through the pale-paint hold.
 - A 240-frame full-size screenshot burst crashed in d3d9.dll after 156 frames (`extracted/look/reports/step7/tazhub/burst-crash-taz-hd.log`). Smaller bursts are fine.
 - Test-camera shots differ between runs where the game places sprites on screen from its real camera (the safari waterfall's splash, a pink sprite in zoo-b).
