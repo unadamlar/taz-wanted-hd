@@ -157,12 +157,12 @@ TAZHUB_RULES = [
     ("tazhub/textures/safariwater", "water"), ("tazhub/skybox/*", "sky"), ("resTex/shadowsub", "hide"),
 ]
 TAZHUB_DETAIL = [
-    ("tazhub/textures/tazwall*", "d_rock"), ("tazhub/textures/tazunder*", "d_rock"), ("tazhub/textures/tazvolc[0-9]*", "d_rock"),
-    ("tazhub/textures/rock_big*", "d_rock"), ("tazhub/textures/tazwood*", "d_bark"), ("tazhub/textures/loggin*", "d_bark"),
+    ("tazhub/textures/tazwall*", "d_cliff"), ("tazhub/textures/tazunder*", "d_cliff"), ("tazhub/textures/tazvolc[0-9]*", "d_cliff"),
+    ("tazhub/textures/rock_big*", "d_cliff"), ("tazhub/textures/tazwood*", "d_bark"), ("tazhub/textures/loggin*", "d_bark"),
     ("tazhub/textures/tazmill*", "d_stone"), ("tazhub/textures/taznest01", "d_bark"),
 ]
 TAZHUB_TILES = {
-    "d_rock": dict(set="rock061", period=3.0, px=1024, detail=0.4, triplanar=True, rough=0.85),
+    "d_cliff": dict(set="boulder_dry", period=5.5, px=1024, detail=0.34, triplanar=True, rough=0.85, normal=1.7),  # broad painted-rock planes
     "d_stone": dict(set="old_sandstone", period=2.6, px=1024, detail=0.45, triplanar=True, rough=0.8),
     "d_bark": dict(set="bark", period=1.6, px=1024, detail=0.45, triplanar=True, rough=0.75, normal=0.7),
 }
