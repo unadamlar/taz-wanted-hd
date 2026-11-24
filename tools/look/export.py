@@ -888,7 +888,7 @@ if "chain" in LEVEL or "grill" in LEVEL:
         place_static(kind, *(np.concatenate(x) for x in zip(*parts)), mat)
 
 # Things the game may move: models in their own space, drawn at the game's transform in place of its draws (hd_solid_draw).
-solids = {}
+solids, static_hide = {}, set()
 cfg = dict(LEVEL.get("solids") or dict(cards={}, soft=()))
 cfg["cards"] = dict(cfg["cards"])
 for l in tex_hash:  # painted cut-outs (domed) and flat boards (signs: thickness only), by rule: slabs traced from the paint's alpha
@@ -950,11 +950,19 @@ if cfg["cards"] or cfg["soft"]:
                     p, n, u, c, m = (np.concatenate(x) for x in zip(*got))
                     if "unbake" in LEVEL:
                         c = c ** LEVEL["unbake"]
-                    pi = add_proto("solid%d" % len(protos), p.astype(np.float32), n.astype(np.float32), dds.to_linear(c).astype(np.float32), u.astype(np.float32), m)
-                    solids.setdefault((solid.key_of(d[4]), d[0]), pi)
-                    kept.append(d)
-                if kept:
-                    print("export: rounds %d flat game draws, %s" % (len(kept), sorted({labels[d[0]][0].rsplit("/", 1)[1] for d in kept})))
+                    kept.append((d, (p.astype(np.float32), n.astype(np.float32), dds.to_linear(c).astype(np.float32), u.astype(np.float32), m)))
+                if not kept:
+                    continue
+                if solid._identity(ds[0][1]) and len(kept) == len(ds):
+                    # the static world's cards, all traced: fixed additions, and the game's texture hidden; replacing each
+                    # draw as it comes cost up to 15 ms a frame in the safari
+                    for d, geo in kept:
+                        place.append((add_proto("solid%d" % len(protos), *geo), None))
+                    static_hide.add(ds[0][0])
+                else:
+                    for d, geo in kept:
+                        solids.setdefault((solid.key_of(d[4]), d[0]), add_proto("solid%d" % len(protos), *geo))
+                print("export: rounds %d flat game draws, %s" % (len(kept), sorted({labels[d[0]][0].rsplit("/", 1)[1] for d, _ in kept})))
                 continue
             else:
                 # the same thickness in the world, whatever scale the game places this model at
@@ -998,7 +1006,7 @@ for cell in cells.values():
         rng.shuffle(runs)
 
 # ---------------------------------------------------------------- game textures -> materials, from RULES
-hide, shade, binds, glows, hash_of = set(), set(), {}, {}, {}
+hide, shade, binds, glows, hash_of = set(static_hide), set(), {}, {}, {}
 
 
 def tex_pixels(file):
