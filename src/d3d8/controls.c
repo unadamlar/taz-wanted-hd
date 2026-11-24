@@ -406,6 +406,18 @@ static float stick(float v)
     return m < 0.2f ? 0 : (v < 0 ? -1 : 1) * (m - 0.2f) / 0.8f;
 }
 
+// Turns an actor's facing by a radians about the vertical, both in its orientation (+0xe0) and in the
+// copy at (+0x1c0)+0x84 that the game eases it back to.
+static void turn_actor(BYTE *actor, float a)
+{
+    float *q[2] = { (float *)(actor + 0xe0), *(BYTE **)(actor + 0x1c0) ? (float *)(*(BYTE **)(actor + 0x1c0) + 0x84) : NULL };
+    float s = sinf(a / 2), c = cosf(a / 2);
+    for (int i = 0; i < 2 && q[i]; i++) {
+        float *p = q[i], x = p[0], y = p[1], z = p[2], w = p[3];
+        p[0] = c * x + s * z, p[1] = c * y + s * w, p[2] = c * z - s * x, p[3] = c * w - s * y;
+    }
+}
+
 static void __cdecl camera_control(void **cc)
 {
     BYTE *cam = cc[1];
@@ -413,6 +425,9 @@ static void __cdecl camera_control(void **cc)
     camera_frame = now;
     int mouse = settings.wasd && settings.mouse && held, p1 = *(int *)((BYTE *)pad + 0x180) == 0;
     if (p1) tilt_cam = NULL, tilt_step = 0;
+    // The last boss's camera is fixed and Taz spits along his facing, which the keys set in 45-degree
+    // steps: there the mouse turns Taz while he stands.
+    if (p1 && mouse && SCENE == 0x14 && MOUSE_DX && !pad[2] && PLAYER) turn_actor(PLAYER, -MOUSE_DX * settings.mouse * 0.0003f); // right turns the aim to the right of the screen
     if (!p1 || (!mouse && xbox_pad() <= 0) || FPS <= 0) { // player 1 only
         CAMERA_CONTROL(cc);
         return;
