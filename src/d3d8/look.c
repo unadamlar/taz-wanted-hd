@@ -161,16 +161,17 @@ void look_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *decl, cons
     static const DWORD push[] = { MAD, 0x80070000, 0x80e40002, 0xa0ff0031 }; // mad r0.xyz, r2, c49.w, r0
     DWORD out[1200];
     int n = 0, lit = 0, outline = 0;
-    int skin = 0, pos = 0, nor = 2;
+    int skin = 0, pos = 0, nor = 2, placed = 0;
     for (; n < 1024 && fn[n] != 0xffff; n++) {
         out[n] = fn[n];
         if (fn[n] == DP4 && (fn[n + 1] & 0x70000000) == REG(RT_RASTOUT, 0) && (fn[n + 3] & 0x70001fff) == c(92)) pos = fn[n + 2] & 0x7ff;
         if (fn[n] == DP3 && (fn[n + 2] & 0x70000000) == REG(RT_TEMP, 0) && (fn[n + 3] & 0x70001fff) == c(48)) nor = fn[n + 2] & 0x7ff;
         skin += n >= 2 && fn[n - 2] == DP4 && (fn[n] & 0xf0001fff) == 0x90000000; // dp4 r, v0, c[a0 + row]
+        placed |= n >= 2 && fn[n - 2] == DP4 && (fn[n] & 0xf0001fff) == 0x90000006; // an HD model's per-bone copy reads v6.. instead
         lit |= !memcmp(fn + n, ramp, sizeof ramp);
         outline |= !memcmp(fn + n, push, sizeof push);
     }
-    if ((!lit && !outline && !skin) || fn[n] != 0xffff) return;
+    if ((!lit && !outline && !skin && !placed) || fn[n] != 0xffff) return;
     int slot = -1;
     for (int i = 0; i < NCHAR && slot < 0; i++) if (!chars[i].game) slot = i;
     if (slot < 0) return;
@@ -178,7 +179,7 @@ void look_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *decl, cons
     if (outline) return;
     if (!lit) { // the plain kind has no normal: skin one
         nor = 2;
-        for (int k = 0; k < skin / 3; k++) {
+        for (int k = 0; k < (placed ? 3 : skin / 3); k++) {
             out[n++] = MOV, out[n++] = D(REG(RT_ADDR, 0), 1), out[n++] = 0x80000000u | REG(RT_INPUT, 2) | (DWORD)(k * 0x55) << 16;
             for (int row = 0; row < 3; row++)
                 out[n++] = DP3, out[n++] = D(r(3), 1 << row), out[n++] = S(REG(RT_INPUT, 3)), out[n++] = S(c(row)) | 0x2000;
