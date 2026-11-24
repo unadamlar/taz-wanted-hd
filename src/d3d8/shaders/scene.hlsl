@@ -535,7 +535,7 @@ float4 ps_char(CharIn i) : COLOR
     float edge = 1 - nv;
     float3 rim = (SKY_AMB.rgb + CHAR_FILL.rgb + 0.5 * SUN_COL.rgb * sh) * edge * edge * edge * edge * 1.1;
     float3 c = albedo * 0.7 * (amb + CHAR_FILL.rgb * (0.55 + 0.75 * shoulder) + 0.85 * SUN_COL.rgb * band * sh * (0.55 + 0.45 * shoulder) + lamp + rim);
-    c = lerp(dot(c, float3(0.3, 0.59, 0.11)) * float3(1.08, 0.94, 0.72), c, 0.62) * float3(1.02, 0.93, 0.76);
+    c = lerp(dot(c, float3(0.3, 0.59, 0.11)) * float3(1.08, 0.94, 0.72), c, 0.62 + 0.38 * CHAR_FILL.w) * lerp(float3(1.02, 0.93, 0.76), 1, CHAR_FILL.w);  // w: a level whose characters are pure paint keeps it
     float nh = saturate(dot(n, normalize(v + SUN.xyz)));
     float gloss = nh * nh; gloss *= gloss; gloss *= gloss; gloss *= gloss; gloss *= gloss; gloss *= gloss;   // ^64
     c += CHAR_STYLE.w * gloss * sh * saturate(1 - dot(tex.rgb, 0.45)) * (SUN_COL.rgb + CHAR_FILL.rgb);       // on dark paint: eyes, nose

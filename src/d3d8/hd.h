@@ -13,7 +13,6 @@ void hd_reset(void);                    // before a device Reset
 int capture_tests(void);                // tests=1 in the ini
 int hd_lost(void);                      // since the last call, a Reset dropped the scene's data
 int hd_hidden(unsigned long long hash); // a game texture whose world draws are dropped
-int hd_has_bind(unsigned long long hash);
 int hd_shade(unsigned long long hash);  // a baked shadow decal, dropped everywhere
 
 void hd_redirect(hd_dev d);             // the game's next 3D draws land in our HDR target
@@ -22,6 +21,7 @@ int hd_redirected(void);
 int hd_post_done(void);
 void hd_post(hd_dev d);                 // resolve, bloom, tone map to the back buffer
 void hd_frame_end(hd_dev d);
+void hd_set_paused(int on);             // the level goes soft and dim behind the pause menu
 
 void hd_camera(hd_dev d);               // reads the game's view and projection
 const float *hd_view(void);             // 4x4

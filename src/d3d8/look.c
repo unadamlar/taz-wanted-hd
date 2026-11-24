@@ -20,11 +20,9 @@ enum { MOV = 1, MAD = 4, DP3 = 8, DP4 = 9 };
 
 struct rec { IDirect3DVertexBuffer8 *vb; DWORD shader; UINT stride, start, count; D3DPRIMITIVETYPE type; float m[96][4]; };
 
-#define NOWN 512
-static IDirect3DBaseTexture8 *own_tex[NOWN];
-static UINT nown;
 static int level, loaded_scene = -1;
 #define PLANET_LOOK 30 // an unused scene number: Planet X's own look data
+#define FRONTEND 1
 static struct rec *recs; static UINT nrecs, cap_recs;     // this frame's character draws, for their sun map
 static HRESULT (WINAPI *draw_real)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT);
 static struct { int frames, want; double look_ms, frame_ms, present_ms; UINT world, game, pieces, merged; LARGE_INTEGER last; } m;
@@ -55,7 +53,6 @@ static void drop_recs(void)
 void look_reset(IDirect3DDevice8 *dev)
 {
     hd_reset();
-    nown = 0;
     drop_recs();
     merge_device_reset();
 }
@@ -97,6 +94,7 @@ static struct rec *add_rec(void)
 static int suspended;              // F11 is on HD or Original: everything stays loaded, nothing of ours draws
 static int remaster(void) { return level && !suspended && hd_loaded(); }
 int look_remaster_available(void) { return level && hd_loaded(); }
+int look_enabled(void) { return level; }
 void look_set_remaster(int on) { suspended = !on; }
 int look_redirected(void) { return remaster() && hd_redirected(); }
 
@@ -127,25 +125,6 @@ static void prepass(IDirect3DDevice8 *dev)
     merge_state_changed();
 }
 
-// Hides and binds are for the level's own copies of a texture. A cutscene's pack loads its own copies with the same
-// pixels, so during a cutscene only copies the level has used, or its static world draws, count. 0: leave it alone.
-
-void look_texture_gone(IDirect3DBaseTexture8 *t)
-{
-    for (UINT i = 0; i < nown; i++)
-        if (own_tex[i] == t) own_tex[i--] = own_tex[--nown];
-}
-
-UINT64 look_own_hash(IDirect3DDevice8 *dev, IDirect3DBaseTexture8 *t, UINT64 h)
-{
-    if (!level || !h || (!hd_hidden(h) && !hd_shade(h) && !hd_has_bind(h))) return h;
-    for (UINT i = 0; i < nown; i++)
-        if (own_tex[i] == t) return h;
-    if (cutscene_playing() && !merge_hub_draw(dev)) return 0;
-    if (nown < NOWN) own_tex[nown++] = t;
-    return h;
-}
-
 // The lit pass of each character shader gets a copy that also outputs world position (oT2) and normal
 // (oT3), from the skinned r0 and r2 through the model's world rows in c60-c62.
 #define NCHAR 32
@@ -159,16 +138,17 @@ void look_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *decl, cons
     static const DWORD push[] = { MAD, 0x80070000, 0x80e40002, 0xa0ff0031 }; // mad r0.xyz, r2, c49.w, r0
     DWORD out[1200];
     int n = 0, lit = 0, outline = 0;
-    int skin = 0, pos = 0, nor = 2;
+    int skin = 0, pos = 0, nor = 2, placed = 0;
     for (; n < 1024 && fn[n] != 0xffff; n++) {
         out[n] = fn[n];
         if (fn[n] == DP4 && (fn[n + 1] & 0x70000000) == REG(RT_RASTOUT, 0) && (fn[n + 3] & 0x70001fff) == c(92)) pos = fn[n + 2] & 0x7ff;
         if (fn[n] == DP3 && (fn[n + 2] & 0x70000000) == REG(RT_TEMP, 0) && (fn[n + 3] & 0x70001fff) == c(48)) nor = fn[n + 2] & 0x7ff;
         skin += n >= 2 && fn[n - 2] == DP4 && (fn[n] & 0xf0001fff) == 0x90000000; // dp4 r, v0, c[a0 + row]
+        placed |= n >= 2 && fn[n - 2] == DP4 && (fn[n] & 0xf0001fff) == 0x90000006; // an HD model's per-bone copy reads v6.. instead
         lit |= !memcmp(fn + n, ramp, sizeof ramp);
         outline |= !memcmp(fn + n, push, sizeof push);
     }
-    if ((!lit && !outline && !skin) || fn[n] != 0xffff) return;
+    if ((!lit && !outline && !skin && !placed) || fn[n] != 0xffff) return;
     int slot = -1;
     for (int i = 0; i < NCHAR && slot < 0; i++) if (!chars[i].game) slot = i;
     if (slot < 0) return;
@@ -176,7 +156,7 @@ void look_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *decl, cons
     if (outline) return;
     if (!lit) { // the plain kind has no normal: skin one
         nor = 2;
-        for (int k = 0; k < skin / 3; k++) {
+        for (int k = 0; k < (placed ? 3 : skin / 3); k++) {
             out[n++] = MOV, out[n++] = D(REG(RT_ADDR, 0), 1), out[n++] = 0x80000000u | REG(RT_INPUT, 2) | (DWORD)(k * 0x55) << 16;
             for (int row = 0; row < 3; row++)
                 out[n++] = DP3, out[n++] = D(r(3), 1 << row), out[n++] = S(REG(RT_INPUT, 3)), out[n++] = S(c(row)) | 0x2000;
@@ -436,6 +416,10 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     struct IDirect3DDevice9 *d = d3d9_device(dev);
     if (!merge_on_backbuffer() || hd_post_done()) return 0;
     if (merge_is_2d(dev)) { // the HUD and menus: finish the 3D picture under them
+        if (loaded_scene == FRONTEND && !api && !hd_post_done() && hd_hidden(textures_bound_hash(0))) { // its painted sky, drawn with no depth test
+            hd_redirect(d);
+            return 0;
+        }
         if (!hd_redirected()) { // no 3D yet: a paused frame's sky, or a screen the game composes itself (a paper book)
             UINT64 h2 = textures_bound_hash(0);
             backdrop |= h2 && !hd_hidden(h2);
@@ -481,7 +465,8 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     if ((shader & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW) return 0;
     UINT64 raw = textures_bound_hash(0);
     if (raw && (hd_shade(raw) || swapped_object(dev, raw))) return 1;
-    UINT64 h = look_own_hash(dev, textures_bound(0), raw);
+    // A cutscene pack's own copy of something the level hides is that cutscene's prop.
+    UINT64 h = raw && hd_hidden(raw) && cutscene_playing() && textures_from_cutscene(textures_bound(0)) ? 0 : raw;
     int bark = moving_bark(dev, raw);
     if (h && hd_hidden(h) && !bark) return 1;
     IDirect3DDevice8_GetRenderState(dev, D3DRS_ZWRITEENABLE, &zwrite);
@@ -593,18 +578,19 @@ void look_frame(IDirect3DDevice8 *dev)
         m.frames = -30, m.want = n;
     }
     double t0 = now_ms();
+    hd_set_paused(settings.exe_known && GAME_STATE == 3);
     merge_frame(dev);
     int scene = settings.exe_known ? look_scene(SCENE) : -1;
     struct IDirect3DDevice9 *d = d3d9_device(dev);
     if (level) read_camera(), hd_frame_end(d);
-    if (hd_loaded() && (scene != loaded_scene || !level)) hd_unload(), merge_reset(), loaded_scene = -1, nown = 0;
-    if (level && !hd_loaded() && scene >= 2 && (scene != loaded_scene || hd_lost())) {
+    if (hd_loaded() && (scene != loaded_scene || !level)) hd_unload(), merge_reset(), loaded_scene = -1;
+    if (level && !hd_loaded() && scene >= 1 && (scene != loaded_scene || hd_lost())) {
         loaded_scene = scene; // tried once per scene: a scene without data stays on HD
         // Planet X's data is where it sits in the Taz hub
         hd_set_origin(scene != PLANET_LOOK || SCENE == 18 ? 0 : 42619.57f, scene != PLANET_LOOK ? 0 : SCENE == 3 ? 81649.812f : SCENE == 8 ? 73662.359f : SCENE == 13 ? 51583.773f : 0, 0);
         if (hd_load(d, scene)) merge_reset();
     }
-    if (scene < 2) loaded_scene = -1;
+    if (scene < 1) loaded_scene = -1;
     if (remaster()) char_shadows(dev);
     else drop_recs();
     m.look_ms += now_ms() - t0;

@@ -43,7 +43,7 @@ void quicksave_patch(void);
 void outro_patch(void);
 int outro_music_held(void);
 void overlay_toast(const char *msg);
-extern DWORD textures_created; // Direct3D textures taz.exe has created so far
+extern DWORD textures_changed; // Direct3D textures taz.exe has created or freed so far
 void widescreen_apply(void);
 void textures_apply(void);
 void textures_reset(IDirect3DDevice8 *dev);
@@ -91,6 +91,8 @@ void look_after_draw(IDirect3DDevice8 *dev);
 void look_present_ms(double ms);
 const D3DMATRIX *look_camera(D3DTRANSFORMSTATETYPE t, const D3DMATRIX *m, D3DMATRIX *tmp);
 int look_remaster_available(void);
+int look_enabled(void);
+int settings_remaster_chosen(void);
 void look_set_remaster(int on);
 void look_bb_restored(IDirect3DDevice8 *dev);
 int look_redirected(void);
@@ -101,9 +103,7 @@ int look_char_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UIN
                    HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT), HRESULT *hr);
 void look_reset(IDirect3DDevice8 *dev);
 int look_hidden(UINT64 hash);
-UINT64 look_own_hash(IDirect3DDevice8 *dev, IDirect3DBaseTexture8 *t, UINT64 hash);
 int cutscene_playing(void);
-void look_texture_gone(IDirect3DBaseTexture8 *t);
 void look_merge_begin(IDirect3DDevice8 *dev, IDirect3DVertexBuffer8 *vb, IDirect3DIndexBuffer8 *ib);
 void look_merge_texture(IDirect3DDevice8 *dev, IDirect3DBaseTexture8 *tex, UINT64 hash);
 void look_merge_draw(IDirect3DDevice8 *dev, UINT nverts, UINT first, UINT tris);
@@ -119,7 +119,7 @@ void merge_state_changed(void);
 void merge_stage_state(DWORD stage, DWORD type, DWORD value);
 int merge_is_2d(IDirect3DDevice8 *dev);
 int merge_ready(void);
-int merge_hub_draw(IDirect3DDevice8 *dev);
+int textures_from_cutscene(IDirect3DBaseTexture8 *t);
 void merge_each(IDirect3DDevice8 *dev, void (*batch)(IDirect3DDevice8 *, IDirect3DBaseTexture8 *, UINT, UINT, UINT));
 void merge_vb_created(IDirect3DVertexBuffer8 *vb);
 void merge_texture_gone(IDirect3DBaseTexture8 *t);

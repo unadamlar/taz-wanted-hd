@@ -227,7 +227,7 @@ static void pose_springs(struct rep *r)
 // places with a copy of it in which each bone moves its own place (v6-v11, stream 1) instead of all
 // moving v0: the blocks of "dp4 r, v0, c[a0 + row]", one per bone, plus three more made from the third
 // (weights v12, palette registers v13).
-static struct vshader { DWORD game, bent; int kind, bones; } vshaders[16];
+static struct vshader { DWORD game, bent; int kind, bones; DWORD uses; } vshaders[16]; // uses: which of c48.. it reads
 static int nvshaders;
 
 void mesh_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *fn)
@@ -236,9 +236,11 @@ void mesh_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *fn)
     static const DWORD push[] = { 4, 0x80070000, 0x80e40002, 0xa0ff0031 }; // mad r0.xyz, r2, c49.w, r0: outline
     DWORD code[1024];
     int n = 0, found = 0, kind = 0;
+    DWORD uses = 0;
     if (nvshaders == 16) return;
     for (; n < 1023 && fn[n] != 0xffff; n++) {
         code[n] = fn[n];
+        if ((fn[n] & 0xf0002000) == 0xa0000000 && (fn[n] & 0x7ff) >= 48 && (fn[n] & 0x7ff) < 80) uses |= 1u << ((fn[n] & 0x7ff) - 48);
         if (n >= 2 && fn[n - 2] == 9 && (fn[n] & 0xf0001fff) == 0x90000000) code[n] |= 6 + found++ / 3; // dp4, source v0
         if (!memcmp(fn + n, ramp, sizeof ramp)) kind = 1;
         if (!memcmp(fn + n, push, sizeof push)) kind = 2;
@@ -260,7 +262,7 @@ void mesh_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *fn)
     }
     code[n] = 0xffff;
     struct vshader *v = &vshaders[nvshaders++];
-    v->game = h, v->kind = kind, v->bones = found / 3;
+    v->game = h, v->kind = kind, v->bones = found / 3, v->uses = uses;
     if (found == 9 && FAILED(IDirect3DDevice8_CreateVertexShader(dev, mesh_places_decl, code, &v->bent, 0))) v->bent = 0, log_line("mesh: no per-bone copy of shader %#lx", h);
 }
 
@@ -289,7 +291,7 @@ static DWORD shader_for(DWORD vs, int places, int *bent)
     for (int i = 0; i < nvshaders; i++)
         if (vshaders[i].game == vs) now = &vshaders[i];
     for (int i = 0; i < nvshaders && now; i++)
-        if (vshaders[i].kind == now->kind && vshaders[i].bones == 3)
+        if (vshaders[i].kind == now->kind && vshaders[i].uses == now->uses && vshaders[i].bones == 3) // levels without fog lay their constants out differently
             return (*bent = places && vshaders[i].bent) ? vshaders[i].bent : vshaders[i].game;
     return vs;
 }

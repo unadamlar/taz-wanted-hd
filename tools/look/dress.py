@@ -562,7 +562,7 @@ def blender_main(argv):
         # 3c. water: a bed and walls under the hub's water so it can be see-through, and a foam rim
         if not a.pass1:
             bed, foam = kit.water_dress([o for o in live if poly_mask(o, ("water",)).any()],
-                                        lambda o: poly_mask(o, ("water",)), SCALE, depth=0.7,
+                                        lambda o: poly_mask(o, ("water",)), SCALE, depth=0.7, foam=L.get("foam", 0.35), walls=L.get("water_walls", True),
                                         region=L["hub"], coll=props)
             if bed:
                 stats["water_bed_tris"] = kit.tri_count(bed) + kit.tri_count(foam)
@@ -575,10 +575,10 @@ def blender_main(argv):
         # 4. scatter
         gameplay_boxes = []
         for ob in live if L.get("clear_islands") else live + chars:  # there, characters walk and props share objects with scenery
-            if ob in chars or poly_mask(ob, ("gameplay",)).all():
+            if ob in chars or (poly_mask(ob, ("gameplay",)).all() and not L.get("island_boxes")):
                 lo, hi = kit.world_bbox(ob)
                 gameplay_boxes.append((lo, hi))
-            elif L.get("clear_islands") and poly_mask(ob, ("gameplay",)).any():
+            elif (L.get("clear_islands") or L.get("island_boxes")) and poly_mask(ob, ("gameplay",)).any():  # one object can hold pickups all over a level
                 gameplay_boxes += [(lo, hi) for _, lo, hi in kit.islands(ob, poly_mask(ob, ("gameplay",)))]
         hub = L["hub"]
         masks = {}
@@ -619,7 +619,7 @@ def blender_main(argv):
         rng = np.random.default_rng(7)
         lawn = kit.sample_surface_ex(live, lambda o: poly_mask(o, ("lawn",)) & _up(o, 0.35), dens, 11, hub)
         gr, gg = ground_info(dens, 12)
-        keep = rng.random(len(gg)) < np.clip(gg * 1.15, 0, 1) ** 1.3
+        keep = (rng.random(len(gg)) < np.clip(gg * 1.15, 0, 1) ** 1.3) & (gg > L.get("grass_min", 0))
         print("ZOOHUB points: lawn", len(lawn["P"]), "ground", len(gr["P"]), "ground kept", int(keep.sum()),
               "gameplay boxes", len(gameplay_boxes))
         P = np.concatenate([lawn["P"], gr["P"][keep]])
@@ -629,7 +629,7 @@ def blender_main(argv):
         if overlay:
             covers.append(overlay)
         grass = kit.scatter_grass(live, SCALE, points=(P, N, hm), blockers=None if L.get("clear_islands") else covers, exclude=gameplay_boxes, seed=3,
-                                  **L.get("grass_opts", {}))
+                                  **L.get("grass_opts", {})) if len(P) else []
 
         def clutter_sampler(density, seed):
             r, g = ground_info(density, seed)
@@ -644,7 +644,11 @@ def blender_main(argv):
             edges = mass_edges
         vines = [v for v in (kit.scatter_vines(edges, SCALE, seed=5, per_m=3.0 if overlay else 5.0),
                              kit.scatter_ledge_moss(edges, SCALE, seed=6)) if v] if edges else []
-        scat = grass + clutter + vines
+        lumps = []
+        if "lumps" in L:
+            lp = kit.sample_surface_ex(live, lambda o: poly_mask(o, L["lumps"]["roles"]) & _up(o, 0.8), L["lumps"]["density"], 13, hub)["P"]
+            lumps = [kit.scatter_lumps(lp[kit.outside_boxes(lp, gameplay_boxes, 0.6 * SCALE)], SCALE, L["lumps"]["colour"])]
+        scat = grass + clutter + vines + lumps
         stats["scatter"] = {o.name: (o["kit_instances"], o["kit_tris"]) for o in scat}
         stats["instances"] = sum(o["kit_instances"] for o in scat)
         stats["scatter_tris"] = sum(o["kit_tris"] for o in scat)

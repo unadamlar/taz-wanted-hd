@@ -10,7 +10,7 @@ from mathutils import Matrix, Vector, noise as mnoise
 
 here = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, here)
-import bake, dds, dress, kit, space, solid
+import bake, dds, dress, kit, made, space, solid
 
 a = argparse.ArgumentParser()
 a.add_argument("--level", default="zoohub")
@@ -112,6 +112,7 @@ BLENDER_MAT = {
     "kit_water_bed": "water_bed", "kit_foam": "foam", "kit_pebble": "flat", "kit_stem": "flat_wind",
     "kit_petal_pink": "flat_wind", "kit_petal_white": "flat_wind", "kit_petal_blue": "flat_wind",
     "kit_flower_center": "flat_wind", "kit_weed_leaf": "flat_wind",
+    "kit_snow_lump": "flat",
 }
 
 
@@ -170,7 +171,8 @@ tile_mean = {}
 for name, (graph, tile, px, vertical) in TILES.items():
     # the cliff graph's strata depend on height: bake it where the rock actually stands
     z0 = kit.world_bbox(bpy.data.objects["kit_cliff_mass"])[0].z if name == "cliff" else 0.0
-    alb, nor = bake.bake_tile(cache, name, graph(), tile, px, vertical, z0=z0)
+    spec = LEVEL.get("tiles", {}).get(name, {})
+    alb, nor = made.tile(spec["made"], px) if "made" in spec else bake.bake_tile(cache, name, graph(), tile, px, vertical, z0=z0)
     alb, nor = np.asarray(alb, np.float32), np.asarray(nor, np.float32)
     tile_mean[name] = dds.to_linear(alb).reshape(-1, 3).mean(0)
     grain = LEVEL.get("tiles", {}).get(name, {}).get("detail")
@@ -777,7 +779,7 @@ def place_static(name, p, n, uv, c, mat):
     print("export: %s, %d triangles" % (name, len(p) // 3))
 
 
-captures = [os.path.join(ext, "look", f) for f in LEVEL.get("captures", ("world-hero.bin", "world-sweep.bin"))]
+captures = [os.path.join(ext, "look", f) for f in LEVEL.get("captures", ())]
 if "chain" in LEVEL or "grill" in LEVEL:
     want = {tex_hash[LEVEL[k]]: k for k in ("chain", "grill") if k in LEVEL}
     cards = {h: {} for h in want}
@@ -972,7 +974,7 @@ def level_lights(cfg):
         for i, q in enumerate(np.floor(p[:, :2] / 5).astype(int)):
             cells[tuple(q)].append(i)
         for ix in cells.values():
-            if w[ix].sum() < 2.0:   # a stray warm vertex is not a light
+            if w[ix].sum() < 2.0 or not cfg["pool_power"]:   # a stray warm vertex is not a light
                 continue
             q = np.average(p[ix], 0, weights=w[ix])
             out.append(((q[0], q[2] + cfg["pool_height"], q[1]), cfg["pool_radius"], colour * cfg["pool_power"], cfg["pool_cone"]))
@@ -987,7 +989,9 @@ lights = level_lights(LEVEL["lamps"]) if "lamps" in LEVEL else []
 sky_scale, sky_bytes = 1.0, 0
 if not LEVEL.get("game_sky"):  # otherwise the game's own painted backdrop stays
     eye = bpy.data.objects["hero camera"].matrix_world.translation.copy() if "hero camera" in bpy.data.objects else Vector()
-    sky = np.asarray(bake.bake_sky(cache, sc, eye, panels=LEVEL.get("sky_panels", False)), np.float32)
+    sky = np.asarray(bake.bake_sky(cache, sc, eye, panels=LEVEL.get("sky_panels", False), night=LEVEL.get("night_sky", True)), np.float32)
+    if not LEVEL.get("night_sky", True):
+        sky = bake.fill_ceiling(sky)
     sky_scale = max(1.0, float(np.quantile(sky, 0.9999)))
     faces = [np.asarray(dds.to_srgb(f / sky_scale), np.float32) for f in bake.cube_faces(sky, 1024)]
     sky_bytes = dds.write_cube(os.path.join(tmp, "sky.dds"), faces)
@@ -1046,7 +1050,7 @@ fog_start = grade["fog_start"] * SC * K
 vals = [
     ("sun_dir", (math.cos(az) * math.cos(el), math.sin(el), math.sin(az) * math.cos(el))),
     ("sun_color", np.array(kit.srgb(sun["sun_color"])) * sun["sun_strength"] / math.pi),
-    ("sky_ambient", amb), ("ground_ambient", amb * np.array((0.55, 0.47, 0.38))),
+    ("sky_ambient", amb), ("ground_ambient", amb * np.array(LEVEL.get("ground_tint", (0.55, 0.47, 0.38)))),
     ("shadow_softness", math.tan(math.radians(1.0))), ("ao_radius", 2.5 * SC * K), ("ao_strength", 1.0),
     ("fog_color", kit.srgb(LEVEL.get("fog_color", "#b8d6f2"))), ("fog_start", fog_start),
     ("fog_end", fog_start + grade["fog_depth"] * SC * K / grade["fog"]),  # Blender's fog tops out at this 7%
@@ -1054,7 +1058,7 @@ vals = [
     ("saturation", grade["saturation"]), ("contrast", LEVEL.get("contrast", 1.15)),
     ("water_height", water_y), ("water_color", kit.srgb("#2aa6c8")), ("water_clarity", 0.72),
     ("grass_fade_start", 5000.0), ("grass_fade_end", 10000.0), ("sky_scale", sky_scale * LEVEL.get("sky_gain", 1.0)),
-] + [(k, LEVEL[k]) for k in ("unbake", "char_fill", "hold", "shadow_floor") if k in LEVEL]
+] + [(k, LEVEL[k]) for k in ("unbake", "char_fill", "char_keep", "hold", "shadow_floor") if k in LEVEL]
 with open(os.path.join(tmp, "level.ini"), "w") as f:
     f.write("[level]\n")
     for k, x in vals:

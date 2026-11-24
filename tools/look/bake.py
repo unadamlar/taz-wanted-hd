@@ -112,7 +112,7 @@ def _render_pano(sc, path, n, transparent):
     return px.reshape(n // 2, n, 4)[::-1].copy()
 
 
-def bake_sky(cache, sc, eye, n=8192, panels=False):
+def bake_sky(cache, sc, eye, n=8192, panels=False, night=True):
     """Equirect of what a camera sees beyond the level, scene-linear: the world, with the far hill panels over it.
     The panels on the +y side carry the game's painted sun and are hidden in the dressing, so the -y hills are
     mirrored across the x axis to close the ring; below the horizon is the hills' own ground colour."""
@@ -146,18 +146,18 @@ def bake_sky(cache, sc, eye, n=8192, panels=False):
     h, w = hills.shape[:2]
     if panels:  # the level's own painted sky, whole
         sky = world * (1 - hills[..., 3:]) + hills[..., :3]
-        # the box's ceiling is one dark colour with a hard edge against the panels: fade across it, and give it stars
-        ceil = np.median(sky[:h // 10].reshape(-1, 3), 0)
-        edge = np.minimum((sky[:h // 2].sum(2) > ceil.sum() * 1.6).argmax(0) + 6, h // 2)
-        rim = np.median(sky[edge, np.arange(w)], 0)
-        for x in range(w):
-            a = max(edge[x] - h // 9, 0)
-            t = ((np.arange(a, edge[x]) - a + 1) / (edge[x] - a))[:, None] ** 2
-            sky[:a, x], sky[a:edge[x], x] = ceil, ceil * (1 - t) + rim * t
-        rng = np.random.default_rng(8)
-        for x, y, v in zip(rng.integers(0, w, 1400), (np.arccos(rng.uniform(0.2, 1, 1400)) / np.pi * h).astype(int), rng.uniform(0.3, 0.9, 1400)):
-            if y < edge[x] - 8:
-                sky[y:y + 2, x:x + 2] = v
+        if night:  # the box's ceiling is one dark colour with a hard edge against the panels: fade across it, and give it stars
+            ceil = np.median(sky[:h // 10].reshape(-1, 3), 0)
+            edge = np.minimum((sky[:h // 2].sum(2) > ceil.sum() * 1.6).argmax(0) + 6, h // 2)
+            rim = np.median(sky[edge, np.arange(w)], 0)
+            for x in range(w):
+                a = max(edge[x] - h // 9, 0)
+                t = ((np.arange(a, edge[x]) - a + 1) / (edge[x] - a))[:, None] ** 2
+                sky[:a, x], sky[a:edge[x], x] = ceil, ceil * (1 - t) + rim * t
+            rng = np.random.default_rng(8)
+            for x, y, v in zip(rng.integers(0, w, 1400), (np.arccos(rng.uniform(0.2, 1, 1400)) / np.pi * h).astype(int), rng.uniform(0.3, 0.9, 1400)):
+                if y < edge[x] - 8:
+                    sky[y:y + 2, x:x + 2] = v
     else:
         mid = np.arange(w // 4, 3 * w // 4)
         hills[:, mid] = hills[:, (3 * w // 2 - 1 - mid) % w]
@@ -167,6 +167,17 @@ def bake_sky(cache, sc, eye, n=8192, panels=False):
         ground = np.median(band[band[..., 3] > 0.5][..., :3], axis=0)
         sky[below:] = ground
     np.savez_compressed(f, sky=sky.astype(np.float16))
+    return sky
+
+
+def fill_ceiling(sky):
+    """A day level's painted walls end in one flat colour: the sky above them takes it, so the top of the box doesn't show."""
+    h, w = sky.shape[:2]
+    above = np.abs(sky - np.median(sky[:h // 16].reshape(-1, 3), 0)).sum(2) < 0.02
+    first = above[h // 16:].argmin(0) + h // 16 + 10  # past the soft edge of the panel
+    top = np.median(sky[first, np.arange(w)], 0)
+    sky = sky.copy()
+    sky[np.arange(h)[:, None] < first] = top
     return sky
 
 
