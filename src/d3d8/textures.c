@@ -23,7 +23,7 @@
 #define MAX_LEVELS 16
 
 struct tex_entry { IDirect3DTexture8 *tex; UINT64 hash; BYTE *bits; INT pitch; int updates, counted; };
-struct rep_entry { UINT64 hash; IDirect3DTexture8 *rep; int users, asked; }; // users: live game textures with this fingerprint
+struct rep_entry { UINT64 hash; IDirect3DTexture8 *rep, *own; int users, asked; }; // own: a loading screen's Remaster version; users: live game textures with this fingerprint
 // A name can point at part of a bigger image (splash screens are split into tiles).
 struct name_entry { UINT64 hash; char *path; UINT x, y, w, h, full_w, full_h; };
 
@@ -33,6 +33,7 @@ struct job {
     UINT64 hash;
     char path[MAX_PATH];
     const struct name_entry *crop;
+    int own; // fills rep_entry.own
     BYTE *dump; // non-NULL: write these BGRA pixels to path instead of loading
     UINT levels, w[MAX_LEVELS], h[MAX_LEVELS];
     BYTE *px[MAX_LEVELS];
@@ -45,7 +46,7 @@ static int ntexs, nreps;
 static CRITICAL_SECTION lock;
 static IDirect3DDevice8 *device;
 static int dumping, dumped, replaced, freed, rebind;
-static struct job *todo, *done;
+static struct job *todo, *tiles, *done, *tiles_done; // tiles: a loading screen, decoded and uploaded before the level queued behind it
 static HANDLE work;
 static double decode_ms;
 static DWORD frame_no; // Presents so far
@@ -99,6 +100,7 @@ static void unuse(struct tex_entry *e)
     e->counted = 0;
     if (!r || --r->users > 0) return;
     r->users = 0;
+    if (r->own) IDirect3DTexture8_Release(r->own), r->own = NULL;
     if (r->rep) {
         IDirect3DTexture8_Release(r->rep);
         r->rep = NULL;
@@ -189,6 +191,22 @@ static BYTE *crop(BYTE *px, UINT *w, UINT *h, const struct name_entry *n)
     return out;
 }
 
+// One split image's tiles come in a row, HD and Remaster alternating: each is decoded once.
+static struct { BYTE *px; UINT w, h; char path[MAX_PATH]; } whole[2];
+
+static BYTE *read_tile(const char *path, int own, UINT *w, UINT *h)
+{
+    if (strcmp(path, whole[own].path)) {
+        free(whole[own].px);
+        whole[own].px = image_read(path, &whole[own].w, &whole[own].h);
+        strcpy(whole[own].path, whole[own].px ? path : "");
+    }
+    size_t n = (size_t)whole[own].w * whole[own].h * 4;
+    BYTE *px = whole[own].px ? malloc(n) : NULL;
+    if (px) memcpy(px, whole[own].px, n), *w = whole[own].w, *h = whole[own].h;
+    return px;
+}
+
 // Decode thread: the only thread that touches WIC, so COM setup stays out of the game's threads.
 static DWORD WINAPI worker(void *arg)
 {
@@ -197,10 +215,12 @@ static DWORD WINAPI worker(void *arg)
         WaitForSingleObject(work, INFINITE);
         for (;;) {
             EnterCriticalSection(&lock);
-            struct job *j = todo;
-            if (j) todo = j->next;
+            struct job **from = tiles ? &tiles : &todo, *j = *from;
+            if (j) *from = j->next;
             LeaveCriticalSection(&lock);
             if (!j) break;
+            if (!j->crop)
+                for (int k = 0; k < 2; k++) free(whole[k].px), whole[k].px = NULL, whole[k].path[0] = 0;
 
             if (j->dump) {
                 if (png_write(j->path, j->w[0], j->h[0], j->dump)) dumped++;
@@ -212,7 +232,7 @@ static DWORD WINAPI worker(void *arg)
             LARGE_INTEGER t0, t1, freq;
             QueryPerformanceCounter(&t0);
             UINT w, h;
-            BYTE *px = image_read(j->path, &w, &h);
+            BYTE *px = j->crop ? read_tile(j->path, j->own, &w, &h) : image_read(j->path, &w, &h);
             if (!px) log_line("could not read %s", j->path);
             if (px && j->crop) px = crop(px, &w, &h, j->crop);
             for (j->levels = 0; px && j->levels < MAX_LEVELS; j->levels++) {
@@ -230,8 +250,9 @@ static DWORD WINAPI worker(void *arg)
             decode_ms += (t1.QuadPart - t0.QuadPart) * 1000.0 / freq.QuadPart;
 
             EnterCriticalSection(&lock);
-            j->next = done;
-            done = j;
+            struct job **to = j->crop ? &tiles_done : &done;
+            j->next = *to;
+            *to = j;
             LeaveCriticalSection(&lock);
         }
     }
@@ -257,8 +278,9 @@ static void queue(struct job *j)
 {
     start_worker();
     EnterCriticalSection(&lock);
-    j->next = todo;
-    todo = j;
+    struct job **to = j->crop ? &tiles : &todo;
+    j->next = *to;
+    *to = j;
     LeaveCriticalSection(&lock);
     SetEvent(work);
 }
@@ -294,32 +316,45 @@ static void queue_dump(UINT64 hash, const D3DSURFACE_DESC *d, const BYTE *bits, 
     queue(j);
 }
 
-static void queue_load(UINT64 hash, const struct name_entry *n)
+static int queue_file(UINT64 hash, const char *path, const struct name_entry *n, int own)
 {
-    char path[MAX_PATH];
-    snprintf(path, sizeof path, REPLACE_DIR "\\%s", n ? n->path : "");
-    if (!n || GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) {
-        n = NULL;
-        snprintf(path, sizeof path, REPLACE_DIR "\\%016llx.png", hash);
-        if (GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) return;
-    }
     struct job *j = calloc(1, sizeof *j);
-    if (!j) return;
+    if (!j) return 0;
     j->hash = hash;
     strcpy(j->path, path);
     j->crop = n && n->full_w ? n : NULL;
+    j->own = own;
     queue(j);
+    return 1;
+}
+
+// Returns how many files were queued. The newest is decoded first, so a loading screen's Remaster version goes last.
+static int queue_load(UINT64 hash, const struct name_entry *n)
+{
+    char path[MAX_PATH];
+    int queued = 0;
+    const struct name_entry *named = n;
+    snprintf(path, sizeof path, REPLACE_DIR "\\%s", n ? n->path : "");
+    if (!n || GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) {
+        named = NULL;
+        snprintf(path, sizeof path, REPLACE_DIR "\\%016llx.png", hash);
+    }
+    if (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) queued = queue_file(hash, path, named, 0);
+    if (n && !strncmp(n->path, "splshscr", 8) && look_enabled()) {
+        snprintf(path, sizeof path, "taz-hd\\look\\screens\\%s", n->path);
+        if (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) queued += queue_file(hash, path, n, 1);
+    }
+    return queued;
 }
 
 // Called once per frame on the render thread: uploads a few finished replacements.
-void textures_frame(void)
+static void upload(void)
 {
-    frame_no++;
     if (!real_CreateTexture) return;
     for (int n = 0; n < UPLOADS_PER_FRAME; n++) {
         EnterCriticalSection(&lock);
-        struct job *j = done;
-        if (j) done = j->next;
+        struct job **from = tiles_done ? &tiles_done : &done, *j = *from;
+        if (j) *from = j->next;
         LeaveCriticalSection(&lock);
         if (!j) break;
 
@@ -335,8 +370,9 @@ void textures_frame(void)
             }
             EnterCriticalSection(&lock);
             struct rep_entry *r = rep_lookup(j->hash, NULL);
-            if (r) r->asked = 0;
-            if (r && r->users > 0 && !r->rep) r->rep = t, t = NULL;
+            if (r && r->asked) r->asked--;
+            IDirect3DTexture8 **slot = r ? (j->own ? &r->own : &r->rep) : NULL;
+            if (slot && r->users > 0 && !*slot) *slot = t, t = NULL;
             rebind = 1; // the original may be bound right now
             LeaveCriticalSection(&lock);
             if (t) IDirect3DTexture8_Release(t); // its texture went away while it loaded
@@ -348,6 +384,12 @@ void textures_frame(void)
             free(j->px[l]);
         free(j);
     }
+}
+
+void textures_frame(void)
+{
+    frame_no++;
+    upload();
 }
 
 static DWORD WINAPI load_missing(void *arg)
@@ -410,7 +452,8 @@ static void load_names(void)
     log_line("%d texture names from %s", n, NAMES_FILE);
 }
 
-static void fingerprint(IDirect3DTexture8 *t, struct tex_entry *e)
+// Returns the entry of a loading screen tile now being decoded.
+static struct rep_entry *fingerprint(IDirect3DTexture8 *t, struct tex_entry *e)
 {
     D3DSURFACE_DESC d;
     UINT bpp;
@@ -419,7 +462,7 @@ static void fingerprint(IDirect3DTexture8 *t, struct tex_entry *e)
     e->counted = 0;
     if (FAILED(IDirect3DTexture8_GetLevelDesc(t, 0, &d)) || !(bpp = bytes_per_pixel(d.Format))) {
         unuse(&old);
-        return;
+        return NULL;
     }
 
     UINT64 h = 0xcbf29ce484222325ULL;
@@ -439,9 +482,13 @@ static void fingerprint(IDirect3DTexture8 *t, struct tex_entry *e)
     struct rep_entry *r = busy && !n ? NULL : rep_lookup(e->hash, &fresh);
     if (r) r->users++, e->counted = 1;
     unuse(&old); // after counting this one, so an unchanged texture keeps its replacement
-    if (!r) return;
+    if (!r) return NULL;
     if (dumping && fresh && !busy) queue_dump(e->hash, &d, e->bits, e->pitch);
-    if (settings.hd_textures && !r->rep && !r->asked) r->asked = 1, queue_load(e->hash, n);
+    if (settings.hd_textures && !r->rep && !r->asked) {
+        int queued = queue_load(e->hash, n);
+        r->asked = n && n->full_w ? queued : 1; // a tile with no file has nothing to wait for
+    }
+    return n && n->full_w && r->asked ? r : NULL;
 }
 
 static IDirect3DBaseTexture8 *replacement_for(IDirect3DBaseTexture8 *bt)
@@ -450,7 +497,7 @@ static IDirect3DBaseTexture8 *replacement_for(IDirect3DBaseTexture8 *bt)
     EnterCriticalSection(&lock);
     struct tex_entry *e = tex_lookup((IDirect3DTexture8 *)bt, 0);
     struct rep_entry *r = e && e->hash ? rep_lookup(e->hash, NULL) : NULL;
-    IDirect3DBaseTexture8 *rep = r ? (IDirect3DBaseTexture8 *)r->rep : NULL;
+    IDirect3DBaseTexture8 *rep = r ? (IDirect3DBaseTexture8 *)(r->own && settings_remaster_chosen() ? r->own : r->rep) : NULL;
     LeaveCriticalSection(&lock);
     return rep;
 }
@@ -474,13 +521,16 @@ static HRESULT WINAPI hook_LockRect(IDirect3DTexture8 *t, UINT level, D3DLOCKED_
 static HRESULT WINAPI hook_UnlockRect(IDirect3DTexture8 *t, UINT level)
 {
     if (level == 0) {
+        struct rep_entry *tile = NULL;
         EnterCriticalSection(&lock);
         struct tex_entry *e = tex_lookup(t, 0);
         if (e && e->bits) {
-            fingerprint(t, e);
+            tile = fingerprint(t, e);
             e->bits = NULL;
         }
         LeaveCriticalSection(&lock);
+        // The loading screen is drawn right after its tiles: without this it first shows the old art.
+        for (DWORD t0 = GetTickCount(); tile && tile->asked && GetTickCount() - t0 < 400; Sleep(1)) upload();
     }
     return real_UnlockRect(t, level);
 }

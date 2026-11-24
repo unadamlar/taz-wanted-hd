@@ -25,6 +25,7 @@ static IDirect3DBaseTexture8 *own_tex[NOWN];
 static UINT nown;
 static int level, loaded_scene = -1;
 #define PLANET_LOOK 30 // an unused scene number: Planet X's own look data
+#define FRONTEND 1
 static struct rec *recs; static UINT nrecs, cap_recs;     // this frame's character draws, for their sun map
 static HRESULT (WINAPI *draw_real)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT);
 static struct { int frames, want; double look_ms, frame_ms, present_ms; UINT world, game, pieces, merged; LARGE_INTEGER last; } m;
@@ -97,6 +98,7 @@ static struct rec *add_rec(void)
 static int suspended;              // F11 is on HD or Original: everything stays loaded, nothing of ours draws
 static int remaster(void) { return level && !suspended && hd_loaded(); }
 int look_remaster_available(void) { return level && hd_loaded(); }
+int look_enabled(void) { return level; }
 void look_set_remaster(int on) { suspended = !on; }
 int look_redirected(void) { return remaster() && hd_redirected(); }
 
@@ -436,6 +438,10 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     struct IDirect3DDevice9 *d = d3d9_device(dev);
     if (!merge_on_backbuffer() || hd_post_done()) return 0;
     if (merge_is_2d(dev)) { // the HUD and menus: finish the 3D picture under them
+        if (loaded_scene == FRONTEND && !api && !hd_post_done() && hd_hidden(textures_bound_hash(0))) { // its painted sky, drawn with no depth test
+            hd_redirect(d);
+            return 0;
+        }
         if (!hd_redirected()) { // no 3D yet: a paused frame's sky, or a screen the game composes itself (a paper book)
             UINT64 h2 = textures_bound_hash(0);
             backdrop |= h2 && !hd_hidden(h2);
@@ -593,18 +599,19 @@ void look_frame(IDirect3DDevice8 *dev)
         m.frames = -30, m.want = n;
     }
     double t0 = now_ms();
+    hd_set_paused(settings.exe_known && GAME_STATE == 3);
     merge_frame(dev);
     int scene = settings.exe_known ? look_scene(SCENE) : -1;
     struct IDirect3DDevice9 *d = d3d9_device(dev);
     if (level) read_camera(), hd_frame_end(d);
     if (hd_loaded() && (scene != loaded_scene || !level)) hd_unload(), merge_reset(), loaded_scene = -1, nown = 0;
-    if (level && !hd_loaded() && scene >= 2 && (scene != loaded_scene || hd_lost())) {
+    if (level && !hd_loaded() && scene >= 1 && (scene != loaded_scene || hd_lost())) {
         loaded_scene = scene; // tried once per scene: a scene without data stays on HD
         // Planet X's data is where it sits in the Taz hub
         hd_set_origin(scene != PLANET_LOOK || SCENE == 18 ? 0 : 42619.57f, scene != PLANET_LOOK ? 0 : SCENE == 3 ? 81649.812f : SCENE == 8 ? 73662.359f : SCENE == 13 ? 51583.773f : 0, 0);
         if (hd_load(d, scene)) merge_reset();
     }
-    if (scene < 2) loaded_scene = -1;
+    if (scene < 1) loaded_scene = -1;
     if (remaster()) char_shadows(dev);
     else drop_recs();
     m.look_ms += now_ms() - t0;

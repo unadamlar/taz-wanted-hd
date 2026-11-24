@@ -55,8 +55,25 @@ crane chains, and Planet X (`scene30`) with grass, rock, a round dome, a smooth 
   update it after each reviewed batch. Tests must not touch it.
 - Sound distortion: measured as the game's own files and mix, not the mod. No fix is chosen. Evidence and options:
   `extracted/look/reports/step6/sound/`.
-- Not checked on the merged build: walking through a real Planet X door (its data was only forced on and off), level-complete
-  cutscenes (they could leave static 3D chains or fences behind), most costumes, frame time and memory with the new data.
+- Checked on the merged build (2026-11-24). Planet X: Taz walked through the real zoo door 6 times and back 5 times, and the look
+  switched each way. Costumes: 11 draw in all three looks, but only the zoo's reindeer ran on real Remaster level data, and the ninja
+  was not compared on his floor polisher. Lowest free address space with the real 2 GB limit: 1,331 MB over 27 loads of 12 levels.
+  Uncapped at 2880x1800, 4x MSAA: zoo 7.56-7.57 ms, city 6.00-6.30 ms. Report: `extracted/look/reports/step7/rig/`.
+- Not checked on the merged build: level-complete cutscenes (they could leave static 3D chains or fences behind).
+
+## Step 7 in progress (2026-11-24)
+
+Rolling out the look, two tracks at a time. Track state and resume steps: `extracted/look/reports/step7/RESUME.md`.
+
+- Main menu, loading screens and pause menu have a Remaster version (`extracted/look/reports/step7/screens/`). Copy `scene01` and `screens`
+  from `extracted/look/screens/runtime/` into `<game>/taz-hd/look/`. Not yet in the user's playable copy.
+- For the user to judge: the deep blue loading screens, and the menu's brown dirt path where the original is flat orange.
+- Not done: the level intro page, map and game-over screens. Not checked: bonus-level loading art, a gamepad in these menus.
+- City world done: department store, museum, construction site and city boss (`extracted/look/reports/step7/city-levels/`). Data is in
+  `extracted/look/city-levels/<level>/runtime/sceneNN`. Not in the user's playable copy. Not checked: finishing a level, win and lose
+  screens, the museum's real entry, the 2 GB limit, uncapped frame time. Museum jumps drop Taz into a fall and city boss jumps crash,
+  so test them through the routes in that folder's `notes.md`.
+- For the user to judge in the city levels: real paint replaces baked colour (store's blue, museum's pink floor, construction huts teal to yellow).
 
 ## How the pieces fit
 
@@ -144,8 +161,8 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
 - City hub: the big yellow shop door glares, grass right beside a lamp looks like daylight, searchlight beams are flat
   pale triangles, close-up walls are flat and very dark, bright painted green shows at lawn edges, and the painted
   pavement lines don't follow the slab joints. The intro flyover ran without a crash but its frames were not reviewed.
-- Walking through a real level door is not tested: about 21 runs never got through one in this save. Level changes were
-  tested through the game's scene change and a real level ending.
+- The zoo's Planet X door opens only once levels 4, 5, 6 and 7 are won, and `qa/save.city` has only 5 and 6. Mark them with
+  `taz-hd\complete`, reload the hub and approach the door from the front. Doors into ordinary levels were not tested deliberately.
 - The walking-shadow fix is in but not measured. Jumping scenes with the test trigger during the boss intro closes the
   game, with the look off too; plain `master` was not tried.
 - Looningdale's level ending still shows 0.9 s of black, on plain `master` too (measured 0.87 s there, 0.92 s here).
@@ -165,6 +182,11 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
   swings open. Coming back from it reloads the hub's look, a pause of about 0.5 s in the zoo.
 - The elephant's hide goes on any untextured character's mid-grey parts. An 18-leg walk found only the elephant, but did
   not cover the whole hub.
+- One test visit to the city drew no grass, trees or other added scenery (`extracted/look/checks/screens-ab1`), in a session using live
+  shader reloads. It did not repeat in about 16 later checks or 25 clean zoo-to-city visits. Cause unknown.
+- Requesting screenshots about every 90 ms through level changes crashes the game after 4-5 changes, on the build before the screens too.
+- The pause menu's Exit Game prompt draws over the Exit Game row. Not compared with the build before the screens.
+- Main menu: the shore's orange looks salmon, the water is duller than the original, and the alarm clock and fridge are very bright.
 - Test runs load any shader files left in `taz-hd\shaders` over the built-in ones. `qa/fast.sh start` now clears them.
 
 ## Working rules for this branch
@@ -175,3 +197,5 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
 - Game-derived files stay in ignored folders (`extracted/`, `qa/`, `re/`). Downloads: CC0 assets into
   `../asset-library/` with licence recorded; d3d8to9 is the only approved outside code.
 - After each milestone, save a before/after image and a short note to `extracted/look/reports/`.
+- The NVIDIA driver hung and froze the whole desktop on 2026-11-23 with five tracks running, cause unproven. Run at most two test
+  games at once, keep Blender off the GPU (`dress.py` without `--camera`, `export.py --cpu`), and keep scatter under `dress.py`'s 8M triangle limit.

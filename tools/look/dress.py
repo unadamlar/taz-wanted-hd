@@ -619,7 +619,7 @@ def blender_main(argv):
         rng = np.random.default_rng(7)
         lawn = kit.sample_surface_ex(live, lambda o: poly_mask(o, ("lawn",)) & _up(o, 0.35), dens, 11, hub)
         gr, gg = ground_info(dens, 12)
-        keep = rng.random(len(gg)) < np.clip(gg * 1.15, 0, 1) ** 1.3
+        keep = (rng.random(len(gg)) < np.clip(gg * 1.15, 0, 1) ** 1.3) & (gg > L.get("grass_min", 0))
         print("ZOOHUB points: lawn", len(lawn["P"]), "ground", len(gr["P"]), "ground kept", int(keep.sum()),
               "gameplay boxes", len(gameplay_boxes))
         P = np.concatenate([lawn["P"], gr["P"][keep]])
