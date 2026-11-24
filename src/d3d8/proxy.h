@@ -94,7 +94,7 @@ int look_remaster_available(void);
 int look_enabled(void);
 int settings_remaster_chosen(void);
 void look_set_remaster(int on);
-void look_bb_restored(IDirect3DDevice8 *dev);
+void look_target_set(IDirect3DDevice8 *dev, int on_bb);
 int look_redirected(void);
 void look_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *decl, const DWORD *fn);
 void look_shader_deleted(IDirect3DDevice8 *dev, DWORD h);

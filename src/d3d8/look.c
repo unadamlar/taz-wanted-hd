@@ -98,9 +98,9 @@ int look_enabled(void) { return level; }
 void look_set_remaster(int on) { suspended = !on; }
 int look_redirected(void) { return remaster() && hd_redirected(); }
 
-void look_bb_restored(IDirect3DDevice8 *dev)
+void look_target_set(IDirect3DDevice8 *dev, int on_bb)
 {
-    if (remaster()) hd_rebind(d3d9_device(dev));
+    if (remaster()) hd_rebind(d3d9_device(dev), on_bb);
 }
 
 static void depth_batch(IDirect3DDevice8 *dev, IDirect3DBaseTexture8 *tex, UINT nverts, UINT first, UINT tris)
@@ -356,10 +356,12 @@ const D3DMATRIX *look_camera(D3DTRANSFORMSTATETYPE t, const D3DMATRIX *m, D3DMAT
 }
 
 static DWORD glowing; // the game's destination blend while one of its glows draws through ours
+static int char_drawing; // a character draw, which writes alpha 0
 static int backdrop;
 
 void look_after_draw(IDirect3DDevice8 *dev)
 {
+    if (char_drawing) hd_char_alpha(d3d9_device(dev), 0), char_drawing = 0;
     if (glowing) hd_glow_end(d3d9_device(dev), glowing), glowing = 0;
 }
 
@@ -456,6 +458,7 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     }
     IDirect3DDevice8_GetVertexShader(dev, &shader);
     if (IS_VERTEX_SHADER(shader)) {
+        hd_char_alpha(d, 1), char_drawing = 1; // every character draw, ours or the game's (eyes, teeth), stays out of the bloom
         hd_invalidate();
         if (hd_prepass_needed()) prepass(dev);
         if (!hd_additions_done()) hd_additions(d), merge_state_changed();

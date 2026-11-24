@@ -498,7 +498,7 @@ struct CharIn { float2 uv : TEXCOORD0; float3 w : TEXCOORD2; float3 n : TEXCOORD
 float4 CHAR_LIGHT[4] : register(c26);  // the two nearest lamps: position, 1 / r^2; colour
 float4 CHAR_STYLE    : register(c31);  // shading band offset, slope, fur strength, highlight
 sampler2D FUR : register(s5);
-float4 CHAR_HOLD     : register(c34);  // exposure, contrast, brightest held value, 1 / saturation: pale paint keeps its colour through the tone curve
+float4 CHAR_HOLD     : register(c34);  // exposure, contrast: pale paint keeps its colour through the tone curve
 float4 CHAR_FILL     : register(c30);  // keeps characters readable away from the lamps of a night level
 
 float4 ps_char(CharIn i) : COLOR
@@ -545,13 +545,12 @@ float4 ps_char(CharIn i) : COLOR
     float3 c = albedo * 0.7 * (amb + CHAR_FILL.rgb * (0.55 + 0.75 * shoulder) + 0.85 * SUN_COL.rgb * band * sh * (0.55 + 0.45 * shoulder) + lamp + rim);
     c = lerp(dot(c, float3(0.3, 0.59, 0.11)) * float3(1.08, 0.94, 0.72), c, 0.62 + 0.38 * CHAR_FILL.w) * lerp(float3(1.02, 0.93, 0.76), 1, CHAR_FILL.w);  // w: a level whose characters are pure paint keeps it
     // The tone curve compresses highlights, so cream and white paint came out grey at about 190 of HD's 230
-    // while dark fur matched. Pale paint keeps its colour, shaded by the same light; dark paint is left alone.
+    // while dark fur matched. Pale paint keeps its colour, shaded by the same light but only lightly, like HD's cartoon
+    // shade (a deeper one put Taz's face in the Taz hub's shade at 175 of HD's 230); dark paint is left alone.
     float pale = smoothstep(0.2, 0.45, dot(albedo, float3(0.3, 0.59, 0.11)));
-    float3 lit = albedo * lerp(0.62, 1, band * sh) * saturate(0.85 + 0.3 * shoulder);
-    // Capped so each level's bloom adds the same small glow to a pale face, whatever its threshold and strength.
-    float3 h = held_by(min(lit, 0.68), CHAR_HOLD.x, CHAR_HOLD.y);
-    h *= min(1, CHAR_HOLD.z / max(max(h.r, max(h.g, h.b)), 0.0001));
-    h = lerp(dot(h, float3(0.3, 0.59, 0.11)), h, CHAR_HOLD.w);  // the grade's saturation comes later
+    float3 lit = albedo * lerp(0.85, 1, band * sh);
+    lit *= min(1, 0.8 / max(max(lit.r, max(lit.g, lit.b)), 0.0001));  // keeps the hue where white would clip
+    float3 h = held_by(lit, CHAR_HOLD.x, CHAR_HOLD.y);  // characters stay out of the bloom (hd_post)
     c = lerp(c, h + albedo * lamp * 0.7, pale);
     float nh = saturate(dot(n, normalize(v + SUN.xyz)));
     float gloss = nh * nh; gloss *= gloss; gloss *= gloss; gloss *= gloss; gloss *= gloss; gloss *= gloss;   // ^64
