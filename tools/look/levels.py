@@ -162,7 +162,7 @@ TAZHUB_DETAIL = [
     ("tazhub/textures/tazmill*", "d_stone"), ("tazhub/textures/taznest01", "d_bark"),
 ]
 TAZHUB_TILES = {
-    "d_rock": dict(set="rock061", period=3.0, px=1024, detail=0.7, triplanar=True, rough=0.85),
+    "d_rock": dict(set="rock061", period=3.0, px=1024, detail=0.4, triplanar=True, rough=0.85),
     "d_stone": dict(set="old_sandstone", period=2.6, px=1024, detail=0.45, triplanar=True, rough=0.8),
     "d_bark": dict(set="bark", period=1.6, px=1024, detail=0.45, triplanar=True, rough=0.75, normal=0.7),
 }
@@ -468,7 +468,7 @@ LEVELS = {
                    captures=("planet/world-hero.bin", "planet/world-sweep-a.bin", "planet/world-sweep-b.bin"),
                    materials=tuple(TAZHUB_TILES) + ("lawn", "dirt", "water", "water_bed", "foam", "grass", "flat", "flat_wind"),
                    tiles=TAZHUB_TILES, detail=TAZHUB_DETAIL, fog_color="#7fc4f4",
-                   tints={"dirt": (1.5, 1.05, 0.62), "lawn": (0.32, 1.6, 0.3), "grass": (0.95, 1.5, 0.5)}, night_sky=False, sky_gain=1.25, unbake=1.0, triplanar=("lawn",),
+                   tints={"dirt": (1.5, 1.05, 0.62), "lawn": (0.32, 1.6, 0.3), "grass": (0.95, 1.5, 0.5), "water_bed": (0.85, 0.6, 0.42)}, night_sky=False, sky_gain=1.25, unbake=1.0, triplanar=("lawn",), water_flat=True, water_clarity=0.35, foam=0, water_walls=False,
                    binds={"ground": (("lawn", 0, 0.0, 1.0), ("dirt", 1, -0.14, -0.05)), "painted_lawn": (("lawn", 3, 0.085, 0.045),), "rock_lawn": (("lawn", 1, 0.0, -0.1),)}),
     "icedome": dict(scene=4, pak="icedome", blend="zoo-levels/icedome/icedome.blend", out="zoo-levels/icedome/pass1", rules=ICE_RULES, hand=ICE_HAND,
                     look=ICE_LOOK, hdri=None, hdri_rotation=0.0, hub=(-71.0, -58.0, 71.0, 50.0), sky_panels=True, clutter=False,
