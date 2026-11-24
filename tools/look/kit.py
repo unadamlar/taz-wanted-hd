@@ -1886,7 +1886,7 @@ def scatter_grass(objects, scale=1.0, *, select_roles=("lawn", "cliff_top"), rol
                   density=110.0, height=(0.12, 0.34), edge_width=0.3, edge_noise=0.8,
                   spill_roles=("dirt",), spill=0.5, flowers=0.05, weeds=0.025,
                   region=None, lod_origin=None, lod_dist=14.0, blockers=None, seed=1, name="kit_grass",
-                  points=None, exclude=None):
+                  points=None, exclude=None, blades=11, blade_width=0.085):
     """Grass tufts + flowers + broad weeds on faces with the given roles.
     points=(P, N, hmul) skips the sampling (caller decides where grass grows);
     exclude=[(lo, hi), ...] world boxes kept clear (gameplay objects).
@@ -1899,7 +1899,7 @@ def scatter_grass(objects, scale=1.0, *, select_roles=("lawn", "cliff_top"), rol
     if points is not None:
         P, N, hmul = points
         return _grass_from_points(P, N, hmul, scale, rng, height, flowers, weeds, lod_origin, lod_dist, blockers,
-                                  exclude, seed, name)
+                                  exclude, seed, name, blades, blade_width)
     sel = _sel_roles(select_roles, roles, top_only=True)
     P, N = sample_surface(objects, sel, density / s2, seed, region)
     segs = boundary_segments(objects, sel)
@@ -1921,7 +1921,7 @@ def scatter_grass(objects, scale=1.0, *, select_roles=("lawn", "cliff_top"), rol
         hmul = np.concatenate([hmul, 0.35 + 0.3 * np.clip(1 - ds / spill, 0, 1)])
     P, N, hmul = P[keep], N[keep], hmul[keep]
     return _grass_from_points(P, N, hmul, scale, rng, height, flowers, weeds, lod_origin, lod_dist, blockers,
-                              exclude, seed, name)
+                              exclude, seed, name, blades, blade_width)
 
 
 def outside_boxes(P, boxes, pad=0.0):
@@ -1932,7 +1932,7 @@ def outside_boxes(P, boxes, pad=0.0):
     return k
 
 
-def _grass_from_points(P, N, hmul, scale, rng, height, flowers, weeds, lod_origin, lod_dist, blockers, exclude, seed, name):
+def _grass_from_points(P, N, hmul, scale, rng, height, flowers, weeds, lod_origin, lod_dist, blockers, exclude, seed, name, blades=11, blade_width=0.085):
     if exclude:
         k = outside_boxes(P, exclude, 0.35 * scale)
         P, N, hmul = P[k], N[k], hmul[k]
@@ -1973,7 +1973,7 @@ def _grass_from_points(P, N, hmul, scale, rng, height, flowers, weeds, lod_origi
     fpick = np.concatenate(fpick) if fpick else np.zeros(0, int)
 
     gm = _grass_blade_mat(scale)
-    vg = _variants("kit_v_grass", [_tuft_mesh(f"kit_tuft_{i}", np.random.default_rng(100 + i), gm) for i in range(8)])
+    vg = _variants("kit_v_grass", [_tuft_mesh(f"kit_tuft_{i}", np.random.default_rng(100 + i), gm, blades, width=blade_width) for i in range(8)])
     pink, white, blue = _flat("kit_petal_pink", "#f39ac2", 0.6), _flat("kit_petal_white", "#f7f4ee", 0.6), _flat("kit_petal_blue", "#7fa6f0", 0.6)
     stem, ctr = _flat("kit_stem", "#3f7a24", 0.8), _flat("kit_flower_center", "#f2c43a", 0.6)
     vf = _variants("kit_v_flower", [_flower_mesh(f"kit_flower_{i}", np.random.default_rng(200 + i), m, stem, ctr)

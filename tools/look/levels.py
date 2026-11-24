@@ -463,7 +463,7 @@ LEVELS = {
                     tints={"lawn": (0.16, 1.45, 0.4), "red_ground": (1.45, 1.2, 1.2)}, binds={"ground": (("lawn", 0, 0.0, 1.0), ("red_ground", 1, -0.14, -0.05))},
                     grass_opts=dict(height=(0.09, 0.22), flowers=0.0, weeds=0.0), dome="dome", space=PLANET_SPACE, flats={"hull": ((3.2, 3.2, 3.25), 0.42)}, hold=1.0, contrast=1.0, bloom_threshold=25.0, char_fill=(0.16, 0.16, 0.22)),
     "tazhub": dict(scene=18, pak="tazhub", blend="tazhub/tazhub.blend", out="tazhub/pass1", rules=TAZHUB_RULES, hand=TAZHUB_HAND, look=TAZHUB_LOOK,
-                   hdri=None, hdri_rotation=0.0, hub=(-125.0, -60.0, 140.0, 60.0), sky_panels=True, clutter=False, grass_density=70.0,
+                   hdri=None, hdri_rotation=0.0, hub=(-125.0, -60.0, 140.0, 60.0), sky_panels=True, clutter=False, grass_density=28.0, grass_opts=dict(blades=6, blade_width=0.12),
                    captures=("planet/world-hero.bin", "planet/world-sweep-a.bin", "planet/world-sweep-b.bin"),
                    materials=tuple(TAZHUB_TILES) + ("lawn", "dirt", "water", "water_bed", "foam", "grass", "flat", "flat_wind"),
                    tiles=TAZHUB_TILES, detail=TAZHUB_DETAIL, fog_color="#7fc4f4",
