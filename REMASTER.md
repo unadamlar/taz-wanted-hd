@@ -229,14 +229,15 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
 - Tazboss2: one crash on entry through the test trigger (jump to 0x01000006). The game's set-texture function (0x5737d0) called the callback of a texture
   record whose memory had been freed and reused, from its flat 2D quad drawer (FUN_004dd8f0, used by the map screen and map preview). Not repeated in 21
   entries; the mod's code paths don't touch the game's texture records (read from code, not tested). Likely the known boss-intro test-trigger crash.
+- Costume pieces the game attaches to characters (helmets, hats, the skateboard) now take the character paint (2026-11-25): tazboss2 helmet 204,32,34
+  against HD 221,33,33 (was 216,56,45). Only Taz's four costumes and the canyon cowboy hat were looked at; other characters' attached pieces were not.
 - Boss levels set themselves up on the first frame of play, and their cleanup assumes that ran. Leaving with the QA scene trigger from a rules page
   before pressing Jump therefore crashes: westboss at taz.exe+0x15f785 (null marker arrow), zoo boss after a Continue at taz.exe+0x9abae (stale freed
   camera case at 0x736374). A second entry after such an exit crashes on a freed texture in the 2D quad drawer, probably the same family. Players can't
   reach it: Escape does nothing on rules pages, setup runs within 0.25 s of Jump, and a quicksave from a rules page is refused once play starts.
-  Clean: 11 zoo boss F5/F9-then-exit runs over 3 processes, 2 Taz boss 1, 2 city boss, 15 westboss real exits. Rig workaround: press Jump first.
+  Clean: 11 zoo boss F5/F9-then-exit runs over 3 processes, 2 Taz boss 1, 2 city boss, 15 westboss real exits. The QA trigger now waits until the level is in play (`qa/s4.sh scene` presses Jump while it waits); 5 westboss and 6 zoo boss trigger exits from rules pages were clean after it.
   The city boss trigger entry crashes at taz.exe+0x1140a6; enter it the game's way. One d3d9.dll crash during a zoo boss Continue reload (5th visit
   in one process) did not repeat. Notes: `extracted/look/reports/step7/cutscenes/notes.md`.
-- Bright saturated character paint (Daffy's bill, Sam's yellow shirt, Taz's helmet) leans orange and loses saturation through the pale-paint hold.
 - A 240-frame full-size screenshot burst crashed in d3d9.dll after 156 frames (`extracted/look/reports/step7/tazhub/burst-crash-taz-hd.log`). Smaller bursts are fine.
 - Test-camera shots differ between runs where the game places sprites on screen from its real camera (the safari waterfall's splash, a pink sprite in zoo-b).
 - Test runs load any shader files left in `taz-hd\shaders` over the built-in ones. `qa/fast.sh start` now clears them.
