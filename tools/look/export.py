@@ -1079,7 +1079,7 @@ if cfg["cards"] or cfg["soft"]:
     label_of = lambda h: next((l for l in labels[h] if l in known), None)  # None: a texture from another pak, left as the game's draw
     solid_tex = {h: label_of(h) is not None and game_rgba(label_of(h))[..., 3].mean() > 0.98 for h in {d[0] for ds in found.values() for d in ds}}
     for keys, ds in sorted(found.items(), key=lambda kv: -len(kv[0])):  # a sweep frame can hold part of a model
-        ds = [d for d in ds if d[0] in card_h or solid_tex[d[0]]]  # see-through parts stay the game's own draws
+        ds = [d for d in ds if (d[0] in card_h and label_of(d[0])) or solid_tex[d[0]]]  # see-through parts, and another pak's copies, stay the game's own draws
         auto = [d for d in ds if cfg["cards"].get(label_of(d[0]), {}).get("auto")]
         if auto:  # faces of a modelled object (a box, a signal) drawn one by one: joined across draws they face 3+ ways
             tp = [solid.triangles(d[2], d[3], d[4])[0] for d in auto]
