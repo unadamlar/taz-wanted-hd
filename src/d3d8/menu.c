@@ -141,9 +141,22 @@ static void *__attribute__((thiscall)) options_rows(void *page, int string_id, i
     return unused_item;
 }
 
+// Our rows push Exit Game down to where its "Are you sure" prompt opens, so that row is not drawn while the
+// prompt is up. Text items share one method table; slot 18 draws one.
+#define TEXT_DRAW ((void **)0x5f749c + 18)
+static void (__attribute__((thiscall)) *draw_text)(void *item);
+static void *exit_item, *exit_page;
+
+static void __attribute__((thiscall)) text_draw(void *item)
+{
+    if (item != exit_item || !PAUSE_POPUP || *(void **)((BYTE *)exit_page + 0x130) != item) draw_text(item);
+}
+
 static void *__attribute__((thiscall)) pause_rows(void *page, void *exit_game, int new_row)
 {
     add_rows(&pause_menu, page, pause_callback);
+    if (!draw_text && *TEXT_DRAW == (void *)0x542590) patch(TEXT_DRAW, text_draw, (void **)&draw_text);
+    exit_item = exit_game, exit_page = page;
     return ADD_ITEM(page, exit_game, new_row);
 }
 
