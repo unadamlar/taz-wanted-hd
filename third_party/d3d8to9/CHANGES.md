@@ -13,3 +13,5 @@ Only the files that are built are kept. Compiled into the mod's `d3d8.dll` (see 
 - State blocks now save and restore what the wrapper tracks itself (current vertex/pixel shader handle, base vertex index).
   Upstream left `GetVertexShader` returning the shader of the last `SetVertexShader` after an Apply. `Reset` clears them.
 - `SetVertexShader` refuses a deleted handle, as Direct3D 8 does; upstream followed the freed pointer.
+- `SetVertexShader` with an FVF code keeps that code as the current handle, so `GetVertexShader` answers without asking
+  Direct3D 9 (whose bound shader the mod may have swapped for its own between draws).

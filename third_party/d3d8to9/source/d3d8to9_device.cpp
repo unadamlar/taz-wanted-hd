@@ -1518,9 +1518,9 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::SetVertexShader(DWORD Handle)
 		hr = ProxyInterface->SetFVF(Handle);
 
 		if (IsRecordingState)
-			RecordedState.VertexShader = 0, RecordedState.HasVertexShader = true;
+			RecordedState.VertexShader = Handle, RecordedState.HasVertexShader = true;
 		else
-			CurrentVertexShaderHandle = 0;
+			CurrentVertexShaderHandle = Handle;
 	}
 	else
 	{
