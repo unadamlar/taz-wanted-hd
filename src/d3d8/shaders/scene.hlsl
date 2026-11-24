@@ -268,12 +268,23 @@ float3 uv_normal(float3 n, float3 w, float2 uv)
     return normalize(t / scale * m.x - b / scale * m.y + n * m.z);
 }
 
-// The scene value the tone curve (post.hlsl film) turns into this colour.
-float3 held_by(float3 c, float exposure, float contrast)
+// The scene value the tone curve (post.hlsl film) turns into this display value, per channel.
+float3 unfilm(float3 d, float contrast)
 {
-    float3 s = clamp(pow(saturate(to_gamma(c)), 1 / contrast) - 0.5, -0.47, 0.44);
+    float3 s = clamp(pow(saturate(d), 1 / contrast) - 0.5, -0.47, 0.44);
     float3 x = s / sqrt(1 - 4 * s * s) / 2.4 + 0.606;
-    return 0.18 * pow(2, 16.5 * x - 10) / exposure;
+    return 0.18 * pow(2, 16.5 * x - 10);
+}
+
+float3 held_by(float3 c, float exposure, float contrast) { return unfilm(to_gamma(c), contrast) / exposure; }
+
+// The same with the grade's saturation undone too, so saturated paint keeps its hue and saturation (post.hlsl ps_final
+// skips the world's desaturation and orange lean on characters).
+float3 held_paint(float3 c, float exposure, float contrast, float sat)
+{
+    float3 d = saturate(to_gamma(c));
+    float l = dot(d, float3(0.2126, 0.7152, 0.0722));
+    return unfilm(l + (d - l) / sat, contrast) / exposure;
 }
 
 float3 held(float3 c) { return held_by(c, HOLD.y, HOLD.z); }
@@ -498,7 +509,7 @@ struct CharIn { float2 uv : TEXCOORD0; float3 w : TEXCOORD2; float3 n : TEXCOORD
 float4 CHAR_LIGHT[4] : register(c26);  // the two nearest lamps: position, 1 / r^2; colour
 float4 CHAR_STYLE    : register(c31);  // shading band offset, slope, fur strength, highlight
 sampler2D FUR : register(s5);
-float4 CHAR_HOLD     : register(c34);  // exposure, contrast: pale paint keeps its colour through the tone curve
+float4 CHAR_HOLD     : register(c34);  // exposure, contrast, saturation of the final pass: pale paint keeps its colour through it
 float4 CHAR_FILL     : register(c30);  // keeps characters readable away from the lamps of a night level
 
 float4 ps_char(CharIn i) : COLOR
@@ -546,12 +557,13 @@ float4 ps_char(CharIn i) : COLOR
     c = lerp(dot(c, float3(0.3, 0.59, 0.11)) * float3(1.08, 0.94, 0.72), c, 0.62 + 0.38 * CHAR_FILL.w) * lerp(float3(1.02, 0.93, 0.76), 1, CHAR_FILL.w);  // w: a level whose characters are pure paint keeps it
     // The tone curve compresses highlights, so cream and white paint came out grey at about 190 of HD's 230
     // while dark fur matched. Pale paint keeps its colour, shaded by the same light but only lightly, like HD's cartoon
-    // shade (a deeper one put Taz's face in the Taz hub's shade at 175 of HD's 230); dark paint is left alone.
-    float pale = smoothstep(0.2, 0.45, dot(albedo, float3(0.3, 0.59, 0.11)));
+    // shade (a deeper one put Taz's face in the Taz hub's shade at 175 of HD's 230). Bright saturated paint (Sam's red,
+    // Daffy's bill) is held too, keeping its hue; dark paint is left alone.
+    float pale = max(smoothstep(0.2, 0.45, dot(albedo, float3(0.3, 0.59, 0.11))), smoothstep(0.3, 0.6, max(albedo.r, max(albedo.g, albedo.b))));
     float3 lit = albedo * lerp(0.85, 1, band * sh);
     lit *= min(1, 0.8 / max(max(lit.r, max(lit.g, lit.b)), 0.0001));  // keeps the hue where white would clip
-    float3 h = held_by(lit, CHAR_HOLD.x, CHAR_HOLD.y);  // characters stay out of the bloom (hd_post)
-    c = lerp(c, h + albedo * lamp * 0.7, pale);
+    float3 h = held_paint(lit, CHAR_HOLD.x, CHAR_HOLD.y, CHAR_HOLD.z);  // characters stay out of the bloom (hd_post)
+    c = lerp(lerp(dot(c, float3(0.2126, 0.7152, 0.0722)), c, 0.86), h + albedo * lamp * 0.7, pale);  // the film's desaturation, which post.hlsl leaves to us
     float nh = saturate(dot(n, normalize(v + SUN.xyz)));
     float gloss = nh * nh; gloss *= gloss; gloss *= gloss; gloss *= gloss; gloss *= gloss; gloss *= gloss;   // ^64
     c += CHAR_STYLE.w * gloss * sh * saturate(1 - dot(tex.rgb, 0.45)) * (SUN_COL.rgb + CHAR_FILL.rgb);       // on dark paint: eyes, nose

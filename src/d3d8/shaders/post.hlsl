@@ -53,11 +53,11 @@ float4 ps_up(Quad i) : COLOR
 }
 
 // Filmic curve on log exposure: a sigmoid around mid grey (0.18 -> 0.5), so highlights roll off per channel and
-// keep their hue. Output is display-encoded.
-float3 film(float3 c)
+// keep their hue. Output is display-encoded. The world is desaturated a little first; characters (alpha 0) are not.
+float3 film(float3 c, float world)
 {
     float l = dot(c, float3(0.2126, 0.7152, 0.0722));
-    c = lerp(l, c, 0.86);
+    c = lerp(l, c, 1 - 0.14 * world);
     float3 x = saturate((log2(max(c, 0.0001) / 0.18) + 10) / 16.5) - 0.606;
     float3 k = 2.4 * x;
     float3 y = 0.5 + k / sqrt(1 + 4 * k * k);
@@ -67,9 +67,10 @@ float3 film(float3 c)
 float4 ps_final(Quad i) : COLOR
 {
     float3 glow = tex2D(SRC2, i.uv).rgb * BLOOM.z;
-    float3 c = lerp(decode(tex2D(SRC, i.uv).rgb) * BLOOM.w + glow, glow, GRADE.z);
-    c = pow(film(c), GRADE.y);
-    c.g = lerp(c.g, c.r, 0.07);  // strong reds lean to orange, as in the Blender look
+    float4 s = tex2D(SRC, i.uv);
+    float3 c = lerp(decode(s.rgb) * BLOOM.w + glow, glow, GRADE.z);
+    c = pow(film(c, s.a), GRADE.y);
+    c.g = lerp(c.g, c.r, 0.07 * s.a);  // the world's strong reds lean to orange, as in the Blender look; characters keep HD's
     float l = dot(c, float3(0.2126, 0.7152, 0.0722));
     return float4(saturate(lerp(l, c, GRADE.x)) * (1 - GRADE.w), 1);
 }
