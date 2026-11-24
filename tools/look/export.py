@@ -1074,7 +1074,7 @@ if cfg["cards"] or cfg["soft"]:
     for l, h in tex_hash.items():
         labels[h].append(l)
     known = {dress.base_name(m.name.split(":", 1)[1]) for m in bpy.data.materials if m.name.startswith(("lit:", "lit+:"))}
-    soft_h = {tex_hash[l] for l in cfg["soft"]}
+    soft_h = {tex_hash[l] for l in cfg["soft"] if l in tex_hash}  # a bonus level may lack its twin's props
     found = solid.models(solid.capture(captures, card_h | soft_h, soft_h), card_h)
     label_of = lambda h: next((l for l in labels[h] if l in known), None)  # None: a texture from another pak, left as the game's draw
     solid_tex = {h: label_of(h) is not None and game_rgba(label_of(h))[..., 3].mean() > 0.98 for h in {d[0] for ds in found.values() for d in ds}}
