@@ -651,7 +651,7 @@ LEVELS = {
     "icedome": dict(scene=4, pak="icedome", blend="zoo-levels/icedome/icedome.blend", out="zoo-levels/icedome/pass1", rules=ICE_RULES, hand=ICE_HAND,
                     look=ICE_LOOK, hdri=None, hdri_rotation=0.0, hub=(-71.0, -58.0, 71.0, 50.0), sky_panels=True, clutter=False,
                     captures=("zoo-levels/icedome/world-hero.bin", "zoo-levels/icedome/world-sweep-a.bin", "zoo-levels/icedome/world-sweep-b.bin"),
-                    materials=tuple(ICE_TILES) + ("flat",), tiles=ICE_TILES, detail=ICE_DETAIL, fog_color="#cfe6fb",
+                    materials=tuple(ICE_TILES) + ("flat",), tiles=ICE_TILES, detail=ICE_DETAIL, fog_color="#cfe6fb", card_models=(("icedome/textures/snowbulbs*", "bulbs"),),
                     binds={"snow": (("d_ice", 4, -1.0, 0.0), ("snowfield", 3, 0.66, 0.82))},
                     lumps=dict(roles=("snow",), density=0.2, colour="#f4f9ff"), island_boxes=True, sky_gain=1.35, night_sky=False, ground_tint=(0.74, 0.67, 0.59), tints={"snowfield": (0.88, 0.9, 0.94)}),
     "safari": dict(scene=5, pak="safari", blend="zoo-levels/safari/safari.blend", out="zoo-levels/safari/pass1", rules=SAFARI_RULES, hand=SAFARI_HAND,

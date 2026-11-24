@@ -247,3 +247,16 @@ def cloth(u, v, size, along_u, top, folds, amp, steps=(24, 12)):
     I, J = np.mgrid[:steps[0] - 1, :steps[1] - 1]
     corner = ((I, J), (I + 1, J), (I + 1, J + 1), (I, J), (I + 1, J + 1), (I, J + 1))
     return np.stack([grid[i, j] for i, j in corner], 2).reshape(-1, 3), np.stack([nrm[i, j] for i, j in corner], 2).reshape(-1, 3)
+
+
+def bulb(centre, radius, colour, down=(0, -1.0, 0)):
+    """A round light bulb hanging from a wire: a glassy sphere with a dark socket on its wire side."""
+    d = np.asarray(down, float); d /= np.linalg.norm(d)
+    h = np.cross(d, [1.0, 0, 0]); h = h / np.linalg.norm(h) if np.linalg.norm(h) > 1e-6 else np.array([0, 0, 1.0])
+    v = np.cross(d, h)
+    th = np.linspace(0, np.pi, 7)[:, None]; ph = np.linspace(0, 2 * np.pi, 11)[None, :]
+    g = centre + radius * (np.cos(th)[..., None] * -d + (np.sin(th) * np.cos(ph))[..., None] * h + (np.sin(th) * np.sin(ph))[..., None] * v)
+    c = np.clip(np.asarray(colour, float) * (0.75 + 0.35 * np.cos(th / 2))[..., None], 0, 1) * np.ones(g.shape)
+    p, n = _tube(np.array([centre - d * radius * 0.7, centre - d * radius * 1.3]), np.array([radius * 0.45, radius * 0.4]), 6)
+    parts = [_sheet(g, c), (p, n, np.tile([0.12, 0.12, 0.13], (len(p), 1)))]
+    return _faces(*zip(*parts))
