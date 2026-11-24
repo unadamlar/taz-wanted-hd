@@ -766,3 +766,9 @@ def _bonus(twin, pak, scene, captures, first=(), **extra):
 
 LEVELS["vrgrandc"] = _bonus("grandc", "vrgrandc", 22, ("hero", "sweep-0"), first=[("vrgrandc/textures/goarrow*", "gameplay")],
                             hub=(-115.0, -174.0, 233.0, 75.0))
+_RACE_SIGNS = ("goarrow*", "tazstop*", "destructioncrate*")  # the bonus courses' own arrows, stop boards and smash crates: gameplay paint
+LEVELS["rcgoldmine"] = _bonus("goldmine", "rcgoldmine", 28, ("hero", "sweep-0", "sweep-1", "sweep-2"),
+                              first=[(f"rcgoldmine/textures/{p}", "gameplay") for p in _RACE_SIGNS], hub=(-50.0, -69.0, 50.0, 66.0))
+LEVELS["rcgoldmine"]["detail"] += [("rcgoldmine/textures/crystals", "d_gloss"), ("rcgoldmine/textures/spookhouse_wood", "d_plank"),
+                                   ("rcgoldmine/textures/loggin*", "d_plank")]
+LEVELS["rcgoldmine"]["glow"] += [("rcgoldmine/textures/minelights*", 2.0, (0.4, 0.7)), ("rcgoldmine/textures/crystals", 0.7, None)]
