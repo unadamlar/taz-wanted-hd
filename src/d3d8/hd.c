@@ -582,13 +582,6 @@ int hd_swapped(unsigned long long h, const float *at)
     return 0;
 }
 
-int hd_has_bind(unsigned long long h)
-{
-    for (UINT i = 0; i < nbinds; i++)
-        if (binds[i].hash == h) return 1;
-    return 0;
-}
-
 int hd_shade(unsigned long long h)
 {
     for (UINT i = nhides - nshades; i < nhides; i++)
