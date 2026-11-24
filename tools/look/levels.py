@@ -739,3 +739,71 @@ LEVELS = {
                      materials=tuple(TB2_TILES) + ("flat",), tiles=TB2_TILES, detail=TB2_DETAIL, glow=TB2_GLOW, fog_color="#7fc4f4",
                      hold=0.6, contrast=1.0, bloom_threshold=14.0, char_fill=(1.6, 1.75, 2.0), char_keep=0.4),
 }
+
+
+# ---- bonus levels (scenes 21-29): each is a story level's variant in its own pak. Its block is the twin's, with the twin's texture
+# paths pointed at the bonus pak; `first` adds rules ahead of the twin's (they win), anything else replaces the twin's value.
+def _bonus(twin, pak, scene, captures, first=(), **extra):
+    L, old = LEVELS[twin], LEVELS[twin]["pak"] + "/"
+    re = lambda p: pak + "/" + p[len(old):] if p.startswith(old) else p
+    B = dict(L, scene=scene, pak=pak, blend=f"westhub/bonus/s{scene}/{pak}.blend", out=f"westhub/bonus/s{scene}/pass1",
+             captures=tuple(f"westhub/bonus/s{scene}/world-{c}.bin" for c in captures), rules=list(first) + [(re(p), r) for p, r in L["rules"]])
+    for k in ("detail", "glow"):
+        if k in L:
+            B[k] = [(re(p), *rest) for p, *rest in L[k]]
+    for k in ("wire", "chain", "grill"):
+        if k in L:
+            B[k] = re(L[k])
+    if "trees" in L:
+        B["trees"] = tuple(re(p) for p in L["trees"])
+    if "solids" in L:
+        B["solids"] = dict(cards={re(p): v for p, v in L["solids"]["cards"].items()}, soft=tuple(re(p) for p in L["solids"]["soft"]))
+    if "relief" in L:
+        B["relief"] = dict(L["relief"], textures=tuple(re(p) for p in L["relief"]["textures"]))
+    B.update(extra)
+    return B
+
+
+LEVELS["vrgrandc"] = _bonus("grandc", "vrgrandc", 22, ("hero", "sweep-0"), first=[("vrgrandc/textures/goarrow*", "gameplay")],
+                            hub=(-115.0, -174.0, 233.0, 75.0))
+_RACE_SIGNS = ("goarrow*", "tazstop*", "destructioncrate*")  # the bonus courses' own arrows, stop boards and smash crates: gameplay paint
+LEVELS["rcgoldmine"] = _bonus("goldmine", "rcgoldmine", 28, ("hero", "sweep-0", "sweep-1", "sweep-2"),
+                              first=[(f"rcgoldmine/textures/{p}", "gameplay") for p in _RACE_SIGNS], hub=(-50.0, -69.0, 50.0, 66.0))
+LEVELS["rcgoldmine"]["detail"] += [("rcgoldmine/textures/crystals", "d_gloss"), ("rcgoldmine/textures/spookhouse_wood", "d_plank"),
+                                   ("rcgoldmine/textures/loggin*", "d_plank")]
+LEVELS["rcgoldmine"]["glow"] += [("rcgoldmine/textures/minelights*", 2.0, (0.4, 0.7)), ("rcgoldmine/textures/crystals", 0.7, None)]
+LEVELS["rcsafari"] = _bonus("safari", "rcsafari", 29, ("hero", "sweep-0", "sweep-1", "sweep-2"), hub=(-53.0, -61.0, 60.0, 60.0),
+                            first=[(f"rcsafari/textures/{p}", "gameplay") for p in _RACE_SIGNS] + [
+                                ("rcsafari/textures/sunsetwater", "water"), ("rcsafari/textures/grassblue*", "lawn"), ("rcsafari/textures/hubflowers04", "lawn"),
+                                ("rcsafari/textures/grassjoiner*", "ground"), ("rcsafari/textures/pathrock", "ground")], grass_density=24.0)
+LEVELS["rcicedome"] = _bonus("icedome", "rcicedome", 27, ("hero", "sweep-0", "sweep-1", "sweep-2"), hub=(-68.0, -53.0, 64.0, 39.0),
+                             first=[(f"rcicedome/textures/{p}", "gameplay") for p in _RACE_SIGNS])
+LEVELS["vrmuseum"] = _bonus("museum", "vrmuseum", 21, ("hero", "sweep-0", "sweep-1"), hub=(-14.0, -32.0, 20.0, 32.0),
+                            first=[(f"vrmuseum/textures/{p}", "gameplay") for p in _RACE_SIGNS],
+                            lamps=dict(DEPT_LAMPS, extra=room_lamps(((-3300, -7800, 4800, 7800, -2400, 2, 4),), 1400, 13.0, "#ffd9a8", 1.8)))
+LEVELS["vrdeptstr"] = _bonus("deptstr", "vrdeptstr", 23, ("hero", "sweep-0", "sweep-1"), hub=(-52.0, -38.0, 121.0, 52.0),
+                             first=[(f"vrdeptstr/textures/{p}", "gameplay") for p in _RACE_SIGNS])
+LEVELS["deaqua"] = _bonus("aqua", "deaqua", 24, ("hero", "sweep-0", "sweep-1", "sweep-2"), hub=(-93.0, -87.0, 93.0, 87.0),
+                          first=[(f"deaqua/textures/{p}", "gameplay") for p in _RACE_SIGNS + ("sign*",)])
+LEVELS["deaqua"]["detail"] += [("deaqua/textures/wash*", "d_gloss")]
+
+# ---- detasmania (scene 26): Tasmania under a blood-red spooky sky, smashing crates. No story twin: the Taz hub's rock and bark
+# over its own painted ground, lit warm-red from its painted sky.
+DETAS_RULES = [("resobjs/*", "gameplay"), ("detasmania/extras/*", "gameplay")] + [(f"detasmania/textures/{p}", "gameplay") for p in _RACE_SIGNS] + [
+    ("detasmania/textures/poof*", "ground"), ("detasmania/textures/mountaincloud*", "lit"), ("detasmania/skybox/*", "sky"), ("resTex/shadowsub", "hide")]
+DETAS_DETAIL = [(f"detasmania/textures/{p}", m) for p, m in (
+    ("spookyrock*", "d_cliff"), ("tazvolc*", "d_cliff"), ("loggin*", "d_bark"), ("oldwood*", "d_bark"), ("gh_*wood*", "d_bark"), ("tazwood*", "d_bark"),
+    ("saloonvara*", "d_bark"), ("spookytrack*", "d_bark"), ("gh_roof*", "d_stone"), ("ghwallpaper*", "d_stone"), ("grave*", "d_stone"))]
+DETAS_LOOK = dict(
+    sun=dict(sun_azimuth=200.0, sun_elevation=38.0, sun_strength=3.4, sun_color="#ffc8a8"),
+    grade=dict(exposure=0.35, look="AgX - Punchy", saturation=1.2, bloom=0.5, fog=0.06, fog_start=60.0, fog_depth=300.0, ambient_strength=1.0),
+    sky=dict(zenith="#600010", horizon="#ff3020", horizon_warm="#ff8060", sky_strength=1.0, cloud_white=0.6, ambient="#e0b0b8"), cliff=dict())
+LEVELS["detasmania"] = dict(scene=26, pak="detasmania", blend="westhub/bonus/s26/detasmania.blend", out="westhub/bonus/s26/pass1", rules=DETAS_RULES,
+                            hand=TAZHUB_HAND, look=DETAS_LOOK, hdri=None, hdri_rotation=0.0, hub=(-40.0, -20.0, 41.0, 63.0), sky_panels=True, night_sky=False,
+                            clutter_opts=dict(leaves=0.0, pebbles=4.0, stones=0.6), grass_min=2.0, island_boxes=True,
+                            captures=tuple(f"westhub/bonus/s26/world-{c}.bin" for c in ("hero", "sweep-0", "sweep-1", "sweep-2")),
+                            materials=tuple(TAZHUB_TILES) + ("flat",), tiles=TAZHUB_TILES, detail=DETAS_DETAIL, binds={"ground": (("d_stone", 4, -1.0, 0.0),)},
+                            fog_color="#a03030", ground_tint=(0.8, 0.5, 0.5), sky_gain=1.1, char_keep=1.0)  # the werewolf costume's pale blue went grey under the red light
+LEVELS["deconstruct"] = _bonus("contruct", "deconstruct", 25, ("hero", "sweep-0", "sweep-1", "sweep-2"), hub=(-80.0, -63.0, 108.0, 63.0),
+                               first=[(f"deconstruct/textures/{p}", "gameplay") for p in _RACE_SIGNS])
+LEVELS["deconstruct"]["glow"] += [("deconstruct/textures/lighthalo01", 1.6, None)]
