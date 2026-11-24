@@ -190,18 +190,22 @@ def _ribbed(path, radius, colour, ribs=14, depth=0.05, sides=42, cap=True):
     return _sheet(grid[:, ::-1], col)
 
 
-def saguaro(base, height, radius, colour, rng):
-    """A saguaro: a ribbed trunk with a domed top and one to three arms that bend upward."""
+def saguaro(base, height, radius, colour, rng, arms=None):
+    """A saguaro: a ribbed trunk with a domed top and arms that bend upward: one to three at random, or one per
+    (angle, height fraction, reach) in arms."""
     up = np.array([0, 1.0, 0])
     k = np.r_[np.linspace(0, 0.85, 12), 0.85 + 0.15 * np.sin(np.linspace(0, np.pi / 2, 9)[1:])]  # rings bunched into the domed top
     top = (k - 0.85) / 0.15
     prof = radius * np.where(k > 0.85, np.sqrt(np.clip(1 - top ** 2, 0.0, 1)), 1.0) * (1.04 - 0.08 * k)
     parts = [_ribbed(base + np.outer(k * height, up), prof, colour)]
-    for j in range(rng.integers(1, 4)):
-        a = rng.uniform(0, 2 * np.pi) if j == 0 else a + np.pi * rng.uniform(0.7, 1.3)
+    for j in range(rng.integers(1, 4) if arms is None else len(arms)):
+        if arms is None:
+            a = rng.uniform(0, 2 * np.pi) if j == 0 else a + np.pi * rng.uniform(0.7, 1.3)
+            y0, reach = height * rng.uniform(0.35, 0.6), radius * rng.uniform(1.8, 2.6)
+        else:
+            a, y0, reach = arms[j][0], height * arms[j][1], arms[j][2]
         out = np.array([np.cos(a), 0, np.sin(a)])
-        y0 = height * rng.uniform(0.35, 0.6)
-        reach, rise = radius * rng.uniform(1.8, 2.6), height * rng.uniform(0.25, 0.38)
+        rise = height * rng.uniform(0.25, 0.38)
         q = np.r_[np.linspace(0, 0.85, 12), 0.85 + 0.15 * np.sin(np.linspace(0, np.pi / 2, 7)[1:])]
         path = base + up * y0 + np.outer(np.minimum(q * 2, 1) * reach, out) + np.outer(np.clip(q * 1.6 - 0.45, 0, 1) ** 1.2 * rise + q * radius * 0.6, up)
         pr = radius * 0.62 * np.where(q > 0.85, np.sqrt(np.clip(1 - ((q - 0.85) / 0.15) ** 2, 0.0, 1)), 1.0)

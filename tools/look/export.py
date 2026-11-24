@@ -1017,7 +1017,18 @@ def cactus_geo(W, colour, rng, armed=False):
     base = c + up * h.min()
     green = np.clip(0.55 * np.asarray(colour) + 0.45 * np.array((0.22, 0.45, 0.18)), 0, 1)
     if armed:
-        p, n, col = props3d.saguaro(np.zeros(3), height, max(np.percentile(side, 10), height * 0.06), green, rng)  # most points are on the arms
+        trunk = max(np.percentile(side, 10), height * 0.06)  # most points are on the arms
+        far = side > 2.5 * trunk  # the model's own arms: one each side of the trunk, where they reach out
+        flat = (W - c) - np.outer(h, up)
+        arms = []
+        if far.sum() > 2:
+            ax_ = np.linalg.svd(flat[far], full_matrices=False)[2][0]
+            for sgn in (1, -1):
+                f_ = far & (sgn * (flat @ ax_) > 0)
+                if f_.any():
+                    d_ = flat[f_].mean(0)
+                    arms.append((np.arctan2(d_[2], d_[0]), np.clip((np.median(h[f_]) - h.min()) / height - 0.12, 0.3, 0.65), np.percentile(side[f_], 60) * 0.9))
+        p, n, col = props3d.saguaro(np.zeros(3), height, trunk, green, rng, arms or None)
     elif height > 2.2 * radius:
         p, n, col = props3d.saguaro(np.zeros(3), height, max(radius * 0.45, height * 0.08), green, rng)
     else:
