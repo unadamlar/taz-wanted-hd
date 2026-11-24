@@ -19,6 +19,10 @@
 #define KEYBOARD_DEFAULTS ((void (*)(BYTE *, int))0x48c100)
 #define CAMERA_CONTROL ((void (*)(void **))0x4e0f00)
 #define CAMERA_UPDATE ((void (*)(BYTE *))0x4dfef0)
+#define SPIT ((int (*)(BYTE *, int, int, int, int, float))0x47acd0) // launches what the actor carries along its facing
+#define MECHA_TWEETY (*(BYTE **)0x71f89c) // the last boss's actor
+#define BOSS_STATE (*(BYTE **)0x71f8a0)   // its fight's state; +0x30 is 1 in the first stage (not checked past it)
+#define ASSIST 0.21f // radians, about 12 degrees
 #define LINE_HITS ((BYTE (*)(void *, const float *, const float *))0x45e870) // level between two points?
 #define COLLISION_CACHE ((void *)0x7054e8)
 #define ARM_MARGIN 70.f         // kept between the camera and a wall (near plane is 50)
@@ -406,6 +410,31 @@ static float stick(float v)
     return m < 0.2f ? 0 : (v < 0 ? -1 : 1) * (m - 0.2f) / 0.8f;
 }
 
+// Turns an actor's facing by a radians about the vertical, both in its orientation (+0xe0) and in the
+// copy at (+0x1c0)+0x84 that the game eases it back to.
+static void turn_actor(BYTE *actor, float a)
+{
+    float *q[2] = { (float *)(actor + 0xe0), *(BYTE **)(actor + 0x1c0) ? (float *)(*(BYTE **)(actor + 0x1c0) + 0x84) : NULL };
+    float s = sinf(a / 2), c = cosf(a / 2);
+    for (int i = 0; i < 2 && q[i]; i++) {
+        float *p = q[i], x = p[0], y = p[1], z = p[2], w = p[3];
+        p[0] = c * x + s * z, p[1] = c * y + s * w, p[2] = c * z - s * x, p[3] = c * w - s * y;
+    }
+}
+
+// Aim assist (setting, off by default): in the last boss's first stage, a spit within ASSIST of Mecha-Tweety
+// is turned onto him. The later stages' targets are not handled.
+static int __cdecl spit(BYTE *actor, int a, int b, int c, int d, float speed)
+{
+    if (settings.aim_assist && SCENE == 0x14 && actor == PLAYER && MECHA_TWEETY && BOSS_STATE && *(int *)(BOSS_STATE + 0x30) == 1) {
+        const float *q = (const float *)(actor + 0xe0), *p = (const float *)(actor + 0xc0), *t = (const float *)(MECHA_TWEETY + 0xc0);
+        float fx = -2 * (q[0] * q[2] + q[3] * q[1]), fz = 2 * (q[0] * q[0] + q[1] * q[1]) - 1; // the model faces -z
+        float off = wrap(atan2f(t[0] - p[0], t[2] - p[2]) - atan2f(fx, fz));
+        if (fabsf(off) < ASSIST) turn_actor(actor, off);
+    }
+    return SPIT(actor, a, b, c, d, speed);
+}
+
 static void __cdecl camera_control(void **cc)
 {
     BYTE *cam = cc[1];
@@ -413,6 +442,9 @@ static void __cdecl camera_control(void **cc)
     camera_frame = now;
     int mouse = settings.wasd && settings.mouse && held, p1 = *(int *)((BYTE *)pad + 0x180) == 0;
     if (p1) tilt_cam = NULL, tilt_step = 0;
+    // The last boss's camera is fixed and Taz spits along his facing, which the keys set in 45-degree
+    // steps: there the mouse turns Taz while he stands.
+    if (p1 && mouse && SCENE == 0x14 && MOUSE_DX && !pad[2] && PLAYER) turn_actor(PLAYER, -MOUSE_DX * settings.mouse * 0.0003f); // right turns the aim to the right of the screen
     if (!p1 || (!mouse && xbox_pad() <= 0) || FPS <= 0) { // player 1 only
         CAMERA_CONTROL(cc);
         return;
@@ -590,4 +622,8 @@ void controls_patch(void)
     redirect_call((BYTE *)0x4a8687, CAMERA_UPDATE, camera_update);
     if (calls((BYTE *)0x568450, INIT_INPUT)) redirect_call((BYTE *)0x568450, INIT_INPUT, init_input);
     if (calls((BYTE *)0x568b25, READ_DEVICES)) redirect_call((BYTE *)0x568b25, READ_DEVICES, read_devices);
+    for (int i = 0; i < 2; i++) { // Taz's two spit calls
+        BYTE *at = (BYTE *)(i ? 0x482f67 : 0x4827c3);
+        if (calls(at, SPIT)) redirect_call(at, SPIT, spit);
+    }
 }

@@ -16,7 +16,7 @@ void textures_frame(void);
 void textures_dump_recent(void);
 void widescreen_patch(void);
 
-struct settings { int hd_textures, hd_models, vsync, antialiasing, fps_limit, smooth, wasd, mouse, draw; float menu_speed; int exe_known, passthrough, taz_style, tests; };
+struct settings { int hd_textures, hd_models, vsync, antialiasing, fps_limit, smooth, wasd, mouse, draw; float menu_speed; int exe_known, passthrough, taz_style, tests, aim_assist; };
 extern struct settings settings;
 void settings_load(void);
 void settings_frame(void);
