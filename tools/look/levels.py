@@ -807,3 +807,5 @@ LEVELS["detasmania"] = dict(scene=26, pak="detasmania", blend="westhub/bonus/s26
 LEVELS["deconstruct"] = _bonus("contruct", "deconstruct", 25, ("hero", "sweep-0", "sweep-1", "sweep-2"), hub=(-80.0, -63.0, 108.0, 63.0),
                                first=[(f"deconstruct/textures/{p}", "gameplay") for p in _RACE_SIGNS])
 LEVELS["deconstruct"]["glow"] += [("deconstruct/textures/lighthalo01", 1.6, None)]
+# Brighter than the tower, still night: at the tower's settings Taz read as a dark shape among the crates.
+LEVELS["deconstruct"].update(look=dict(CONS_LOOK, grade=dict(CONS_LOOK["grade"], exposure=0.63, ambient_strength=0.676)), char_fill=(0.8, 0.867, 1.067))
