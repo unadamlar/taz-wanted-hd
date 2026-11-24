@@ -212,6 +212,9 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
 - Main menu: the shore's orange looks salmon, the water is duller than the original, and the alarm clock and fridge are very bright.
 - Tazboss2: one Remaster frame showed Taz's helmeted head and claws without his body (2026-11-24, 4 s after entering). Not reproduced in ~80 same-moment
   pairs and three bursts; a probe saw the HD model drawn every frame. Cause unknown.
+- Tazboss2: one crash on entry through the test trigger (jump to 0x01000006). The game's set-texture function (0x5737d0) called the callback of a texture
+  record whose memory had been freed and reused, from its flat 2D quad drawer (FUN_004dd8f0, used by the map screen and map preview). Not repeated in 21
+  entries; the mod's code paths don't touch the game's texture records (read from code, not tested). Likely the known boss-intro test-trigger crash.
 - A 240-frame full-size screenshot burst crashed in d3d9.dll after 156 frames (`extracted/look/reports/step7/tazhub/burst-crash-taz-hd.log`). Smaller bursts are fine.
 - Test-camera shots differ between runs where the game places sprites on screen from its real camera (the safari waterfall's splash, a pink sprite in zoo-b).
 - Test runs load any shader files left in `taz-hd\shaders` over the built-in ones. `qa/fast.sh start` now clears them.
