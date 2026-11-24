@@ -213,6 +213,31 @@ DEPT_ROOMS = (
 DEPT_LAMPS = dict(color="#ffd9a8", power=0.0, radius=13.0, drop=0.7, cone=0.8, pool_power=0.0, pool_radius=8.0, pool_height=3.2, pool_cone=-0.2,
                   extra=room_lamps(DEPT_ROOMS, 1700, 13.0, "#ffd9a8", 2.1))
 
+# ---- museum (scene 10): the same night treatment and indoor recipe as the store, on three floors (100, 1900, 5000).
+MUSE_RULES = [
+    ("resobjs/*", "gameplay"), ("museum/extras/*", "gameplay"), ("museum/textures/tazbook*", "gameplay"), ("museum/textures/tazcage*", "gameplay"),
+    ("museum/textures/tazwanted", "gameplay"), ("museum/textures/tazanted02", "gameplay"), ("museum/textures/bombbit*", "transient"), ("resTex/shadowsub", "hide"),
+]
+MUSE_GLOW = [(f"museum/textures/{p}", g, r) for p, g, r in (
+    ("tvmuseum*", 0.8, None), ("tvsnow*", 0.8, None), ("tv", 0.8, None), ("compmont*", 0.7, None), ("light.frame*", 2.2, (0.45, 0.7)), ("lightbulbflashing*", 1.2, (0.5, 0.8)),
+    ("uplights", 1.2, (0.45, 0.7)), ("labtanklight", 1.8, None), ("lightstrip", 1.6, (0.45, 0.7)), ("window*", 0.5, (0.5, 0.8)),
+    ("removal_truck_lights", 1.8, None))]
+MUSE_DETAIL = [(f"museum/textures/{p}", m) for p, m in (
+    ("marbtiles*", "d_tile"), ("modfloor*", "d_tile"), ("woodfloor*", "d_tile"), ("ancientfloor*", "d_tile"), ("industfloor*", "d_tile"), ("haringfloor*", "d_tile"),
+    ("floorsteel*", "d_tile"), ("*carpet*", "d_wall"), ("marbwall*", "d_wall"), ("lightbluewall*", "d_wall"), ("yellowwall*", "d_wall"), ("modwall*", "d_wall"),
+    ("wall*", "d_wall"), ("pillar*", "d_wall"), ("fineartmarb*", "d_wall"), ("industwalls*", "d_wall"), ("industmarb*", "d_wall"), ("libarywall*", "d_wall"),
+    ("tornwallpaper*", "d_wall"), ("newmoneywall*", "d_wall"), ("roofpanels*", "d_wall"))]
+MUSE_ROOMS = (
+    (-15000, -8000, -11500, 1000, 100, 1, 3), (-11500, -8000, -3000, -5000, 100, 3, 1), (-10500, -2000, -6500, 1500, 100, 1, 1),  # west ring, octagon
+    (-13500, -4700, -9500, -2000, 100, 1, 1), (-7000, 1500, -5000, 4500, 100, 1, 1), (-5000, 5000, -3000, 9000, 100, 1, 1), (-4000, -9000, -1000, -5000, 100, 1, 1),
+    (1000, -13000, 5000, -2500, 1900, 1, 3), (-2000, 1000, 4000, 5000, 1900, 2, 1), (5000, -3500, 8000, -500, 1900, 1, 1), (6000, 2000, 9500, 6000, 1900, 1, 1),  # middle floor
+    (12500, -6000, 16500, 7000, 1900, 1, 3), (5000, -11000, 9500, -8000, 1900, 1, 1), (5000, 6500, 8000, 10000, 1900, 1, 1),
+    (-6000, 0, -500, 4000, 5000, 2, 1), (-1000, 2000, 2500, 5000, 5000, 1, 1), (3000, 0, 5500, 6000, 5000, 1, 2), (6000, 2000, 9500, 6000, 5000, 1, 1),  # top floor
+    (2000, 8000, 7000, 16000, 5000, 1, 2), (12500, -3000, 16500, 8000, 5000, 1, 3), (1000, -8000, 5000, -3000, 5000, 1, 1), (5000, -7500, 16000, -5000, 5000, 2, 1),
+)
+MUSE_LAMPS = dict(DEPT_LAMPS, extra=room_lamps(MUSE_ROOMS, 1400, 13.0, "#ffd9a8", 1.8))
+MUSE_HAND = dict(DEPT_HAND, camera_B=dict(loc=(12.0, -40.0, 11.0), look_at=(12.0, -20.0, 8.0), lens=16.0), camera_C=dict(loc=(-40.0, -20.0, 3.0), look_at=(-30.0, -5.0, 1.0), lens=16.0))
+
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
@@ -254,4 +279,8 @@ LEVELS = {
                     look=DEPT_LOOK, hdri=None, hdri_rotation=0.0, hub=(-90.0, -44.0, 162.0, 53.0), game_sky=True, clutter=False,
                     materials=tuple(DEPT_TILES) + ("flat",), tiles=DEPT_TILES, detail=DEPT_DETAIL, tints={"d_tile": (1.5, 1.5, 1.58)}, captures=("city-levels/deptstr/world-hero.bin", "city-levels/deptstr/world-sweep.bin"),
                     fog_color="#20366f", glow=DEPT_GLOW, lamps=DEPT_LAMPS, unbake=0.5, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
+    "museum": dict(scene=10, pak="museum", blend="city-levels/museum/museum.blend", out="city-levels/museum/pass1", rules=MUSE_RULES, hand=MUSE_HAND,
+                   look=DEPT_LOOK, hdri=None, hdri_rotation=0.0, hub=(-79.0, -68.0, 79.0, 68.0), game_sky=True, clutter=False,
+                   materials=tuple(DEPT_TILES) + ("flat",), tiles=DEPT_TILES, detail=MUSE_DETAIL, tints={"d_tile": (1.5, 1.5, 1.58)},
+                   captures=("city-levels/museum/world-hero.bin",), fog_color="#20366f", glow=MUSE_GLOW, lamps=MUSE_LAMPS, unbake=0.5, sky_gain=2.4, char_fill=(0.24, 0.26, 0.32)),
 }
