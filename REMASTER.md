@@ -196,7 +196,7 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
    grass, hidden pickups, the camera passing through trees and fences, level transitions, quickload.
 4. (Done 2026-11-22) Second level (city hub, scene 8) to prove what carries over; measure hand work per level.
 5. (Done 2026-11-22) More zoo hub art: sharper cliffs, buildings, the elephant, painted leftovers (zigzag moat bank, barbed wire).
-6. (Done 2026-11-25) Rollout to all levels, screens and cutscenes; optimization pass. Still the user's call: whether to split into its own repo.
+6. (Done 2026-11-25) Rollout to all levels, screens and cutscenes; optimization pass. The Remaster stays in this repo (user, 2026-11-25).
 
 ## Known problems
 
