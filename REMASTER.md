@@ -106,6 +106,11 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
 - For the user to judge in the west: the game's painted canyon stripes are kept on its own shapes. The zoo's rebuilt 3D rock would add depth but replace them,
   and the choice carries to ghost town, goldmine, Grand Canyon and westboss.
 - For the user to judge in the city levels: real paint replaces baked colour (store's blue, museum's pink floor, construction huts teal to yellow).
+- Optimization pass (2026-11-25): most levels run 1.3-2x faster uncapped at 2880x1800 with 4x MSAA, look code 0.5-2.5 ms a frame (was 3-7), no intended
+  look change. The zoo and city hubs are now limited by the GPU (grass is about 1.75 ms there); most other levels by the game's thread. Tables and the
+  profiling patch: `extracted/look/reports/step7/optim/`. Not measured: main menu, Planet X, zoo boss and ice dome (their state changed between runs).
+  For the user to decide: lower-resolution AO or bloom (0.3-0.5 ms GPU, changes the picture); drawing the sky after the world (most of 0.34 ms GPU,
+  changes draw order against the game's own backdrops).
 
 ## How the pieces fit
 
