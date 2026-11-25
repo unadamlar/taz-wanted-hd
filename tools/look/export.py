@@ -1440,6 +1440,93 @@ if cfg["cards"] or cfg["soft"]:
         for d in ds:
             solids.setdefault((solid.key_of(d[4]), d[0]), pi)  # the same model can come in several paints
 
+FLAT2_UP = {"spike": 1.01, "grille": 1.01, "lip": 0.5}  # how much of a card may face up and still count
+PER_CARD = ("icicles", "grille", "lip")  # kinds built card by card, not one model per cluster
+
+
+def flat2_keep(kind, t):
+    """Pieces a kind can rebuild; the rest stay the game's cards: grilles want whole uv rectangles, lips the full band."""
+    du = t[1].reshape(-1, 2)
+    if kind == "lip":
+        return np.ptp(du[:, 1]) > 0.8
+    if kind == "grille":
+        lo, hi = du.min(0), du.max(0)
+        return len(t[0]) == 2 and all(any(np.allclose(q, [x, y], atol=1e-3) for q in du) for x in (lo[0], hi[0]) for y in (lo[1], hi[1]))
+    return True
+
+
+_lips = set()
+
+
+def flat2_geo(kind, T, labs, rng, c, lit):
+    """Reimagined 3D for the flat2 kinds: star plants (one per placed plant), mesh grilles and walkway lips (per card)."""
+    rgba = game_rgba(labs[0])
+    if kind == "spike":
+        c = 0.78 * (0.85 * c + 0.15 * c.mean())  # the grade's saturation and light turned the full paint hot pink
+        pieces = [(dp, du, dc) for dp, du, dc in T if solid.card_pieces(dp, du) and len(solid.card_pieces(dp, du)) == 1 and np.ptp(du.reshape(-1, 2), 0).min() > 0.9]
+        if len(pieces) < len(T):  # cards bent into tiers: a stacked plant on the cards' footprint
+            W = np.concatenate([t[0].reshape(-1, 3) for t in T])
+            base, height, _ = props3d.footprint(W)
+            return props3d.starbush(base, height, 0.5 * np.ptp(W[:, [0, 2]], 0).max(), c, rng)
+        got = []
+        for dp, du, dc in pieces:  # loose star cards: a thick cupped star on each
+            size = solid.repeat_size(dp, du)
+            h_, v_ = solid.uv_axes(dp, du)
+            flip = -1 if np.cross(h_, v_)[1] < 0 else 1
+            R = 0.48 * min(size)
+            P, N, C = props3d.star_layer(np.zeros(3), np.array([0, 0, 1.0]), np.array([1.0, 0, 0]), np.array([0, 1.0, 0]), R, -0.14 * R, c,
+                                         curl=0.18, thick=0.1, phase=rng.uniform(0, 2 * np.pi))
+            u0 = np.floor(du.reshape(-1, 2).min(0) + 1e-6)
+            Q = np.c_[u0[0] + 0.5 + P[:, 0] / size[0], u0[1] + 0.5 + P[:, 1] / size[1], flip * P[:, 2]]
+            q = solid.on_card(np.r_[Q, [[2.0, 0, 0]]], np.r_[N * [1, 1, flip], [[0, 0, 1.0]]], dp, du, dc, size)
+            got.append((q[0][:-1], q[1][:-1], C))
+        return [np.concatenate(x) for x in zip(*got)] if got else None
+    a = rgba[..., 3] > 0.5
+    h, w = a.shape
+    got = []
+    for dp, du, dc in T:
+        size = solid.repeat_size(dp, du)
+        fu = du.reshape(-1, 2)
+        if kind == "grille":
+            u0, v0 = np.floor(fu.min(0) + 1e-6)
+            lo, hi = fu.min(0) - [u0, v0], fu.max(0) - [u0, v0]
+            mid = a[h // 2]
+            fw = int(np.argmin(mid)) if not mid.all() else w // 10  # the frame: solid paint from the edge in
+            runs = np.flatnonzero(np.diff(np.r_[0, mid[fw:w - fw].astype(int), 0]))
+            starts, ends = runs[::2] + fw, runs[1::2] + fw
+            pitch = np.median(np.diff((starts + ends) / 2)) if len(starts) > 2 else w / 6
+            inner = rgba[fw:h - fw, fw:w - fw]
+            bar = pitch * (1 - np.sqrt(1 - min((inner[..., 3] > 0.5).mean(), 0.95))) / np.sqrt(2)  # two crossing families of bars cover this share
+            frame_col = np.median(np.r_[rgba[:fw // 2].reshape(-1, 4), rgba[:, :fw // 2].reshape(-1, 4)][:, :3], 0)
+            q = inner[inner[..., 3] > 0.5][:, :3]
+            wire_col = np.median(q[q.sum(1) >= np.median(q.sum(1))], 0)  # the wires' face, not their dark outline
+            px = size[0] / w
+            geo = props3d.grille((lo[0] * size[0], hi[0] * size[0], lo[1] * size[1], hi[1] * size[1]), size, fw * px, pitch * px, max(bar * px, 3.0),
+                                 ((starts[0] + ends[0]) / 2 if len(starts) else w / 2) * px, np.clip(frame_col, 0, 1), np.clip(wire_col, 0, 1))  # the paint itself: lit by the baked light it read khaki
+            if geo is None:
+                continue
+            P, N, C = geo
+            Q = np.c_[u0 + P[:, 0] / size[0], v0 + P[:, 1] / size[1], P[:, 2]]
+        else:  # lip: rail up top, a panel with lit channels where the paint has its see-through slot
+            v_ = solid.uv_axes(dp, du)[1]
+            u0, u1, v0, v1 = fu[:, 0].min(), fu[:, 0].max(), fu[:, 1].min(), fu[:, 1].max()
+            down = 1 if v_[1] < 0 else -1
+            rows = rgba[:, :, :3][::down]
+            key = tuple(np.round(dp.reshape(-1, 3).min(0) / 20)) + tuple(np.round(dp.reshape(-1, 3).max(0) / 20))
+            if key in _lips:  # the game draws each face of the band as its own card
+                continue
+            _lips.add(key)
+            top_col, body_col = rows[0, 0], np.median(rows[h // 3:, :max(w // 16, 1)].reshape(-1, 3), 0)  # its edge column has no slot
+            P, N, C = props3d.lip((u1 - u0) * size[0], (v1 - v0) * size[1], size[0], np.clip(top_col * lit * 1.3, 0, 1), np.clip(body_col * lit * 1.3, 0, 1),
+                                  (1.0, 0.35, 0.85))  # hot pink neon, a disco colour
+            top = v0 if down > 0 else v1
+            Q = np.c_[u0 + P[:, 0] / size[0], top + down * P[:, 1] / size[1], P[:, 2]]
+            N = N * [1, down, 1]
+        q = solid.on_card(np.r_[Q, [[2.0, 0, 0]]], np.r_[N, [[0, 0, 1.0]]], dp, du, dc, size)
+        got.append((q[0][:-1], q[1][:-1], C))
+    return [np.concatenate(x) for x in zip(*got)] if got else None
+
+
 def cluster_geo(kind, T, labs, rng):
     """One reimagined fir for a cluster of tree cards, or icicles for each ledge card."""
     W = np.concatenate([t[0].reshape(-1, 3) for t in T])
@@ -1447,6 +1534,8 @@ def cluster_geo(kind, T, labs, rng):
     fam = paint_families(paint[paint[:, 3] > 0.5, :3])
     lit = np.clip(np.concatenate([t[2].reshape(-1, 3) for t in T]).mean(0), 0.3, 1)  # the baked light, as on the game's cards
     c = np.clip(fam[0] * lit, 0, 1)
+    if kind in FLAT2_UP:
+        return flat2_geo(kind, T, labs, rng, c, lit)
     if kind == "icicles":
         got = []
         for dp, du, dc in T:
@@ -1492,16 +1581,16 @@ for pats, kind in LEVEL.get("clusters", ()):  # cards that together draw one tre
         items += [(k, d, tuple(x[i] for x in t)) for i in solid.islands(t[0])] if solid._identity(d[1]) else [(k, d, t)]
     def fits(t, size):  # standing or leaning cards of the usual size: the same paint also lies on the ground or spans a hill
         n = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])
-        return len(t) and np.abs(n[:, 1]).sum() < (0.5 if kind == "icicles" else 0.85) * np.linalg.norm(n, axis=1).sum() and np.ptp(t.reshape(-1, 3), 0).max() < 3 * size
+        return len(t) and np.abs(n[:, 1]).sum() < (0.5 if kind == "icicles" else FLAT2_UP.get(kind, 0.85)) * np.linalg.norm(n, axis=1).sum() and np.ptp(t.reshape(-1, 3), 0).max() < 3 * size
     size_ = np.median([np.ptp(it[2][0].reshape(-1, 3), 0).max() for it in items]) if items else 0
-    left = [it for it in items if not fits(it[2][0], size_)]
-    items = [it for it in items if fits(it[2][0], size_)]
+    left = [it for it in items if not (fits(it[2][0], size_) and flat2_keep(kind, it[2]))]
+    items = [it for it in items if fits(it[2][0], size_) and flat2_keep(kind, it[2])]
     items.sort(key=lambda it: -np.ptp(it[2][0].reshape(-1, 3), 0).max())
     groups = []  # biggest first: each card joins the first seed it stands within, so a forest doesn't chain into one tree
     for it in items:
         q = it[2][0].reshape(-1, 3)
         cen, w = q.mean(0), np.ptp(q[:, [0, 2]], 0).max()
-        g = None if kind == "icicles" else next((g for g in groups if g[0] == tuple(np.round(it[1][1], 3)) and np.hypot(*(cen - g[1])[[0, 2]]) < max(0.45 * max(g[2], w), 1.3 * size_)), None)
+        g = None if kind in PER_CARD else next((g for g in groups if g[0] == tuple(np.round(it[1][1], 3)) and np.hypot(*(cen - g[1])[[0, 2]]) < max(0.45 * max(g[2], w), 1.3 * size_)), None)
         g[3].append(it) if g else groups.append((tuple(np.round(it[1][1], 3)), cen, w, [it]))
     def crown(m):  # top centre, centre and radius of a group's cards
         q = np.concatenate([x[2][0].reshape(-1, 3) for x in m])
