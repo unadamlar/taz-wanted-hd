@@ -122,7 +122,8 @@ def vertices(d):  # (position, normal, colour, u, v) in the draw's own space
 # --- which draws to build -------------------------------------------------------------------------
 frames = [load(p) for p in caps]
 hero = [d for d in frames[0] if d['frame'] == 1]
-cam = collections.Counter(tuple(d['view']) + tuple(d['proj']) for d in hero if not is_vs(d)).most_common(1)[0][0]
+persp = [d for d in hero if not is_vs(d) and d['proj'][11] == 1]  # a screen full of text can outnumber the 3D draws
+cam = collections.Counter(tuple(d['view']) + tuple(d['proj']) for d in (persp or [d for d in hero if not is_vs(d)])).most_common(1)[0][0]
 view, proj = cam[:16], cam[16:]
 camera_vp = (Matrix([view[0:4], view[4:8], view[8:12], view[12:16]]) @ Matrix([proj[0:4], proj[4:8], proj[8:12], proj[12:16]])).transposed()
 skipped = collections.Counter()
@@ -378,7 +379,7 @@ sc.camera = cam
 cd.sensor_fit = 'HORIZONTAL'
 cd.angle = 2 * math.atan(1 / proj[0])
 near = -proj[14] / proj[10]
-cd.clip_start, cd.clip_end = near * SCALE, near * proj[10] / (proj[10] - 1) * SCALE
+cd.clip_start, cd.clip_end = near * SCALE, (near * proj[10] / (proj[10] - 1) if proj[10] != 1 else 1e6) * SCALE  # 1: no far plane
 # Direct3D 8 puts pixel centres on integer coordinates, half a pixel off Blender's: shift right and down by that.
 cd.shift_x = -proj[8] / 2 - 0.5 / W
 cd.shift_y = -proj[9] / 2 * (proj[0] / proj[5]) + 0.5 / W
