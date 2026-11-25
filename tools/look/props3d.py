@@ -569,3 +569,54 @@ def lip(length, height, repeat, top_col, body_col, neon):
             p, nn = _tube(np.array([[x0, 0.61 * height, z * 0.55 * d], [x1, 0.61 * height, z * 0.55 * d]]), np.full(2, 0.06 * height), 8)
             parts.append((p, nn, np.tile(nc, (len(p), 1))))
     return _faces(*zip(*parts))
+
+
+def profiled(path, half_w, half_d, bands, chamfer=0.25, edge=0.45):
+    """A board with chamfered long edges along a path in a card's plane (z out of it), coloured across its width by the
+    paint's own bands as hard stripes on both faces: the paint's pale edge lines land near the chamfers, its dark outline
+    on the edge walls. half_w: a number or one per point (0 at a picket's point).
+    bands: (colour, t0, t1) across the width, t from -1 to 1 along the path's left side (z x tangent)."""
+    path = np.asarray(path, float)
+    hw = np.broadcast_to(np.asarray(half_w, float), len(path))
+    z = np.array([0, 0, 1.0])
+    t_ = np.gradient(path, axis=0)
+    t_ /= np.linalg.norm(t_, axis=1, keepdims=True)
+    s = np.cross(z, t_)
+    cols = [np.asarray(c, float) for c, _, _ in bands]
+    cut = sorted({round(float(x), 4) for _, a, b in bands for x in (a, b)} | {-1.0, 1.0})
+    ts = np.array(sorted(set(cut) | {round(-1 + chamfer, 4), round(1 - chamfer, 4)}))
+    prof = [(t, half_d * (edge + (1 - edge) * min(1.0, (1 - abs(t)) / chamfer))) for t in ts]
+    band = lambda t: cols[next((i for i, (_, a, b) in enumerate(bands) if a <= t <= b), int(np.argmin([min(abs(t - a), abs(t - b)) for _, a, b in bands])))]
+    ring = []  # cross-section corners (t, z) round the board: front left to right, back right to left
+    ring += [(t, zz, band(0.5 * (t + prof[min(i + 1, len(prof) - 1)][0]))) for i, (t, zz) in enumerate(prof)]
+    ring += [(t, -zz, band(0.5 * (t + prof[max(i - 1, 0)][0]))) for i, (t, zz) in reversed(list(enumerate(prof)))]
+    wall = [np.clip(band(1.0) * 0.75, 0, 1), np.clip(band(-1.0) * 0.75, 0, 1)]
+    P, C, F = [], [], []
+    at = lambda i, t, zz: path[i] + t * hw[i] * s[i] + zz * z
+    m = len(ring)
+    for j in range(m):
+        (t0, z0, c0), (t1, z1, _) = ring[j], ring[(j + 1) % m]
+        side_wall = abs(t0 - t1) < 1e-6
+        col = wall[0 if t0 > 0 else 1] if side_wall else c0
+        out = np.array([t0 + t1, 0, z0 + z1]) if not side_wall else np.array([np.sign(t0), 0, 0])
+        for i in range(len(path) - 1):
+            a, b, c, d = at(i, t0, z0), at(i + 1, t0, z0), at(i + 1, t1, z1), at(i, t1, z1)
+            P += [a, b, c, a, c, d]
+            C += [col] * 6
+            o = out[0] * s[i] + out[2] * z
+            F += [o, o]
+    end = np.clip(min(cols, key=lambda c: c.sum()) * 0.7, 0, 1)
+    for i, sg in ((0, -1), (len(path) - 1, 1)):
+        q = [at(i, t, zz) for t, zz, _ in ring]
+        for j in range(1, m - 1):
+            P += [q[0], q[j], q[j + 1]]
+            C += [end] * 3
+            F += [sg * t_[i]]
+    P = np.array(P)
+    tri = P.reshape(-1, 3, 3)
+    n = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+    ok = np.linalg.norm(n, axis=1) > 1e-9
+    n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+    n *= np.where((n * np.array(F)).sum(1) < 0, -1, 1)[:, None]
+    k = np.repeat(ok, 3)
+    return P[k], np.repeat(n, 3, 0)[k], np.array(C)[k]

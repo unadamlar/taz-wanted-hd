@@ -871,3 +871,5 @@ LEVELS["cityboss"]["card_models"] = (("cityboss/textures/cbfloodstand", "iron"),
 LEVELS["cityboss"]["clusters"] = ((("cityboss/textures/metalballtubes*",), "grille"),)
 LEVELS["cityboss"]["prop_hold"] = 1.3  # the panels and truss keep the paint's bold colour through the tone curve (they read khaki and maroon)
 LEVELS["tazboss1"]["clusters"] = ((("tazboss1/textures/walkway02",), "lip"),)
+# The construction site's painted picket fences as real pickets and rails, each picket in its own paint.
+LEVELS["contruct"]["card_models"] = (("contruct/textures/fencesteel*", "pickets"), ("contruct_ecs/fencesteel3", "pickets"))
