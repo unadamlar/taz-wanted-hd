@@ -402,52 +402,106 @@ def icicles(width, tops, lengths, radius, ice, snow):
     return _faces(*zip(*parts))
 
 
-def _star(a, points, depth):
-    """A star's outline as a radius factor at angles a: 1 at its points, 1 - depth halfway between, and how near a point."""
-    tip = 1 - np.abs((a * points / (2 * np.pi)) % 1 - 0.5) * 2
-    return 1 - depth * (1 - tip), tip
-
-
-def star_layer(centre, up, e1, e2, radius, drop, colour, points=10, depth=0.38, curl=0.12, thick=0.07, phase=0.0):
-    """One thick star-shaped leaf layer: round in the middle, sharp points that curl up at their tips, a pale bevelled rim
-    and a dark underside. drop: how far the rim sits below the middle (negative cups it like a rosette)."""
-    col = np.asarray(colour, float)
-    a = np.linspace(0, 2 * np.pi, points * 6 + 1)[None] + phase
-    t = np.linspace(0, 1, 7)[:, None]
-    s, tip = _star(a - phase, points, depth)
-    r = radius * t * (1 - (1 - s) * t ** 1.5)
-    h = -drop * t ** 1.3 + curl * radius * t ** 5 * tip ** 2
-    ring = lambda r_, h_: centre + (r_ * np.cos(a))[..., None] * e1 + (r_ * np.sin(a))[..., None] * e2 + h_[..., None] * up
-    top = ring(r, h)
-    k = 0.48 + 0.55 * t + 0.17 * tip  # deep at the heart, lighter out to the points
-    ctop = np.clip(col * k[..., None], 0, 1)
-    ctop[-2] = np.clip(col * 1.25 + 0.16, 0, 1)  # the paint's pale inner line, then its dark outline on the very edge
-    ctop[-1] = np.clip(col * 0.5, 0, 1)
-    th = thick * radius * (1 - 0.55 * t)
-    bot = ring(r * 0.985, h - th)
-    parts = [_sheet(top, ctop, wrap=True), _sheet(bot[::-1], np.clip(col * 0.42, 0, 1) * np.ones(bot.shape), wrap=True),
-             _sheet(np.stack([top[-1], bot[-1]], 0), np.clip(col * 0.5, 0, 1) * np.ones((2,) + top.shape[1:]), wrap=True)]
-    return _faces(*zip(*parts))
-
-
-def starbush(base, height, radius, colour, rng, points=10):
-    """A reimagined spiky plant: stacked thick star tiers that narrow upward, sharp curled points, a bud on top."""
-    col = np.asarray(colour, float)
+def star_tier(centre, radius, drop, bands, points=10, depth=0.38, thick=0.08, phase=0.0, tip_lift=0.15):
+    """One thick star leaf in crisp planar facets, two per point, creased along each point's ridge and valley: straight
+    sharp edges, the paint's colour bands (body, pale inner line, dark outline) as hard stripes of even width along the
+    edges, a dark wall round the rim and a dark underside. drop: how far the valleys sit below the middle (negative cups
+    it); the tips sit tip_lift of that higher. bands: (colour, inner edge as a share of the radius) from the middle out."""
+    cen = np.asarray(centre, float)
     up, e1, e2 = np.array([0, 1.0, 0]), np.array([1.0, 0, 0]), np.array([0, 0, 1.0])
-    tiers = int(np.clip(round(height / radius * 3.5), 2, 5))
+    a = phase + np.pi * np.arange(2 * points + 1) / points
+    r = np.where(np.arange(2 * points + 1) % 2 == 0, radius, radius * (1 - depth))
+    h = np.where(np.arange(2 * points + 1) % 2 == 0, -drop * (1 - tip_lift), -drop)
+    rim = cen + (r * np.cos(a))[:, None] * e1 + (r * np.sin(a))[:, None] * e2 + h[:, None] * up
+    dark = np.asarray(bands[-1][0], float)
+    under = np.clip(np.asarray(bands[0][0], float) * 0.4, 0, 1)
+    T, C, F = [], [], []  # corners, colours, the side each triangle faces
+    for k in range(2 * points):  # facet from the middle to rim[k], rim[k + 1]
+        A, B = rim[k] - cen, rim[k + 1] - cen
+        edges = [b[1] for b in bands[1:]] + [1.0]
+        for (col, s0), s1 in zip(bands, edges):
+            q = [cen + s0 * A, cen + s1 * A, cen + s1 * B, cen + s0 * B]
+            T += [q[0], q[1], q[2], q[0], q[2], q[3]] if s0 > 0 else [cen, q[1], q[2]]
+            C += [col] * (6 if s0 > 0 else 3)
+            F += [up] * (2 if s0 > 0 else 1)
+        lo = -thick * radius * up
+        a2, b2 = cen + lo + 0.97 * A, cen + lo + 0.97 * B
+        T += [rim[k], rim[k] + lo, rim[k + 1] + lo, rim[k], rim[k + 1] + lo, rim[k + 1]]  # the rim's wall
+        C += [dark * 0.8] * 6
+        F += [A + B] * 2
+        T += [cen + lo * 2.5, b2, a2]  # underside, a shallow cone down to the stem
+        C += [under] * 3
+        F += [-up]
+    P = np.array(T)
+    t = P.reshape(-1, 3, 3)
+    n = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])
+    n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+    n *= np.where((n * np.array(F)).sum(1) < 0, -1, 1)[:, None]
+    return P, np.repeat(n, 3, 0), np.array(C)
+
+
+def starbush(base, height, radius, bands, rng, points=10):
+    """A reimagined spiky plant: stacked crisp star tiers that narrow upward over a dark stem, the top one a star spike."""
+    base = np.asarray(base, float)
+    up = np.array([0, 1.0, 0])
+    tiers = int(np.clip(round(height / radius * 2) + 2, 3, 5))
     parts = []
-    p, n = _tube(np.array([base, base + up * 0.5 * height]), np.array([0.14, 0.1]) * radius, 8)
-    parts.append((p, n, np.tile(np.clip(col * 0.35, 0, 1), (len(p), 1))))
+    p, n = _tube(np.array([base, base + up * 0.6 * height]), np.array([0.12, 0.08]) * radius, 8)
+    parts.append((p, n, np.tile(np.clip(np.asarray(bands[0][0], float) * 0.3, 0, 1), (len(p), 1))))
     for i in range(tiers):
         f = i / max(tiers - 1, 1)  # 0 bottom, 1 top
-        R = radius * (1 - 0.32 * f)  # as broad as the painted tiers
-        y = height * (0.5 + 0.42 * f)  # each tier a cone whose rim hangs over the one below, like the painted tiers
-        parts.append(star_layer(base + up * y, up, e1, e2, R, 0.42 * height * (1 - 0.35 * f), col * (0.92 + 0.16 * f), points,
-                                phase=rng.uniform(0, 2 * np.pi), curl=0.16, thick=0.12))
-    th = np.linspace(0, np.pi, 6)[:, None]; ph = np.linspace(0, 2 * np.pi, 11)[None]
-    bud = base + up * height * 0.88 + 0.13 * radius * np.stack([np.sin(th) * np.cos(ph), 1.3 * np.cos(th) * np.ones_like(ph), np.sin(th) * np.sin(ph)], -1)
-    parts.append(_sheet(bud, np.clip(col * 1.2 + 0.12, 0, 1) * np.ones(bud.shape), wrap=True))
+        R = radius * (1 - 0.6 * f)  # each tier shows a broad band of itself past the one above
+        y = height * (0.4 + 0.58 * f)
+        drop = height * (0.2 - 0.04 * f) if i < tiers - 1 else height * 0.28  # the top tier is a peaked spike
+        parts.append(star_tier(base + up * y, R, drop, bands, points, phase=rng.uniform(0, 2 * np.pi), thick=0.07))
     return _faces(*zip(*parts))
+
+
+def _inset(E, w):
+    """The polyline E (x along, y down) moved up by w, mitred at its corners so the band between stays w wide."""
+    d = np.diff(E, axis=0)
+    n = np.c_[d[:, 1], -d[:, 0]] / np.linalg.norm(d, axis=1, keepdims=True)  # each segment's side towards the top
+    na, nb = np.r_[n[:1], n], np.r_[n, n[-1:]]
+    m = (na + nb) / np.maximum(1 + (na * nb).sum(1, keepdims=True), 0.25)
+    q = E + w * m
+    q[:, 1] = np.maximum(q[:, 1], 0.02 * E[:, 1].max())
+    return q
+
+
+def fringe(edge, bands, widths, thick, curl, tip):
+    """A zigzag fringe in a card's metric frame (x along, y down from its top edge, z out of the card): a thick sheet with
+    a rounded roll along the top, crisp teeth creased down their middles, their points curling out by curl, and on both
+    faces the paint's hard colour bands following the zigzag (body, pale line, dark outline), the back face darker.
+    edge: the zigzag's corners (x, y), left to right; tip: 1 at a point, 0 at a notch, per corner; widths: pale, dark."""
+    E = np.asarray(edge, float)
+    H = E[:, 1].max()
+    body, pale, dark = (np.asarray(b, float) for b in bands)
+    rows = [np.c_[E[:, 0], np.zeros(len(E))], _inset(E, widths[0] + widths[1]), _inset(E, widths[1]), E]
+    cols = [body, pale, dark]
+    out = lambda q: curl * H * (q[:, 1] / H) ** 2 * (0.4 + 0.6 * np.asarray(tip)) + 0.18 * thick * np.asarray(tip) * q[:, 1] / H
+    T, C, F = [], [], []
+    for face in (1, -1):
+        for k in range(3):
+            a, b = rows[k], rows[k + 1]
+            A = np.c_[a, out(a) + face * thick / 2]
+            B = np.c_[b, out(b) + face * thick / 2]
+            for i in range(len(E) - 1):
+                T += [A[i], B[i], B[i + 1], A[i], B[i + 1], A[i + 1]]
+                C += [cols[k]] * 6
+                F += [(0, 0, face)] * 2
+    lo, hi = np.c_[E, out(E) - thick / 2], np.c_[E, out(E) + thick / 2]
+    for i in range(len(E) - 1):  # the edge's wall
+        T += [lo[i], hi[i], hi[i + 1], lo[i], hi[i + 1], lo[i + 1]]
+        C += [dark * 0.8] * 6
+        F += [(E[i, 1] - E[i + 1, 1], E[i + 1, 0] - E[i, 0], 0)] * 2  # away from the top
+    P = np.array(T)
+    t = P.reshape(-1, 3, 3)
+    n = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])
+    n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+    n *= np.where((n * np.array(F)).sum(1) < 0, -1, 1)[:, None]
+    r = 0.75 * thick
+    p, nn = _tube(np.array([[E[0, 0], r, 0], [E[-1, 0], r, 0]]), np.full(2, r), 10)
+    return np.r_[P, p], np.r_[np.repeat(n, 3, 0), nn], np.r_[np.array(C), np.tile(body, (len(p), 1))]
 
 
 def grille(rect, cell, frame, pitch, bar, x0, frame_col, wire_col):

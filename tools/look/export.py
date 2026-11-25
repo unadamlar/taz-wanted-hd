@@ -95,6 +95,9 @@ for name, (tint, rough) in LEVEL.get("flats", {}).items():
     MATS[name] = ("", False, OPAQUE, 0, 1000.0, tint, rough, 0, 0)
 if "skin" in LEVEL:  # wrinkled hide for untextured characters, mapped on their bind pose
     MATS["skin"] = ("skin", False, OPAQUE, 0, LEVEL["skin"]["tile"], (1, 1, 1), 0.6, 0, LEVEL["skin"]["grain"])
+HELD_TOP = 8.0  # the prop tint in a level that holds its props' paint: room for scene values over 1
+if "prop_hold" in LEVEL:
+    MATS["prop"] = (*MATS["prop"][:5], (HELD_TOP,) * 3, *MATS["prop"][6:])
 for name, tint in LEVEL.get("tints", {}).items():
     MATS[name] = (*MATS[name][:5], tint, *MATS[name][6:])
 for name in LEVEL.get("triplanar", ()):  # ground that also covers steep banks
@@ -427,7 +430,36 @@ protos = []  # dict(v, i, subs, lo, hi, name)
 place = []  # (proto index, rows or None for identity)
 
 
+def held(c):
+    """The scene colour that post.hlsl's tone curve and grade show closest to display colour c (linear). Its curve takes 14%
+    of the saturation out of the world first, so a saturated paint comes out bolder a little darker than full brightness."""
+    W = np.array((0.2126, 0.7152, 0.0722))
+    con, ex, sat = LEVEL.get("contrast", 1.15) * 1.26, 2 ** LV["grade"]["exposure"], LV["grade"]["saturation"] * 1.17
+    grey = lambda x, f: (x @ W)[..., None] * (1 - f) + x * f
+
+    def shown(x):
+        x = grey(x * ex, 0.86)
+        k = 2.4 * (np.clip((np.log2(np.maximum(x, 1e-4) / 0.18) + 10) / 16.5, 0, 1) - 0.606)
+        y = np.clip(0.5 + k / np.sqrt(1 + 4 * k * k), 0, 1) ** con
+        y[..., 1] += (y[..., 0] - y[..., 1]) * 0.07
+        return np.clip(grey(y, sat), 0, 1)
+
+    def scene(d):
+        s_ = np.clip(np.clip(grey(d, 1 / sat), 0, 1) ** (1 / con) - 0.5, -0.47, 0.44)
+        return np.maximum(grey(0.18 * 2 ** (16.5 * (s_ / np.sqrt(1 - 4 * s_ * s_) / 2.4 + 0.606) - 10), 1 / 0.86), 0) / ex
+
+    d = dds.to_srgb(c)
+    ks = np.linspace(1, 0.4, 31)
+    tries = np.stack([scene(d * k) for k in ks], 1)
+    err = ((shown(tries) - d[:, None]) ** 2).sum(2)
+    return tries[np.arange(len(d)), err.argmin(1)]
+
+
 def add_proto(name, p, n, c, uv, m):
+    if "prop_hold" in LEVEL and "prop" in MAT_ID:  # stand-ins keep their paint through the tone curve like the level's held surfaces
+        k = m == MAT_ID["prop"]
+        c = c.copy()
+        c[k] = np.clip(held(c[k]) * LEVEL["prop_hold"] / HELD_TOP, 0, 1)
     v, vn, vc, vuv, ix, subs = weld(p, n, c, uv, m)
     protos.append(dict(name=name, p=v, n=vn, c=packed(vc), uv=vuv, ix=ix, subs=subs))
     return len(protos) - 1
@@ -1119,7 +1151,9 @@ def iron_geo(alpha, paint, pos, uv, col, size, wood=False):
     lines = solid.strokes(alpha)
     if not lines:
         return []
-    lit = np.clip(col.mean((0, 1)), 0, 1)
+    lit = np.clip(col.mean((0, 1)) * (2 if "prop_hold" in LEVEL else 1), 0, 1)  # held paint: the game's texture x vertex colour x 2
+    if wood and "unbake" in LEVEL:  # a night level's baked light is blue: like its own surfaces, boards keep only how bright (x 2) it is
+        lit = np.full(3, min(2 * lit.max(), 1))
     iron = np.median(paint[alpha > 0.5], 0) * lit
     iron = np.clip(iron * (1.6 if iron.max() < 0.15 else 1.15), 0, 1)  # black ink lifted a little, so it shades round
     rmed = np.median(np.concatenate([r for _, r, *_ in lines]))
@@ -1181,7 +1215,7 @@ def iron_geo(alpha, paint, pos, uv, col, size, wood=False):
             sm = np.c_[[np.convolve(np.pad(xy[:, c], 2, mode="edge"), np.ones(5) / 5, "valid") for c in (0, 1)]].T
             sm[[0, -1]] = xy[[0, -1]]
             xy = sm
-        idx = np.unique(np.r_[np.arange(0, len(xy), 3), len(xy) - 1])
+        idx = np.unique(np.r_[np.arange(0, len(xy), 12 if wood else 3), len(xy) - 1])  # boards run nearly straight
         m = xy[idx] * px
         if len(m) < 2 or np.linalg.norm(m[-1] - m[0]) < 1e-6:
             continue
@@ -1440,14 +1474,14 @@ if cfg["cards"] or cfg["soft"]:
         for d in ds:
             solids.setdefault((solid.key_of(d[4]), d[0]), pi)  # the same model can come in several paints
 
-FLAT2_UP = {"spike": 1.01, "grille": 1.01, "lip": 0.5}  # how much of a card may face up and still count
-PER_CARD = ("icicles", "grille", "lip")  # kinds built card by card, not one model per cluster
+CARD_UP_SHARE = {"spike": 1.01, "grille": 1.01, "lip": 0.5, "fringe": 0.5}  # how much of a card may face up and still count
+PER_CARD = ("icicles", "grille", "lip", "fringe")  # kinds built card by card, not one model per cluster
 
 
-def flat2_keep(kind, t):
+def rebuildable(kind, t):
     """Pieces a kind can rebuild; the rest stay the game's cards: grilles want whole uv rectangles, lips the full band."""
     du = t[1].reshape(-1, 2)
-    if kind == "lip":
+    if kind in ("lip", "fringe"):
         return np.ptp(du[:, 1]) > 0.8
     if kind == "grille":
         lo, hi = du.min(0), du.max(0)
@@ -1455,27 +1489,62 @@ def flat2_keep(kind, t):
     return True
 
 
-_lips = set()
+_lips_built = set()
 
 
-def flat2_geo(kind, T, labs, rng, c, lit):
-    """Reimagined 3D for the flat2 kinds: star plants (one per placed plant), mesh grilles and walkway lips (per card)."""
+def edge_bands(rgba):
+    """A cut-out's outline paint: the median colour of its outer edge band and of the brightest band just inside it, with
+    each band's depth in pixels at 128 px. The paint's star and zigzag cards have a dark outline, then a pale inner line."""
+    a = rgba[::max(rgba.shape[0] // 128, 1), ::max(rgba.shape[1] // 128, 1)]
+    cur, d = a[..., 3] > 0.5, np.zeros(a.shape[:2], int)
+    for k in range(1, 13):  # depth inside the cut-out: rings peeled off one at a time
+        d[cur] = k
+        nxt = cur.copy()
+        nxt[1:] &= cur[:-1]; nxt[:-1] &= cur[1:]; nxt[:, 1:] &= cur[:, :-1]; nxt[:, :-1] &= cur[:, 1:]
+        cur = nxt
+    ring = [np.median(a[d == k][:, :3], 0) if (d == k).any() else np.zeros(3) for k in range(1, 13)]
+    lum = [c @ (0.3, 0.59, 0.11) for c in ring]
+    pale = int(np.argmax(lum[1:9])) + 1
+    dark_to = next((k for k in range(1, pale) if lum[k] > 0.5 * (lum[0] + lum[pale])), pale)
+    pale_to = next((k for k in range(pale, 12) if abs(lum[k] - lum[pale]) > 0.5 * abs(lum[pale] - lum[0])), 12)
+    return ring[0], ring[pale], dark_to, pale_to - dark_to
+
+
+def corners(xy, tol):
+    """The corners of a polyline: points dropped while they stay within tol of the line between kept ones (Douglas-Peucker)."""
+    keep, todo = {0, len(xy) - 1}, [(0, len(xy) - 1)]
+    while todo:
+        i, j = todo.pop()
+        d = xy[j] - xy[i]
+        off = np.abs(d[0] * (xy[i + 1:j, 1] - xy[i, 1]) - d[1] * (xy[i + 1:j, 0] - xy[i, 0])) / max(np.linalg.norm(d), 1e-9)
+        if len(off) and off.max() > tol:
+            k = i + 1 + int(off.argmax())
+            keep.add(k)
+            todo += [(i, k), (k, j)]
+    return xy[sorted(keep)]
+
+
+def rebuilt_geo(kind, T, labs, rng, c, lit):
+    """Reimagined 3D for flat paint: star plants (one per placed plant), mesh grilles and walkway lips (per card)."""
     rgba = game_rgba(labs[0])
     if kind == "spike":
-        c = 0.78 * (0.85 * c + 0.15 * c.mean())  # the grade's saturation and light turned the full paint hot pink
+        tone = lambda x: 0.78 * (0.85 * x + 0.15 * x.mean())  # the grade's saturation and light turned the full paint hot pink
+        dark, pale, wd, wp = edge_bands(rgba)
+        inr = 38.0  # the painted star's middle-to-edge distance at 128 px (as the peeling counts it), a little over so the bands read a touch finer
+        bands = [(tone(c), 0.0), (np.clip(pale * lit * 1.3, 0, 1), 1 - (wd + wp) / inr), (np.clip(tone(dark * lit), 0, 1), 1 - wd / inr)]  # the pale line kept bright
         pieces = [(dp, du, dc) for dp, du, dc in T if solid.card_pieces(dp, du) and len(solid.card_pieces(dp, du)) == 1 and np.ptp(du.reshape(-1, 2), 0).min() > 0.9]
         if len(pieces) < len(T):  # cards bent into tiers: a stacked plant on the cards' footprint
             W = np.concatenate([t[0].reshape(-1, 3) for t in T])
             base, height, _ = props3d.footprint(W)
-            return props3d.starbush(base, height, 0.5 * np.ptp(W[:, [0, 2]], 0).max(), c, rng)
+            return props3d.starbush(base, height, 0.5 * np.ptp(W[:, [0, 2]], 0).max(), bands, rng)
         got = []
         for dp, du, dc in pieces:  # loose star cards: a thick cupped star on each
             size = solid.repeat_size(dp, du)
             h_, v_ = solid.uv_axes(dp, du)
             flip = -1 if np.cross(h_, v_)[1] < 0 else 1
             R = 0.48 * min(size)
-            P, N, C = props3d.star_layer(np.zeros(3), np.array([0, 0, 1.0]), np.array([1.0, 0, 0]), np.array([0, 1.0, 0]), R, -0.14 * R, c,
-                                         curl=0.18, thick=0.1, phase=rng.uniform(0, 2 * np.pi))
+            P, N, C = props3d.star_tier(np.zeros(3), R, -0.14 * R, bands, thick=0.1, phase=rng.uniform(0, 2 * np.pi))
+            P, N = P[:, [0, 2, 1]], N[:, [0, 2, 1]]  # built y up; the card's frame has z out of it
             u0 = np.floor(du.reshape(-1, 2).min(0) + 1e-6)
             Q = np.c_[u0[0] + 0.5 + P[:, 0] / size[0], u0[1] + 0.5 + P[:, 1] / size[1], flip * P[:, 2]]
             q = solid.on_card(np.r_[Q, [[2.0, 0, 0]]], np.r_[N * [1, 1, flip], [[0, 0, 1.0]]], dp, du, dc, size)
@@ -1507,15 +1576,35 @@ def flat2_geo(kind, T, labs, rng, c, lit):
                 continue
             P, N, C = geo
             Q = np.c_[u0 + P[:, 0] / size[0], v0 + P[:, 1] / size[1], P[:, 2]]
+        elif kind == "fringe":  # a zigzag skirt: its teeth from the paint's outline, its colour bands from the paint's edge
+            v_ = solid.uv_axes(dp, du)[1]
+            u0, u1, v0, v1 = fu[:, 0].min(), fu[:, 0].max(), fu[:, 1].min(), fu[:, 1].max()
+            down = 1 if v_[1] < 0 else -1
+            key = tuple(np.round(dp.reshape(-1, 3).min(0) / 20)) + tuple(np.round(dp.reshape(-1, 3).max(0) / 20))
+            if key in _lips_built:
+                continue
+            _lips_built.add(key)
+            xs = np.linspace(u0, u1, int((u1 - u0) * 96) + 2)
+            cut = a[::down][:, ((xs % 1) * w).astype(int) % w]
+            depth = (h - np.argmax(cut[::-1], 0)) / h * (v1 - v0) * size[1]  # the lowest paint in each column
+            E = corners(np.c_[(xs - u0) * size[0], depth], 0.03 * depth.max())
+            tip = [float(E[i, 1] >= max(E[max(i - 1, 0), 1], E[min(i + 1, len(E) - 1), 1])) for i in range(len(E))]
+            dark, pale, wd, wp = edge_bands(rgba)
+            px = size[1] / 128 / 1.2  # world size of one step of edge_bands' peeling
+            paint = lambda x: np.clip((x * lit * 1.3 - (x * lit * 1.3).mean()) * 1.3 + (x * lit * 1.3).mean(), 0, 1)  # the paint under its baked light, more saturated
+            P, N, C = props3d.fringe(E, (paint(c / lit), paint(pale), paint(dark)), (wp * px, 1.4 * wd * px), 0.07 * depth.max(), 0.2, tip)  # the outline a little bolder
+            top = v0 if down > 0 else v1
+            Q = np.c_[u0 + P[:, 0] / size[0], top + down * P[:, 1] / size[1], P[:, 2]]
+            N = N * [1, down, 1]
         else:  # lip: rail up top, a panel with lit channels where the paint has its see-through slot
             v_ = solid.uv_axes(dp, du)[1]
             u0, u1, v0, v1 = fu[:, 0].min(), fu[:, 0].max(), fu[:, 1].min(), fu[:, 1].max()
             down = 1 if v_[1] < 0 else -1
             rows = rgba[:, :, :3][::down]
             key = tuple(np.round(dp.reshape(-1, 3).min(0) / 20)) + tuple(np.round(dp.reshape(-1, 3).max(0) / 20))
-            if key in _lips:  # the game draws each face of the band as its own card
+            if key in _lips_built:  # the game draws each face of the band as its own card
                 continue
-            _lips.add(key)
+            _lips_built.add(key)
             top_col, body_col = rows[0, 0], np.median(rows[h // 3:, :max(w // 16, 1)].reshape(-1, 3), 0)  # its edge column has no slot
             P, N, C = props3d.lip((u1 - u0) * size[0], (v1 - v0) * size[1], size[0], np.clip(top_col * lit * 1.3, 0, 1), np.clip(body_col * lit * 1.3, 0, 1),
                                   (1.0, 0.35, 0.85))  # hot pink neon, a disco colour
@@ -1534,8 +1623,8 @@ def cluster_geo(kind, T, labs, rng):
     fam = paint_families(paint[paint[:, 3] > 0.5, :3])
     lit = np.clip(np.concatenate([t[2].reshape(-1, 3) for t in T]).mean(0), 0.3, 1)  # the baked light, as on the game's cards
     c = np.clip(fam[0] * lit, 0, 1)
-    if kind in FLAT2_UP:
-        return flat2_geo(kind, T, labs, rng, c, lit)
+    if kind in CARD_UP_SHARE:
+        return rebuilt_geo(kind, T, labs, rng, c, lit)
     if kind == "icicles":
         got = []
         for dp, du, dc in T:
@@ -1581,10 +1670,10 @@ for pats, kind in LEVEL.get("clusters", ()):  # cards that together draw one tre
         items += [(k, d, tuple(x[i] for x in t)) for i in solid.islands(t[0])] if solid._identity(d[1]) else [(k, d, t)]
     def fits(t, size):  # standing or leaning cards of the usual size: the same paint also lies on the ground or spans a hill
         n = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])
-        return len(t) and np.abs(n[:, 1]).sum() < (0.5 if kind == "icicles" else FLAT2_UP.get(kind, 0.85)) * np.linalg.norm(n, axis=1).sum() and np.ptp(t.reshape(-1, 3), 0).max() < 3 * size
+        return len(t) and np.abs(n[:, 1]).sum() < (0.5 if kind == "icicles" else CARD_UP_SHARE.get(kind, 0.85)) * np.linalg.norm(n, axis=1).sum() and np.ptp(t.reshape(-1, 3), 0).max() < 3 * size
     size_ = np.median([np.ptp(it[2][0].reshape(-1, 3), 0).max() for it in items]) if items else 0
-    left = [it for it in items if not (fits(it[2][0], size_) and flat2_keep(kind, it[2]))]
-    items = [it for it in items if fits(it[2][0], size_) and flat2_keep(kind, it[2])]
+    left = [it for it in items if not (fits(it[2][0], size_) and rebuildable(kind, it[2]))]
+    items = [it for it in items if fits(it[2][0], size_) and rebuildable(kind, it[2])]
     items.sort(key=lambda it: -np.ptp(it[2][0].reshape(-1, 3), 0).max())
     groups = []  # biggest first: each card joins the first seed it stands within, so a forest doesn't chain into one tree
     for it in items:
