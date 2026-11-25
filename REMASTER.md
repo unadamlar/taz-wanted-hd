@@ -75,7 +75,7 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
   User 2026-11-25: keep the continue room; the soft amber rules backdrop was reverted (its stars went blurry).
   Character pale paint is shaded in every level (user's pick, 5277d15): the hold at HD's bright cream read like the flat original.
   AO and bloom run at quarter size only (user saw no difference; about -0.3 ms in the zoo and city hubs). Paused-frame blur slightly softer.
-  Approved, in progress: the richer saguaro everywhere.
+  Saguaros are ribbed, striped and domed like the painted cactus (museum, west hub, Grand Canyon, canyon race; data `extracted/look/saguaro/<level>/runtime`).
 - Not checked: bonus-level loading art, a gamepad in these menus, where `boss.png` and `guide.png` splash images appear, continue screens outside westboss.
 - City world done: department store, museum, construction site and city boss (`extracted/look/reports/step7/city-levels/`). Data is in
   `extracted/look/city-levels/<level>/runtime/sceneNN`. Not in the user's playable copy. Not checked: finishing a level, win and lose
@@ -108,7 +108,6 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
   banners), ice dome and its race (real bulbs on a sagging wire), ghost town (round rails with turned balusters, an iron fence of real
   bars), Taz boss 1 (a real red tube truss), goldmine (real sawn plank fences), construction site and deconstruct (real chain links on the crane). The rollout is complete (2026-11-25). The construction site's lit signs and tyres, westboss, goldmine, city boss, aquarium, Taz boss 2, main menu and detasmania were surveyed and left
   alone: their flat art is lit signs, gameplay signs, posters, crates, effects, floor panels or models. The playable copy has these (2026-11-24).
-  For the user to judge: the saguaros are smooth green tubes, plainer than the painted cartoon cactus.
   Candle flames stay the game's animated cards (3D would lose the flicker); burning crates and campfires are 2D sprites the look data can't reach.
   3D train smoke was built and reverted: the puffs are hidden in tunnels and cuttings, and the test camera could never show one to judge.
 - For the user to judge in the west: the game's painted canyon stripes are kept on its own shapes. The zoo's rebuilt 3D rock would add depth but replace them,
