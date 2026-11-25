@@ -1152,6 +1152,8 @@ def iron_geo(alpha, paint, pos, uv, col, size, wood=False):
     if not lines:
         return []
     lit = np.clip(col.mean((0, 1)) * (2 if "prop_hold" in LEVEL else 1), 0, 1)  # held paint: the game's texture x vertex colour x 2
+    if wood and "unbake" in LEVEL:  # a night level's baked light is blue: like its own surfaces, boards keep only how bright (x 2) it is
+        lit = np.full(3, min(2 * lit.max(), 1))
     iron = np.median(paint[alpha > 0.5], 0) * lit
     iron = np.clip(iron * (1.6 if iron.max() < 0.15 else 1.15), 0, 1)  # black ink lifted a little, so it shades round
     rmed = np.median(np.concatenate([r for _, r, *_ in lines]))
@@ -1213,7 +1215,7 @@ def iron_geo(alpha, paint, pos, uv, col, size, wood=False):
             sm = np.c_[[np.convolve(np.pad(xy[:, c], 2, mode="edge"), np.ones(5) / 5, "valid") for c in (0, 1)]].T
             sm[[0, -1]] = xy[[0, -1]]
             xy = sm
-        idx = np.unique(np.r_[np.arange(0, len(xy), 3), len(xy) - 1])
+        idx = np.unique(np.r_[np.arange(0, len(xy), 12 if wood else 3), len(xy) - 1])  # boards run nearly straight
         m = xy[idx] * px
         if len(m) < 2 or np.linalg.norm(m[-1] - m[0]) < 1e-6:
             continue
