@@ -524,7 +524,7 @@ PropOut vs_prop(WorldIn i)
     o.fog = saturate((PROP_FOG.x - o.p.w) * PROP_FOG.y);
     return o;
 }
-float4 CHAR_HOLD     : register(c34);  // exposure, contrast, saturation of the final pass: pale paint keeps its colour through it
+float4 CHAR_HOLD     : register(c34);  // exposure, contrast, saturation of the final pass: pale paint keeps its colour through it; w how much
 float4 CHAR_FILL     : register(c30);  // keeps characters readable away from the lamps of a night level
 
 float4 ps_char(CharIn i) : COLOR
@@ -578,7 +578,7 @@ float4 ps_char(CharIn i) : COLOR
     float3 lit = albedo * lerp(0.85, 1, band * sh);
     lit *= min(1, 0.8 / max(max(lit.r, max(lit.g, lit.b)), 0.0001));  // keeps the hue where white would clip
     float3 h = held_paint(lit, CHAR_HOLD.x, CHAR_HOLD.y, CHAR_HOLD.z);  // characters stay out of the bloom (hd_post)
-    c = lerp(lerp(dot(c, float3(0.2126, 0.7152, 0.0722)), c, 0.86), h + albedo * lamp * 0.7, pale);  // the film's desaturation, which post.hlsl leaves to us
+    c = lerp(lerp(dot(c, float3(0.2126, 0.7152, 0.0722)), c, 0.86), h + albedo * lamp * 0.7, pale * CHAR_HOLD.w);  // the film's desaturation, which post.hlsl leaves to us
     float nh = saturate(dot(n, normalize(v + SUN.xyz)));
     float gloss = nh * nh; gloss *= gloss; gloss *= gloss; gloss *= gloss; gloss *= gloss; gloss *= gloss;   // ^64
     c += CHAR_STYLE.w * gloss * sh * saturate(1 - dot(tex.rgb, 0.45)) * (SUN_COL.rgb + CHAR_FILL.rgb);       // on dark paint: eyes, nose
