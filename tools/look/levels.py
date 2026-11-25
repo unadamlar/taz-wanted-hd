@@ -855,3 +855,8 @@ LEVELS["continue"] = dict(scene=31, pak="continue", blend="screens2/capture/cont
                           captures=("screens2/capture/continue-wb.bin",), materials=tuple(CONT_TILES) + ("flat",), tiles=CONT_TILES,
                           detail=CONT_DETAIL, lamps=dict(DEPT_LAMPS, extra=((299.6, 299.4, 308.0, 12.0, "#ffe8c8", 8.0, 0.72),)),
                           char_fill=(0.2, 0.18, 0.3), char_keep=1.0)
+# Reimagined 3D in place of card clusters (flatscan proofs): firs for the tiered tree cards, icicles under the snow ledges.
+LEVELS["icedome"]["clusters"] = ((tuple(f"icedome/textures/{n}" for n in ("snowxmas0[1-7]", "purptree0[1-4]", "bluetree0[1-5]")), "pine"),
+                                 (("icedome/textures/frozentreats2", "icedome/textures/frozentreats04"), "icicles"))
+# The menu's right-hand lawn is flat two-tone paint the ground rule missed: lawn material and grass like the left one.
+LEVELS["frontend"]["rules"] += [("frontend/textures/grass_new*", "ground"), ("frontend/textures/tazfern05*", "ground")]

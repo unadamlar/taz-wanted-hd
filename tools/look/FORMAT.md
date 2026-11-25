@@ -112,6 +112,7 @@ unbake     optional. Above 0 the game's vertex colours are baked light (a night 
            and their brightness v becomes v^unbake
 unbake_keep  optional, 0 to 1: how much of the baked light's tint stays, at the unbaked brightness
 char_fill  optional, three numbers: extra ambient on characters only, so they read away from a night level's lamps
+char_lamp  optional, default 1: how strongly the level's lamps light characters
 shadow_floor  optional: the height below which `hold` surfaces take no sun shadow
 hold       optional. Above 0 game surfaces keep their painted colour through the tone curve; light only shades it
 glow_add   optional. Above 0 the game's additive sprites add (times this) as the game draws them, instead of the soft screen blend

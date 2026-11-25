@@ -641,7 +641,8 @@ void look_frame(IDirect3DDevice8 *dev)
         memset(&m, 0, sizeof m);
         m.frames = -30, m.want = n;
     }
-    if (settings.tests && DeleteFileA("taz-hd\\look-reload") && hd_loaded()) hd_unload(), merge_reset(), loaded_scene = -1; // rereads the look data
+    if (settings.tests && level && GetFileAttributesA("taz-hd\\look-reload") != INVALID_FILE_ATTRIBUTES && hd_loaded()) // rereads the look data; hd_frame_end
+        hd_unload(), merge_reset(), loaded_scene = -1;                                                               // deletes the file and reloads the shaders
     quick_restore(dev);
     UINT64 t0 = ticks();
     hd_set_paused(settings.exe_known && GAME_STATE == 3);

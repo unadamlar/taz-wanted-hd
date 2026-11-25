@@ -334,3 +334,74 @@ def bulb(centre, radius, colour, down=(0, -1.0, 0)):
     p, n = _tube(np.array([centre - d * radius * 0.7, centre - d * radius * 1.3]), np.array([radius * 0.45, radius * 0.4]), 6)
     parts = [_sheet(g, c), (p, n, np.tile([0.12, 0.12, 0.13], (len(p), 1)))]
     return _faces(*zip(*parts))
+
+
+def pine(base, height, radius, needle, snow, rng, frost=False):
+    """A stylized fir: stacked tiers with scalloped, drooping skirts and a real underside, thick snow caps poured over
+    each tier, a short trunk. frost: snow-laden white tiers with a band of the paint along each skirt, as the game's
+    white trees with coloured outlines."""
+    needle, snow = np.asarray(needle, float), np.asarray(snow, float)
+    tiers = int(np.clip(round(height / radius * 1.2), 3, 5))
+    lobes = 9
+    cols = lobes * 4
+    a = np.linspace(0, 2 * np.pi, cols + 1)[None]
+    ph = rng.uniform(0, 2 * np.pi)
+    trunk_h = 0.14 * height
+    parts = []
+    p, n = _tube(np.array([base, base + [0, trunk_h + 0.1 * height, 0]]), np.array([0.13, 0.1]) * radius, 8)
+    parts.append((p, n, np.tile([0.32, 0.2, 0.12], (len(p), 1))))
+    span = height - trunk_h
+    for i in range(tiers):
+        f = i / (tiers - 1)  # 0 top tier, 1 bottom
+        R = radius * (0.38 + 0.62 * f)
+        top = base[1] + height - span * (0.0 if i == 0 else 0.22 + 0.74 * (i - 0.4) / tiers)
+        h = span * (0.42 if i == 0 else 0.36 + 0.06 * f)
+        t = np.linspace(0, 1, 8)[:, None]
+        wave = np.cos(lobes * a + ph + i)
+        r = R * t ** 0.85 * (1 + 0.1 * wave * t ** 3)
+        y = top - h * t - 0.1 * h * (0.5 + 0.5 * wave) * t ** 4
+        shade = (0.72 + 0.4 * (1 - t) - 0.12 * f)[..., None]
+        if frost:
+            band = np.clip((t - 0.66) / 0.14, 0, 1)[..., None]  # the paint along the skirt's edge
+            col = np.clip(snow * (0.9 + 0.1 * (1 - t))[..., None] * (1 - band) + needle * shade * band, 0, 1) * np.ones(r.shape + (3,))
+        else:
+            col = np.clip(needle * shade, 0, 1) * np.ones(r.shape + (3,))
+        g = np.stack([base[0] + r * np.cos(a), y, base[2] + r * np.sin(a)], -1)
+        parts.append(_sheet(g, col, wrap=True))
+        # underside: from the rim back in and up to the trunk, darker
+        u = np.linspace(0, 1, 4)[:, None]
+        ru = r[-1:] * (1 - 0.85 * u)
+        yu = y[-1:] + 0.28 * h * u ** 0.7
+        gu = np.stack([base[0] + ru * np.cos(a), yu, base[2] + ru * np.sin(a)], -1)
+        parts.append(_sheet(gu[:, ::-1], np.clip(needle * 0.45, 0, 1) * np.ones(gu.shape)))
+        if not frost:  # a snow cap with drips down the scallops, sitting just proud of the tier
+            ts = np.linspace(0, 1, 6)[:, None]
+            reach = 0.42 + 0.2 * (0.5 + 0.5 * np.cos(lobes * a + ph + i)) ** 3 + 0.06 * np.sin(3 * lobes * a)
+            tt = ts * reach
+            rs = R * tt ** 0.85 * (1 + 0.1 * np.cos(lobes * a + ph + i) * tt ** 3) * 1.035 + 0.012 * R
+            ys = top - h * tt + 0.03 * h * (1 - ts) + 0.015 * h
+            gs = np.stack([base[0] + rs * np.cos(a), ys, base[2] + rs * np.sin(a)], -1)
+            cs = np.clip(snow * (0.92 + 0.1 * (1 - ts))[..., None], 0, 1) * np.ones(gs.shape)
+            parts.append(_sheet(gs, cs, wrap=True))
+            parts.append(_sheet(np.stack([gs[-1], gs[-1] + [0, -0.035 * h, 0] - 0.02 * R * np.stack([np.cos(a[0]), 0 * a[0], np.sin(a[0])], -1)], 0)[:, ::-1], np.clip(snow * 0.82, 0, 1) * np.ones((2,) + gs.shape[1:])))
+    return _faces(*zip(*parts))
+
+
+def icicles(width, tops, lengths, radius, ice, snow):
+    """A snow lip along a ledge with icicles hanging from it, in a card's own metric frame: x along the ledge (0..width),
+    y down from the ledge, z out of the card. tops[i], lengths[i]: where icicle i hangs from and how long it is."""
+    ice, snow = np.asarray(ice, float), np.asarray(snow, float)
+    parts = []
+    x = np.linspace(-0.5 * radius, width + 0.5 * radius, 16)
+    lip = np.c_[x, 0.1 * radius + 0.25 * radius * np.sin(x / max(radius, 1e-6) * 0.7), np.zeros(len(x))]  # a lumpy roll of snow
+    p, n = _tube(lip, 1.1 * radius * (1 + 0.2 * np.sin(x / max(radius, 1e-6) * 1.3)), 8)
+    parts.append((p, n, np.tile(snow, (len(p), 1))))
+    for x, L in zip(tops, lengths):
+        if L < 1.5 * radius:
+            continue
+        k = np.linspace(0, 1, 6)
+        path = np.c_[np.full(6, x), 0.5 * radius + k * L, 0.15 * radius * np.sin(k * 3)]
+        r = radius * (1 - k) ** 1.1 * (1 + 0.18 * np.sin(k * 11)) + 0.03 * radius
+        p, n = _tube(path, r, 7)
+        parts.append((p, n, np.clip(ice[None] * (1.05 - 0.3 * (p[:, 1:2] / (L + radius))), 0, 1)))  # deeper blue towards the tip
+    return _faces(*zip(*parts))
