@@ -360,11 +360,16 @@ static HRESULT WINAPI hook_SetViewport(IDirect3DDevice8 *dev, CONST D3DVIEWPORT8
 static HRESULT WINAPI hook_SetRenderTarget(IDirect3DDevice8 *dev, IDirect3DSurface8 *rt, IDirect3DSurface8 *ds)
 {
     merge_flush(dev);
+    // A map preview is drawn like the screen: its whole 3D pass, finished when the game leaves it.
+    static int on_preview;
+    IDirect3DSurface8 *preview = preview_surface();
+    if (on_preview && rt != preview) look_preview_end(dev);
     HRESULT hr = real_SetRenderTarget(dev, rt, ds);
     if (SUCCEEDED(hr) && rt) {
         IDirect3DSurface8 *bb = NULL;
         IDirect3DDevice8_GetBackBuffer(dev, 0, D3DBACKBUFFER_TYPE_MONO, &bb);
-        on_bb = rt == bb;
+        on_preview = rt == preview;
+        on_bb = rt == bb || on_preview;
         if (bb) IDirect3DSurface8_Release(bb);
         look_target_set(dev, on_bb);
     }

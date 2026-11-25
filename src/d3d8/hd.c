@@ -88,6 +88,8 @@ static int atoc;
 
 // Targets
 static IDirect3DSurface9 *hdr_ms, *z_depth, *null_s, *null_c;
+static IDirect3DSurface9 *preview; // a map preview's target: its pass goes to the top left of the plain HDR texture
+static D3DVIEWPORT9 pvp;          // and covers this much of it
 static struct target hdr, zt, ao[2], bloom[NBLOOM];
 static IDirect3DTexture9 *smap, *cmap;
 static IDirect3DSurface9 *smap_s, *cmap_s;
@@ -608,7 +610,7 @@ static void drop_targets(void)
 {
     drop(&hdr), drop(&zt), drop(&ao[0]), drop(&ao[1]);
     for (int i = 0; i < NBLOOM; i++) drop(&bloom[i]);
-    IUnknown **list[] = { (IUnknown **)&hdr_ms, (IUnknown **)&z_depth, (IUnknown **)&null_s, (IUnknown **)&null_c, (IUnknown **)&smap,
+    IUnknown **list[] = { (IUnknown **)&preview, (IUnknown **)&hdr_ms, (IUnknown **)&z_depth, (IUnknown **)&null_s, (IUnknown **)&null_c, (IUnknown **)&smap,
                           (IUnknown **)&cmap, (IUnknown **)&smap_s, (IUnknown **)&cmap_s, (IUnknown **)&sb, (IUnknown **)&saved_rt, (IUnknown **)&saved_ds };
     for (size_t i = 0; i < sizeof list / sizeof *list; i++)
         if (*list[i]) IUnknown_Release(*list[i]), *list[i] = NULL;
@@ -679,19 +681,43 @@ static int make_targets(hd_dev d)
     return 1;
 }
 
-static IDirect3DSurface9 *hdr_surface(void) { return hdr_ms ? hdr_ms : hdr.s; }
+static IDirect3DSurface9 *hdr_surface(void) { return hdr_ms && !preview ? hdr_ms : hdr.s; }
+
+// Not the back buffer: a map preview, kept when its depth buffer (not multisampled) covers the HDR texture.
+static int take_preview(hd_dev d, const D3DVIEWPORT9 *v)
+{
+    IDirect3DSurface9 *rt = NULL, *bb = NULL, *ds = NULL;
+    D3DSURFACE_DESC dd = { 0 };
+    IDirect3DDevice9_GetRenderTarget(d, 0, &rt);
+    IDirect3DDevice9_GetBackBuffer(d, 0, 0, D3DBACKBUFFER_TYPE_MONO, &bb);
+    if (bb) IDirect3DSurface9_Release(bb);
+    if (!rt || rt == bb) {
+        if (rt) IDirect3DSurface9_Release(rt);
+        return 1;
+    }
+    IDirect3DDevice9_GetDepthStencilSurface(d, &ds);
+    if (ds) IDirect3DSurface9_GetDesc(ds, &dd), IDirect3DSurface9_Release(ds);
+    if (dd.Width < tw || dd.Height < th || dd.MultiSampleType || v->X || v->Y) {
+        IDirect3DSurface9_Release(rt);
+        return 0;
+    }
+    preview = rt, pvp = *v;
+    return 1;
+}
 
 void hd_redirect(hd_dev d)
 {
     if (redirected || post_done || scene_no < 0 || !make_targets(d)) return;
     D3DVIEWPORT9 v;
     IDirect3DDevice9_GetViewport(d, &v);
+    if (!take_preview(d, &v)) return;
     IDirect3DDevice9_SetRenderTarget(d, 0, hdr_surface());
-    IDirect3DDevice9_SetViewport(d, &v);
+    if (!preview) IDirect3DDevice9_SetViewport(d, &v); // a preview clears all of it: the bloom reaches past its part
     // Alpha starts at 1 and only character draws write it (hd_char_alpha): the bloom leaves them out.
     IDirect3DDevice9_SetRenderState(d, D3DRS_COLORWRITEENABLE, 8);
     IDirect3DDevice9_Clear(d, 0, NULL, D3DCLEAR_TARGET, 0xff000000, 1.0f, 0);
     IDirect3DDevice9_SetRenderState(d, D3DRS_COLORWRITEENABLE, 7);
+    IDirect3DDevice9_SetViewport(d, &v);
     redirected = 1;
 }
 
@@ -822,7 +848,8 @@ static void ps_constants(hd_dev d)
     memcpy(c[4], lv.fog, 12), c[4][3] = lv.fog_start;
     c[5][0] = 1 / (lv.fog_end > lv.fog_start ? lv.fog_end - lv.fog_start : 1), c[5][1] = lv.clarity, c[5][2] = lv.water_h, c[5][3] = soft < 1.2f ? 1.2f : soft > 6 ? 6 : soft;
     memcpy(c[6], eye, 12), c[6][3] = now_s;
-    c[7][0] = tw ? 1.0f / tw : 0, c[7][1] = th ? 1.0f / th : 0, c[7][2] = prepass_done ? lv.ao_strength : 0;
+    float sw = preview ? pvp.Width : tw, sh = preview ? pvp.Height : th; // what the depth prepass covered
+    c[7][0] = sw ? 1.0f / sw : 0, c[7][1] = sh ? 1.0f / sh : 0, c[7][2] = prepass_done ? lv.ao_strength : 0;
     memcpy(c[8], srows, 48), memcpy(c[11], crows, 48);
     c[14][0] = 1.0f / SMAP, c[14][1] = 1.0f / CMAP;
     memcpy(c[15], lv.water, 12);
@@ -1168,6 +1195,8 @@ void hd_prepass_begin(hd_dev d)
     IDirect3DDevice9_SetPixelShader(d, p_depth);
 }
 
+static float quad_u = 1, quad_v = 1; // how much of the source a full-screen pass reads
+
 static void fullscreen(hd_dev d, const struct target *to, IDirect3DPixelShader9 *ps, IDirect3DTexture9 *t0, IDirect3DTexture9 *t1, float tx, float ty)
 {
     IDirect3DDevice9_SetRenderTarget(d, 0, to->s);
@@ -1177,7 +1206,7 @@ static void fullscreen(hd_dev d, const struct target *to, IDirect3DPixelShader9 
     IDirect3DDevice9_SetPixelShader(d, ps);
     IDirect3DDevice9_SetTexture(d, 0, (IDirect3DBaseTexture9 *)t0);
     IDirect3DDevice9_SetTexture(d, 1, (IDirect3DBaseTexture9 *)t1);
-    float q[4][6] = { { -1, 1, 0, 1, 0, 0 }, { 1, 1, 0, 1, 1, 0 }, { -1, -1, 0, 1, 0, 1 }, { 1, -1, 0, 1, 1, 1 } };
+    float q[4][6] = { { -1, 1, 0, 1, 0, 0 }, { 1, 1, 0, 1, quad_u, 0 }, { -1, -1, 0, 1, 0, quad_v }, { 1, -1, 0, 1, quad_u, quad_v } };
     IDirect3DDevice9_DrawPrimitiveUP(d, D3DPT_TRIANGLESTRIP, 2, q, 24);
 }
 
@@ -1634,7 +1663,7 @@ void hd_post(hd_dev d)
     IDirect3DDevice9_GetDepthStencilSurface(d, &ds);
     if (FAILED(IDirect3DDevice9_GetBackBuffer(d, 0, 0, D3DBACKBUFFER_TYPE_MONO, &bb))) return;
     if (additions_done) draw_near(d), draw_glass(d);
-    if (hdr_ms) IDirect3DDevice9_StretchRect(d, hdr_ms, NULL, hdr.s, NULL, D3DTEXF_NONE);
+    if (hdr_ms && !preview) IDirect3DDevice9_StretchRect(d, hdr_ms, NULL, hdr.s, NULL, D3DTEXF_NONE);
     save_state(d);
     quad_states(d);
     for (DWORD s = 0; s < 2; s++) sampler(d, s, D3DTEXF_LINEAR, D3DTEXF_NONE, D3DTADDRESS_CLAMP);
@@ -1651,8 +1680,12 @@ void hd_post(hd_dev d)
     for (int i = NBLOOM - 1; i > 0; i--)
         fullscreen(d, &bloom[i - 1], p_up, bloom[i].t, NULL, 1.0f / bloom[i].w, 1.0f / bloom[i].h);
     IDirect3DDevice9_SetRenderState(d, D3DRS_ALPHABLENDENABLE, FALSE);
-    struct target back = { NULL, bb, tw, th };
+    D3DSURFACE_DESC pd = { .Width = tw, .Height = th };
+    if (preview) IDirect3DSurface9_GetDesc(preview, &pd), quad_u = (float)pvp.Width / hdr.w, quad_v = (float)pvp.Height / hdr.h;
+    struct target back = { NULL, preview ? preview : bb, pd.Width, pd.Height };
     fullscreen(d, &back, p_final, hdr.t, bloom[0].t, 1.0f / hdr.w, 1.0f / hdr.h);
+    quad_u = quad_v = 1;
+    if (preview) IDirect3DSurface9_Release(preview), preview = NULL;
     IDirect3DDevice9_SetTexture(d, 0, NULL), IDirect3DDevice9_SetTexture(d, 1, NULL);
     restore_state(d);
     IDirect3DDevice9_SetRenderState(d, D3DRS_COLORWRITEENABLE, 15);

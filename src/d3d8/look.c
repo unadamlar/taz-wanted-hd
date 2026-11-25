@@ -439,6 +439,23 @@ static void quick_restore(IDirect3DDevice8 *dev)
     IDirect3DDevice8_SetVertexShader(dev, vs);
 }
 
+// The 3D picture is complete: what is still held back, then bloom and tone mapping.
+static void finish(IDirect3DDevice8 *dev)
+{
+    struct IDirect3DDevice9 *d = d3d9_device(dev);
+    hd_solid_flush(d);
+    merge_flush(dev);
+    if (!hd_additions_done()) hd_additions(d);
+    hd_post(d);
+    merge_state_changed();
+}
+
+void look_preview_end(IDirect3DDevice8 *dev)
+{
+    quick_restore(dev);
+    if (remaster() && hd_redirected()) finish(dev);
+}
+
 static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count)
 {
     struct IDirect3DDevice9 *d = d3d9_device(dev);
@@ -453,11 +470,7 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
             backdrop |= h2 && !hd_hidden(h2);
             return 0;
         }
-        hd_solid_flush(d);
-        merge_flush(dev);
-        if (!hd_additions_done()) hd_additions(d);
-        hd_post(d);
-        merge_state_changed();
+        finish(dev);
         return 0;
     }
     if (backdrop) return quick_restore(dev), 0;   // tone mapping would paint over the 2D already on the back buffer
