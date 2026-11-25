@@ -77,8 +77,9 @@ def _faces(P, N, C):
     return np.concatenate(P), np.concatenate(N), np.concatenate(C)
 
 
-def _sheet(grid, colours):
-    """Triangles of a (rows, cols, 3) point grid with per-point colours; normals from the faces, smoothed per point."""
+def _sheet(grid, colours, wrap=False):
+    """Triangles of a (rows, cols, 3) point grid with per-point colours; normals from the faces, smoothed per point.
+    wrap: the grid closes round (last column = first) and a row shrunk to a point is a pole, both smooth."""
     r, c = grid.shape[:2]
     colours = np.broadcast_to(colours, grid.shape)
     I, J = np.mgrid[:r - 1, :c - 1]
@@ -89,6 +90,10 @@ def _sheet(grid, colours):
         f = np.cross(b - a, d - a)
         for i, j in t:
             np.add.at(vn, (i, j), f)
+    if wrap:
+        vn[:, 0] = vn[:, -1] = vn[:, 0] + vn[:, -1]
+        pole = np.ptp(grid, axis=1).max(1) < 1e-9
+        vn[pole] = vn[pole].sum(1, keepdims=True)
     vn /= np.maximum(np.linalg.norm(vn, axis=2, keepdims=True), 1e-12)
     P = np.concatenate([np.stack([grid[i, j] for i, j in t], 2).reshape(-1, 3) for t in tri])
     N = np.concatenate([np.stack([vn[i, j] for i, j in t], 2).reshape(-1, 3) for t in tri])
@@ -223,14 +228,44 @@ def _ribbed(path, radius, colour, ribs=14, depth=0.05, sides=42, cap=True):
     return _sheet(grid[:, ::-1], col)
 
 
+def _stem(path, radius, pal, ribs, side, phase, depth=0.14):
+    """A saguaro stem along a path in one plane (side: that plane's normal, so the ribs don't twist round bends).
+    Each rib is a rounded ridge with a light stripe on its crest between dark narrow grooves, as the painted cactus.
+    pal: (rings, 3, 3) groove, body and stripe colours per ring."""
+    t = np.gradient(path, axis=0); t /= np.linalg.norm(t, axis=1, keepdims=True)
+    s = np.cross(side, t); s /= np.linalg.norm(s, axis=1, keepdims=True)
+    u = np.cross(t, s)
+    f = np.r_[np.tile([0, 0.12, 0.36, 0.5, 0.64, 0.88], ribs), 0]  # place across a rib: groove at 0, crest at 0.5
+    a = 2 * np.pi * (np.r_[np.repeat(np.arange(ribs), 6), ribs] + f) / ribs + phase
+    rib = 1 - depth * (1 - np.sin(np.pi * f)) ** 2
+    grid = path[:, None] + (radius[:, None] * rib)[..., None] * (np.cos(a)[None, :, None] * s[:, None] + np.sin(a)[None, :, None] * u[:, None])
+    w = np.array([[1, 0, 0], [0.5, 0.5, 0], [0, 0.6, 0.4], [0, 0, 1], [0, 0.6, 0.4], [0.5, 0.5, 0]])[np.r_[np.tile(np.arange(6), ribs), 0]]
+    col = np.einsum("jc,icx->ijx", w, pal)
+    return _sheet(grid[:, ::-1], col[:, ::-1], wrap=True)
+
+
+def _dome(end, tangent, radius, n=6):
+    """Centreline points and radii of a round cap over a stem's end."""
+    th = np.linspace(0, np.pi / 2, n + 1)[1:]
+    return end + np.outer(radius * np.sin(th), tangent), radius * np.cos(th)
+
+
 def saguaro(base, height, radius, colour, rng, arms=None):
-    """A saguaro: a ribbed trunk with a domed top and arms that bend upward: one to three at random, or one per
-    (angle, height fraction, reach) in arms."""
+    """A cartoon saguaro: a ribbed trunk with a round domed top, darker at its foot, and arms with a round elbow and
+    domed ends: one to three at random, or one per (angle, height fraction, reach) in arms. Colours follow the
+    painted cactus: dark grooves, deep green body, a lighter stripe along each rib (sRGB)."""
     up = np.array([0, 1.0, 0])
-    k = np.r_[np.linspace(0, 0.85, 12), 0.85 + 0.15 * np.sin(np.linspace(0, np.pi / 2, 9)[1:])]  # rings bunched into the domed top
-    top = (k - 0.85) / 0.15
-    prof = radius * np.where(k > 0.85, np.sqrt(np.clip(1 - top ** 2, 0.0, 1)), 1.0) * (1.04 - 0.08 * k)
-    parts = [_ribbed(base + np.outer(k * height, up), prof, colour)]
+    c = np.asarray(colour, float)
+    pal = np.stack([c * 0.32, c * 0.82, np.clip(c * 1.15 + (0.24, 0.14, -0.02), 0, 1)])
+    k = np.array([0, 0.04, 0.1, 0.18, 0.3, 0.48, 0.66, 0.84, 1.0])
+    trunk_h = height - radius
+    dp, dr = _dome(base + up * trunk_h, up, radius * 0.96)
+    path = np.r_[base + np.outer(k * trunk_h, up), dp]
+    prof = np.r_[radius * (1.04 - 0.08 * k), dr]
+    foot = np.r_[np.clip(k / 0.2, 0, 1), np.ones(len(dr))] ** 0.7  # the foot is darker and a little olive
+    tp = pal[None] * (0.6 + 0.4 * foot)[:, None, None]
+    tp = tp + (1 - foot)[:, None, None] * 0.12 * (np.array([0.3, 0.27, 0.12]) - tp)
+    parts = [_stem(path, prof, tp, 10, np.array([1.0, 0, 0]), rng.uniform(0, 2 * np.pi))]
     for j in range(rng.integers(1, 4) if arms is None else len(arms)):
         if arms is None:
             a = rng.uniform(0, 2 * np.pi) if j == 0 else a + np.pi * rng.uniform(0.7, 1.3)
@@ -238,11 +273,19 @@ def saguaro(base, height, radius, colour, rng, arms=None):
         else:
             a, y0, reach = arms[j][0], height * arms[j][1], arms[j][2]
         out = np.array([np.cos(a), 0, np.sin(a)])
-        rise = height * rng.uniform(0.25, 0.38)
-        q = np.r_[np.linspace(0, 0.85, 12), 0.85 + 0.15 * np.sin(np.linspace(0, np.pi / 2, 7)[1:])]
-        path = base + up * y0 + np.outer(np.minimum(q * 2, 1) * reach, out) + np.outer(np.clip(q * 1.6 - 0.45, 0, 1) ** 1.2 * rise + q * radius * 0.6, up)
-        pr = radius * 0.62 * np.where(q > 0.85, np.sqrt(np.clip(1 - ((q - 0.85) / 0.15) ** 2, 0.0, 1)), 1.0)
-        parts.append(_ribbed(path, pr, colour))
+        ar = radius * 0.68
+        rise = max(height * rng.uniform(0.25, 0.38), 2.5 * ar)
+        e = min(0.5 * reach, 0.45 * rise, 1.6 * ar)  # elbow radius
+        root = base + up * y0
+        h = np.outer(np.linspace(0, 1, 4)[:-1], out * (reach - e) + up * 0.2 * ar)  # out from the trunk's axis, rising a little
+        corner = root + out * (reach - e) + up * 0.2 * ar
+        ph = np.linspace(0, np.pi / 2, 7)
+        elbow = corner + up * e + e * (np.outer(np.sin(ph), out) - np.outer(np.cos(ph), up))
+        top = corner + out * e + up * (rise - ar)
+        stem = np.r_[root + h, elbow, elbow[-1] + np.outer(np.linspace(0, 1, 4)[1:], top - elbow[-1])]
+        cp, cr = _dome(top, up, ar * 0.96, 5)
+        pr = np.r_[np.full(len(stem), ar), cr]
+        parts.append(_stem(np.r_[stem, cp], pr, np.broadcast_to(pal, (len(pr), 3, 3)), 8, np.cross(out, up), rng.uniform(0, 2 * np.pi)))
     return _faces(*zip(*parts))
 
 
