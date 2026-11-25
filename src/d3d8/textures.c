@@ -867,13 +867,12 @@ static HRESULT WINAPI hook_SetTextureStageState(IDirect3DDevice8 *dev, DWORD sta
     return real_SetTextureStageState(dev, stage, type, value);
 }
 
-// After a device Reset: the game recreated all its textures, so every texture we tracked is gone.
+// After a device Reset. Textures the game released before it already left the table (hook_Release); the
+// ones still listed survived it (a splash screen can) and keep their replacements, which are managed.
 void textures_reset(IDirect3DDevice8 *dev)
 {
     EnterCriticalSection(&lock);
-    memset(texs, 0, sizeof texs);
-    ntexs = 0;
-    for (int i = 0; i < TABLE; i++) reps[i].users = 0; // counted again as the game refills them
+    log_line("textures: %d survive the reset", ntexs);
     LeaveCriticalSection(&lock);
     memset(scrolls, 0, sizeof scrolls);
     memset(bound, 0, sizeof bound);
