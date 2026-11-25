@@ -68,7 +68,12 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
 - Main menu, loading screens and pause menu have a Remaster version (`extracted/look/reports/step7/screens/`). Copy `scene01` and `screens`
   from `extracted/look/screens/runtime/` into `<game>/taz-hd/look/`. Not yet in the user's playable copy.
 - For the user to judge: the deep blue loading screens, and the menu's brown dirt path where the original is flat orange.
-- Not done: the level intro page, map and game-over screens. Not checked: bonus-level loading art, a gamepad in these menus.
+- Rules pages (the book before boss levels and bonus races) and the continue screen (also the game over) have a Remaster version
+  (`extracted/look/reports/step7/screens2/`; data `scene31` and `screens` from `extracted/look/screens2/runtime/`). The rules backdrop goes soft and
+  amber behind the unchanged book; the continue room (its own look, number 31, chosen by camera position) is a dark cave with a lamp on the cage.
+  Map screens kept: full-screen posters whose colour-coded routes a regrade would fight. Normal levels have no rules page. All in the playable copy.
+  For the user to judge: the amber rules backdrop, and the continue room darker and moodier than HD.
+- Not checked: bonus-level loading art, a gamepad in these menus, where `boss.png` and `guide.png` splash images appear, continue screens outside westboss.
 - City world done: department store, museum, construction site and city boss (`extracted/look/reports/step7/city-levels/`). Data is in
   `extracted/look/city-levels/<level>/runtime/sceneNN`. Not in the user's playable copy. Not checked: finishing a level, win and lose
   screens, the museum's real entry, the 2 GB limit, uncapped frame time. Museum jumps drop Taz into a fall and city boss jumps crash,
@@ -191,10 +196,13 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
    grass, hidden pickups, the camera passing through trees and fences, level transitions, quickload.
 4. (Done 2026-11-22) Second level (city hub, scene 8) to prove what carries over; measure hand work per level.
 5. (Done 2026-11-22) More zoo hub art: sharper cliffs, buildings, the elephant, painted leftovers (zigzag moat bank, barbed wire).
-6. Later, with the user: optimization pass, whether to split into its own repo, rollout to all levels.
+6. (Done 2026-11-25) Rollout to all levels, screens and cutscenes; optimization pass. Still the user's call: whether to split into its own repo.
 
 ## Known problems
 
+- After a live resolution change, a rules page still loaded shows the 2002 art in every look (HD too) until the next level load: `textures_reset`
+  forgets every tracked texture, and this splash isn't recreated. Older than the Remaster; reached by a pause-menu resolution change, then a Continue.
+- The map's Video preview draws the level in the HD look, not Remaster.
 - The middle of Taz's back is still dark in the zoo when the sun is behind him.
 - The tutorial book's ribbon is thinner and less bright than in HD, and a soft yellow glow remains around the book.
 - The fade for scenery by the camera is not checked in motion, and the water only along one run beside the moat. A sprite
