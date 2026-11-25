@@ -230,7 +230,7 @@ def _ribbed(path, radius, colour, ribs=14, depth=0.05, sides=42, cap=True):
 
 def _stem(path, radius, pal, ribs, side, phase, depth=0.14):
     """A saguaro stem along a path in one plane (side: that plane's normal, so the ribs don't twist round bends).
-    Each rib is a rounded ridge with a light stripe on its crest between dark narrow grooves, as the painted cactus.
+    Each rib is a rounded ridge with a narrow light crest between soft grooves.
     pal: (rings, 3, 3) groove, body and stripe colours per ring."""
     t = np.gradient(path, axis=0); t /= np.linalg.norm(t, axis=1, keepdims=True)
     s = np.cross(side, t); s /= np.linalg.norm(s, axis=1, keepdims=True)
@@ -239,7 +239,7 @@ def _stem(path, radius, pal, ribs, side, phase, depth=0.14):
     a = 2 * np.pi * (np.r_[np.repeat(np.arange(ribs), 6), ribs] + f) / ribs + phase
     rib = 1 - depth * (1 - np.sin(np.pi * f)) ** 2
     grid = path[:, None] + (radius[:, None] * rib)[..., None] * (np.cos(a)[None, :, None] * s[:, None] + np.sin(a)[None, :, None] * u[:, None])
-    w = np.array([[1, 0, 0], [0.5, 0.5, 0], [0, 0.6, 0.4], [0, 0, 1], [0, 0.6, 0.4], [0.5, 0.5, 0]])[np.r_[np.tile(np.arange(6), ribs), 0]]
+    w = np.array([[1, 0, 0], [0.3, 0.7, 0], [0, 1, 0], [0, 0.4, 0.6], [0, 1, 0], [0.3, 0.7, 0]])[np.r_[np.tile(np.arange(6), ribs), 0]]
     col = np.einsum("jc,icx->ijx", w, pal)
     return _sheet(grid[:, ::-1], col[:, ::-1], wrap=True)
 
@@ -252,11 +252,12 @@ def _dome(end, tangent, radius, n=6):
 
 def saguaro(base, height, radius, colour, rng, arms=None):
     """A cartoon saguaro: a ribbed trunk with a round domed top, darker at its foot, and arms with a round elbow and
-    domed ends: one to three at random, or one per (angle, height fraction, reach) in arms. Colours follow the
-    painted cactus: dark grooves, deep green body, a lighter stripe along each rib (sRGB)."""
+    domed ends: one to three at random, or one per (angle, height fraction, reach) in arms. Muted olive with soft
+    grooves and a faint light crest per rib (sRGB): the painted cactus's dark grooves and bright stripes read as a watermelon."""
     up = np.array([0, 1.0, 0])
     c = np.asarray(colour, float)
-    pal = np.stack([c * 0.32, c * 0.82, np.clip(c * 1.15 + (0.24, 0.14, -0.02), 0, 1)])
+    g = c @ (0.3, 0.59, 0.11); c = 0.85 * (c + 0.6 * (g * np.array((0.82, 1.0, 0.62)) - c))  # a saguaro's muted olive, not paint green
+    pal = np.stack([c * 0.62, c * 0.9, np.clip(c * 1.05 + (0.05, 0.05, 0.02), 0, 1)])
     k = np.array([0, 0.04, 0.1, 0.18, 0.3, 0.48, 0.66, 0.84, 1.0])
     trunk_h = height - radius
     dp, dr = _dome(base + up * trunk_h, up, radius * 0.96)
