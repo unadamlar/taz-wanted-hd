@@ -607,6 +607,19 @@ TB2_TILES = dict(d_steel=CONS_TILES["d_steel"])
 TB2_HAND = dict(TAZHUB_HAND, camera_B=dict(loc=(0.0, -36.0, 2.0), look_at=(0.0, -20.0, -1.0), lens=16.0), camera_C=dict(loc=(0.0, 20.0, 2.0), look_at=(0.0, 40.0, -1.0), lens=16.0))
 TB2_LOOK = dict(TAZHUB_LOOK, sun=dict(TAZHUB_LOOK["sun"], sun_color="#ffffff", sun_strength=3.93), grade=dict(TB1_LOOK["grade"], ambient_strength=0.8, saturation=1.0), sky=dict(TAZHUB_LOOK["sky"], ambient="#d8d8dd"))  # neutral: blue light turned Taz lilac, warm light orange
 
+# ---- the continue screen (look data 31, an unused scene number): the game-over room every level shares, placed by the game
+# at (75000, 75293, 75000). Taz hangs caged over a pool in a painted purple cave; a lamp over the cage lights it like a stage.
+CONT_RULES = [("resTex/shadowsub", "hide")]  # the pool keeps the game's own: the shark swims inside its tank
+CONT_DETAIL = [("continue/spooky*", "d_rock"), ("continue/truck_crate*", "d_iron"), ("continue/continue01", "d_iron")]
+CONT_TILES = dict(d_rock=dict(PLANET_TILES["d_rock"], period=3.2, detail=0.5), d_iron=WEST_TILES["d_iron"])
+CONT_LOOK = dict(
+    sun=dict(sun_azimuth=250.0, sun_elevation=70.0, sun_strength=0.6, sun_color="#e8e0ff"),
+    grade=dict(exposure=0.2, look="AgX - Punchy", saturation=1.1, bloom=0.4, fog=0.01, fog_start=200.0, fog_depth=400.0, ambient_strength=0.5),
+    sky=dict(zenith="#2a1a6a", horizon="#4a3aa0", horizon_warm="#8070c0", sky_strength=1.0, cloud_white=1.0, ambient="#c8c0ff"), cliff=dict(),
+)
+CONT_HAND = dict(DEPT_HAND, camera_B=dict(loc=(299.6, 297.0, 303.5), look_at=(299.6, 299.4, 303.0), lens=16.0),
+                 camera_C=dict(loc=(299.6, 297.0, 303.5), look_at=(299.6, 299.4, 303.0), lens=16.0))
+
 LEVELS = {
     "zoohub": dict(scene=3, pak="zoohub", blend="zoohub.blend", out="pass5", captures=("world-hero.bin", "world-sweep.bin"), rules=ZOO_RULES, hand=ZOO_HAND, look=ZOO_LOOK,
                    hdri=ZOO_HDRI, hdri_rotation=0.0, hub=(-31.5, -31.5, 18.5, 19.5), dress_characters=True,
@@ -837,3 +850,8 @@ LEVELS["deconstruct"] = _bonus("contruct", "deconstruct", 25, ("hero", "sweep-0"
 LEVELS["deconstruct"]["glow"] += [("deconstruct/textures/lighthalo01", 1.6, None)]
 # Brighter than the tower, still night: at the tower's settings Taz read as a dark shape among the crates.
 LEVELS["deconstruct"].update(look=dict(CONS_LOOK, grade=dict(CONS_LOOK["grade"], exposure=0.63, ambient_strength=0.676)), char_fill=(0.8, 0.867, 1.067))
+LEVELS["continue"] = dict(scene=31, pak="continue", blend="screens2/capture/continue.blend", out="screens2/continue/pass1", rules=CONT_RULES, hand=CONT_HAND,
+                          look=CONT_LOOK, hdri=None, hdri_rotation=0.0, hub=(291.0, 293.0, 308.5, 307.0), game_sky=True, clutter=False, island_boxes=True, grass_min=2.0,
+                          captures=("screens2/capture/continue-wb.bin",), materials=tuple(CONT_TILES) + ("flat",), tiles=CONT_TILES,
+                          detail=CONT_DETAIL, lamps=dict(DEPT_LAMPS, extra=((299.6, 299.4, 308.0, 12.0, "#ffe8c8", 8.0, 0.72),)),
+                          char_fill=(0.2, 0.18, 0.3), char_keep=1.0)

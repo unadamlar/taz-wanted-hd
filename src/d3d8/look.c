@@ -22,6 +22,7 @@ struct rec { IDirect3DVertexBuffer8 *vb; DWORD shader; UINT stride, start, count
 
 static int level, loaded_scene = -1;
 #define PLANET_LOOK 30 // an unused scene number: Planet X's own look data
+#define CONTINUE_LOOK 31 // another: the game-over room every level shares
 #define FRONTEND 1
 static struct rec *recs; static UINT nrecs, cap_recs;     // this frame's character draws, for their sun map
 static HRESULT (WINAPI *draw_real)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT);
@@ -596,9 +597,13 @@ void look_merge_end(IDirect3DDevice8 *dev)
 }
 
 // The doors between hubs lead to Planet X, the same model placed far below each of the four hubs' levels.
+// The continue screen's room sits at the same far point in every level.
 static int look_scene(int scene)
 {
+    float eye_x = -(real_view._41 * real_view._11 + real_view._42 * real_view._12 + real_view._43 * real_view._13);
     float eye_y = -(real_view._41 * real_view._21 + real_view._42 * real_view._22 + real_view._43 * real_view._23);
+    float eye_z = -(real_view._41 * real_view._31 + real_view._42 * real_view._32 + real_view._43 * real_view._33);
+    if (scene >= 2 && fabsf(eye_x - 75000) < 5000 && fabsf(eye_y - 75900) < 5000 && fabsf(eye_z - 74900) < 5000) return CONTINUE_LOOK;
     return (scene == 3 || scene == 8 || scene == 13 || scene == 18) && eye_y < -60000 ? PLANET_LOOK : scene;
 }
 
@@ -623,6 +628,7 @@ void look_frame(IDirect3DDevice8 *dev)
         memset(&m, 0, sizeof m);
         m.frames = -30, m.want = n;
     }
+    if (settings.tests && DeleteFileA("taz-hd\\look-reload") && hd_loaded()) hd_unload(), merge_reset(), loaded_scene = -1; // rereads the look data
     quick_restore(dev);
     UINT64 t0 = ticks();
     hd_set_paused(settings.exe_known && GAME_STATE == 3);
