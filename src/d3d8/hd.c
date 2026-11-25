@@ -44,7 +44,7 @@ struct target { IDirect3DTexture9 *t; IDirect3DSurface9 *s; UINT w, h; };
 
 static struct level {
     float sun[3], sun_col[3], sky[3], ground[3], soft, ao_radius, ao_strength, fog[3], fog_start, fog_end;
-    float exposure, bloom_t, bloom_s, sat, contrast, water_h, water[3], clarity, fade0, fade1, sky_scale, unbake, unbake_keep, char_fill[3], char_keep, hold, shadow_y, glow_add;
+    float exposure, bloom_t, bloom_s, sat, contrast, water_h, water[3], clarity, fade0, fade1, sky_scale, unbake, unbake_keep, char_fill[3], char_keep, char_lamp, hold, shadow_y, glow_add;
 } lv;
 
 static int scene_no = -1;
@@ -224,7 +224,7 @@ static void defaults(void)
     memcpy(lv.fog, (float[3]){ 0.62f, 0.76f, 0.95f }, 12);
     lv.fog_start = 7500, lv.fog_end = 40000;
     lv.exposure = 0.72f, lv.bloom_t = 1.1f, lv.bloom_s = 0.12f, lv.sat = 1.08f, lv.contrast = 1.04f;
-    lv.water_h = -1e9f, lv.clarity = 0.004f, lv.fade0 = 2600, lv.fade1 = 4200, lv.sky_scale = 1;
+    lv.water_h = -1e9f, lv.clarity = 0.004f, lv.fade0 = 2600, lv.fade1 = 4200, lv.sky_scale = 1, lv.char_lamp = 1;
     memcpy(lv.water, (float[3]){ 0.03f, 0.2f, 0.28f }, 12);
 }
 
@@ -242,7 +242,7 @@ static void read_ini(void)
         K("fog_color", fog, 3), K("fog_start", fog_start, 1), K("fog_end", fog_end, 1), K("exposure", exposure, 1),
         K("bloom_threshold", bloom_t, 1), K("bloom_strength", bloom_s, 1), K("saturation", sat, 1), K("contrast", contrast, 1),
         K("water_height", water_h, 1), K("water_color", water, 3), K("water_clarity", clarity, 1),
-        K("grass_fade_start", fade0, 1), K("grass_fade_end", fade1, 1), K("sky_scale", sky_scale, 1), K("unbake", unbake, 1), K("unbake_keep", unbake_keep, 1), K("char_fill", char_fill, 3), K("char_keep", char_keep, 1), K("hold", hold, 1), K("shadow_floor", shadow_y, 1), K("glow_add", glow_add, 1),
+        K("grass_fade_start", fade0, 1), K("grass_fade_end", fade1, 1), K("sky_scale", sky_scale, 1), K("unbake", unbake, 1), K("unbake_keep", unbake_keep, 1), K("char_fill", char_fill, 3), K("char_keep", char_keep, 1), K("char_lamp", char_lamp, 1), K("hold", hold, 1), K("shadow_floor", shadow_y, 1), K("glow_add", glow_add, 1),
     };
     while (fgets(line, sizeof line, f)) {
         char *eq = strchr(line, '=');
@@ -1604,7 +1604,7 @@ void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_c
         for (UINT i = 0; i < nlights; i++) {
             const struct light *l = &lights[i];
             float x = l->p[0] - char_at[0], y = l->p[1] - char_at[1], z = l->p[2] - char_at[2], dd = x * x + y * y + z * z;
-            float e[2][4] = { { l->p[0], l->p[1], l->p[2], 1 / (l->r * l->r) }, { l->c[0], l->c[1], l->c[2], 0 } };
+            float e[2][4] = { { l->p[0], l->p[1], l->p[2], 1 / (l->r * l->r) }, { l->c[0] * lv.char_lamp, l->c[1] * lv.char_lamp, l->c[2] * lv.char_lamp, 0 } };
             if (dd < d0) memcpy(two[2], two[0], 32), d1 = d0, memcpy(two[0], e, 32), d0 = dd;
             else if (dd < d1) memcpy(two[2], e, 32), d1 = dd;
         }

@@ -1670,7 +1670,7 @@ vals = [
     ("saturation", grade["saturation"]), ("contrast", LEVEL.get("contrast", 1.15)),
     ("water_height", water_y), ("water_color", kit.srgb(LEVEL.get("water_color", "#2aa6c8"))), ("water_clarity", LEVEL.get("water_clarity", 0.72)),
     ("grass_fade_start", 5000.0), ("grass_fade_end", 10000.0), ("sky_scale", sky_scale * LEVEL.get("sky_gain", 1.0)),
-] + [(k, LEVEL[k]) for k in ("unbake", "unbake_keep", "char_fill", "char_keep", "hold", "shadow_floor", "glow_add") if k in LEVEL]
+] + [(k, LEVEL[k]) for k in ("unbake", "unbake_keep", "char_fill", "char_keep", "char_lamp", "hold", "shadow_floor", "glow_add") if k in LEVEL]
 with open(os.path.join(tmp, "level.ini"), "w") as f:
     f.write("[level]\n")
     for k, x in vals:
