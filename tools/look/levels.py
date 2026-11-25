@@ -858,5 +858,8 @@ LEVELS["continue"] = dict(scene=31, pak="continue", blend="screens2/capture/cont
 # Reimagined 3D in place of card clusters (flatscan proofs): firs for the tiered tree cards, icicles under the snow ledges.
 LEVELS["icedome"]["clusters"] = ((tuple(f"icedome/textures/{n}" for n in ("snowxmas0[1-7]", "purptree0[1-4]", "bluetree0[1-5]")), "pine"),
                                  (("icedome/textures/frozentreats2", "icedome/textures/frozentreats04"), "icicles"))
+# The same firs and icicles where the race and the zoo hub's ice gate use that paint (user, 2026-11-25: "they should go to other levels too").
+LEVELS["rcicedome"]["clusters"] = tuple((tuple(p.replace("icedome/", "rcicedome/", 1) for p in pats), kind) for pats, kind in LEVELS["icedome"]["clusters"])
+LEVELS["zoohub"]["clusters"] = ((("zoohub/textures/snowxmas0[1-7]",), "pine"),)
 # The menu's right-hand lawn is flat two-tone paint the ground rule missed: lawn material and grass like the left one.
 LEVELS["frontend"]["rules"] += [("frontend/textures/grass_new*", "ground"), ("frontend/textures/tazfern05*", "ground")]

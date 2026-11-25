@@ -1503,6 +1503,21 @@ for pats, kind in LEVEL.get("clusters", ()):  # cards that together draw one tre
         cen, w = q.mean(0), np.ptp(q[:, [0, 2]], 0).max()
         g = None if kind == "icicles" else next((g for g in groups if g[0] == tuple(np.round(it[1][1], 3)) and np.hypot(*(cen - g[1])[[0, 2]]) < max(0.45 * max(g[2], w), 1.3 * size_)), None)
         g[3].append(it) if g else groups.append((tuple(np.round(it[1][1], 3)), cen, w, [it]))
+    def crown(m):  # top centre, centre and radius of a group's cards
+        q = np.concatenate([x[2][0].reshape(-1, 3) for x in m])
+        return q[q[:, 1] > q[:, 1].max() - 0.15 * np.ptp(q[:, 1]) - 1e-3].mean(0), q.mean(0), 0.5 * np.ptp(q[:, [0, 2]], 0).max()
+    groups.sort(key=lambda g: -crown(g[3])[0][1])
+    i = 0
+    while kind == "pine" and i < len(groups):  # a tree of tilted tiers seeds several groups: one whose top sits under a taller crown, or mostly overlaps it, joins it
+        (ta, ca, ra), j = crown(groups[i][3]), i + 1
+        while j < len(groups):
+            tb, cb, rb = crown(groups[j][3])
+            if groups[j][0] == groups[i][0] and (np.hypot(*(tb - ta)[[0, 2]]) <= min(0.5 * (ta[1] - tb[1]) + 0.5 * size_, 2 * size_) or np.hypot(*(ca - cb)[[0, 2]]) < 0.6 * min(ra, rb)):
+                groups[i][3].extend(groups.pop(j)[3])
+                (ta, ca, ra), j = crown(groups[i][3]), i + 1
+            else:
+                j += 1
+        i += 1
     n_ = 0
     for _, _, _, members in groups:
         rng_ = np.random.default_rng(members[0][0][0] & 0xffff)
