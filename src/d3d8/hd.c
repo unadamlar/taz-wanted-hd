@@ -1607,8 +1607,8 @@ void hd_char_alpha(hd_dev d, int on)
 
 void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_colour, float scale, const float *style, struct IDirect3DTexture9 *fur)
 {
-    // c24 stage 0, c26-c29 the two lamps nearest this character, c30 fill, c31 style, c34 hold: one upload per draw
-    static float c[11][4];
+    // c24 stage 0, c26-c29 the two lamps nearest this character, c30 fill, c31 style: one upload per draw
+    static float c[8][4];
     float k[4] = { use_tex, use_colour, scale, 0 };
     if (skin_mat >= 0 && !use_tex) { // no paint of its own: the level's hide goes through the fur path
         memcpy(c[7], style, 16), c[7][2] = mats[skin_mat].cut;
@@ -1628,10 +1628,9 @@ void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_c
         }
     }
     memcpy(c[6], (float[4]){ lv.char_fill[0], lv.char_fill[1], lv.char_fill[2], lv.char_keep }, 16);
-    memcpy(c[10], (float[4]){ lv.exposure, lv.contrast * 1.26f, lv.sat * 1.17f, 0 }, 16);
     IDirect3DDevice9_SetVertexShaderConstantF(d, 60, model_rows, 3);
     ps_constants(d);
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 24, c[0], 11);
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 24, c[0], 8);
     bind_common(d);
     IDirect3DDevice9_SetTexture(d, SMP_FUR, (IDirect3DBaseTexture9 *)fur);
     IDirect3DDevice9_SetPixelShader(d, p_char);
