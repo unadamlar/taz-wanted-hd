@@ -801,6 +801,20 @@ def game_rgba(label):
     return px.reshape(h, w, 4)[::-1].copy()
 
 
+def pixel_art(label):
+    """The game's own texture, unscaled, top row first."""
+    f = os.path.join(ext, "textures", label + ".png")
+    if not os.path.exists(f):  # the same pixels under another pak's name
+        f = os.path.join(ext, "textures", next(l.split("\t")[1].strip() for l in open(os.path.join(ext, "textures", "fingerprints.tsv"))
+                                                if int(l.split("\t")[0], 16) == tex_hash[label]))
+    img = bpy.data.images.load(f, check_existing=True)
+    img.colorspace_settings.name = "Non-Color"
+    w, h = img.size
+    px = np.empty(w * h * 4, np.float32)
+    img.pixels.foreach_get(px)
+    return px.reshape(h, w, 4)[::-1].copy()
+
+
 def card_mat(label):
     """A game texture drawn as the game draws it, cut-out kept: for a hidden texture's draws that stay."""
     name = "card_" + label.rsplit("/", 1)[1][:26]
@@ -1444,7 +1458,7 @@ if cfg["cards"] or cfg["soft"]:
                     lab = label_of(d[0])
                     kind = cfg["cards"][lab]["kind"]  # a placed plant mixes kinds: its leaves and its flower
                     if lab not in traced:
-                        rgba = game_rgba(lab)
+                        rgba = game_rgba(lab) if kind != "pickets" else pixel_art(lab)  # pickets are read column by column, at the game's own pixels
                         step_ = max(1, rgba.shape[0] // 256, rgba.shape[1] // 256)
                         traced[lab] = rgba[::step_, ::step_, 3], rgba[::step_, ::step_, :3]  # traced at up to 256 px
                     small, paint = traced[lab]
