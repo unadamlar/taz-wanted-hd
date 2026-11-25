@@ -1512,7 +1512,7 @@ for pats, kind in LEVEL.get("clusters", ()):  # cards that together draw one tre
         (ta, ca, ra), j = crown(groups[i][3]), i + 1
         while j < len(groups):
             tb, cb, rb = crown(groups[j][3])
-            if groups[j][0] == groups[i][0] and (np.hypot(*(tb - ta)[[0, 2]]) <= min(0.5 * (ta[1] - tb[1]) + 0.5 * size_, 2 * size_) or np.hypot(*(ca - cb)[[0, 2]]) < 0.6 * min(ra, rb)):
+            if groups[j][0] == groups[i][0] and (np.hypot(*(tb - ta)[[0, 2]]) <= min(0.5 * (ta[1] - tb[1]) + size_, 2 * size_) or np.hypot(*(ca - cb)[[0, 2]]) < 0.6 * min(ra, rb)):
                 groups[i][3].extend(groups.pop(j)[3])
                 (ta, ca, ra), j = crown(groups[i][3]), i + 1
             else:
