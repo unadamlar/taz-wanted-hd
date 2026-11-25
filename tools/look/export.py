@@ -1583,7 +1583,7 @@ def level_lights(cfg):
             q = np.average(p[ix], 0, weights=w[ix])
             out.append(((q[0], q[2] + cfg["pool_height"], q[1]), cfg["pool_radius"], colour * cfg["pool_power"], cfg["pool_cone"]))
     print("export: %d lamps, %d baked pools" % (len(lamps), len(out) - len(lamps)))
-    out += [((x, z, y), r, np.array(kit.srgb(c)) * p, -0.2) for x, y, z, r, c, p in cfg.get("extra", ())]
+    out += [((x, z, y), r, np.array(kit.srgb(c)) * p, cone[0] if cone else -0.2) for x, y, z, r, c, p, *cone in cfg.get("extra", ())]  # optional 7th: a spot's cone
     return [(*(np.array(p) * K), r * K, *c, cone) for p, r, c, cone in out[:64]]
 
 
