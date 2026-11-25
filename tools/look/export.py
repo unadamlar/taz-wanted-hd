@@ -107,7 +107,7 @@ if "dome" in LEVEL:
 MATS["leaves_tint"] = ("leaves_tint", False, CARD, TWO_SIDED | WIND, 0.0, (1, 1, 1), 0.75, 0, 0.5)  # grey leaves: a bush's colour is its vertex colour
 if "materials" in LEVEL and LEVEL.get("card_models"):  # real 3D stand-ins for painted cards: flowers and boards are flat colour
     LEVEL["materials"] = tuple(LEVEL["materials"]) + ("prop",) + (("leaves", "leaf_core", "leaves_tint") if any(k == "bush" for _, k in LEVEL["card_models"]) else ())
-if "materials" in LEVEL and LEVEL.get("cacti"):
+if "materials" in LEVEL and (LEVEL.get("cacti") or LEVEL.get("clusters")):
     LEVEL["materials"] = tuple(LEVEL["materials"]) + ("prop",)
 if "materials" in LEVEL:  # a level loads only what it uses
     MATS["paint"] = ("", False, OPAQUE, 0, 1000.0, (0.86, 0.88, 0.92), 0.6, 0, 0)  # road markings, kept white
@@ -1315,7 +1315,7 @@ if cfg["cards"] or cfg["soft"]:
                             got += iron_geo(small, paint, dp[t], tu, dc[t], size, kind == "wood")
                             continue
                         if kind == "banner":  # cloth in folds under a rod, the game's paint and cut-out kept
-                            h_, v_ = solid.uv_axes(dp[t], tu)
+                            v_ = solid.uv_axes(dp[t], tu)[1]
                             fu = tu.reshape(-1, 2) - np.floor(tu.reshape(-1, 2).min(0) + 1e-6)
                             along_u = abs(h_[1]) < abs(v_[1])
                             r_ = (fu[:, 1].min(), fu[:, 1].max()) if along_u else (fu[:, 0].min(), fu[:, 0].max())
@@ -1439,6 +1439,95 @@ if cfg["cards"] or cfg["soft"]:
         print("export: replaces %d game draws, %s: %d triangles" % (len(ds), sorted({labels[d[0]][0].rsplit("/", 1)[1] for d in ds}), len(p) // 3))
         for d in ds:
             solids.setdefault((solid.key_of(d[4]), d[0]), pi)  # the same model can come in several paints
+
+def cluster_geo(kind, T, labs, rng):
+    """One reimagined fir for a cluster of tree cards, or icicles for each ledge card."""
+    W = np.concatenate([t[0].reshape(-1, 3) for t in T])
+    paint = np.concatenate([game_rgba(l)[::4, ::4].reshape(-1, 4) for l in sorted(set(labs))])
+    fam = paint_families(paint[paint[:, 3] > 0.5, :3])
+    lit = np.clip(np.concatenate([t[2].reshape(-1, 3) for t in T]).mean(0), 0.3, 1)  # the baked light, as on the game's cards
+    c = np.clip(fam[0] * lit, 0, 1)
+    if kind == "icicles":
+        got = []
+        for dp, du, dc in T:
+            for t in solid.card_pieces(dp, du) or ():
+                tu, size = du[t], solid.repeat_size(dp[t], du[t])
+                v_ = solid.uv_axes(dp[t], tu)[1]
+                a = game_rgba(labs[0])[..., 3] > 0.5
+                fu = tu.reshape(-1, 2)
+                u0, u1, v0, v1 = fu[:, 0].min(), fu[:, 0].max(), fu[:, 1].min(), fu[:, 1].max()
+                down = 1 if v_[1] < 0 else -1  # v runs down the wall
+                width, n = (u1 - u0) * size[0], max(2, int((u1 - u0) * size[0] / 48))  # few chunky icicles read better than a comb
+                xs = np.linspace(0.5, n - 0.5, n) / n
+                col_ = ((u0 + xs * (u1 - u0)) % 1 * a.shape[1]).astype(int)
+                run = a[:, col_][::down].mean(0) * (v1 - v0) * size[1]  # paint below the ledge in each column
+                P, N, C = props3d.icicles(width, (xs + rng.uniform(-0.2, 0.2, n) / n) * width, run * rng.uniform(0.55, 1.15, n), min(0.4 * width / n, 20.0), np.clip(c * 0.7 + 0.3, 0, 1), (0.96, 0.98, 1.0))
+                top = v0 if down > 0 else v1
+                Q = np.c_[u0 + P[:, 0] / size[0], top + down * P[:, 1] / size[1], P[:, 2]]
+                Q = np.r_[Q, [[2.0, 0, 0]]]  # u past 1: on_card takes u as given
+                q = solid.on_card(Q, np.r_[N * [1, down, 1], [[0, 0, 1.0]]], dp[t], tu, dc[t], size)
+                got.append((q[0][:-1], q[1][:-1], C))
+        return [np.concatenate(x) for x in zip(*got)] if got else None
+    base, height, _ = props3d.footprint(W)
+    tint = c if fam[0][1] < fam[0][0] or fam[0][2] > fam[0][1] else np.array((0.2, 0.58, 0.42)) * lit  # the white-and-green paint: an evergreen
+    return props3d.pine(base, height, 0.52 * np.ptp(W[:, [0, 2]], 0).max(), tint, np.clip(lit * 1.05, 0, 1), rng, kind == "frost")
+
+
+for pats, kind in LEVEL.get("clusters", ()):  # cards that together draw one tree, or a fringe of icicles: a model each
+    known_ = {dress.base_name(m.name.split(":", 1)[1]) for m in bpy.data.materials if m.name.startswith(("lit:", "lit+:"))}
+    labs_ = {tex_hash[l]: l for l in tex_hash if l in known_ and any(fnmatch.fnmatch(l, p) for p in pats)}
+    got_ = {}
+    for d in solid.capture(captures, set(labs_)):
+        got_.setdefault((solid.key_of(d[4]), d[0]), d)
+    items = []
+    for k, d in got_.items():
+        if k in solids or k in static_done:
+            continue
+        t = solid.triangles(d[2], d[3], d[4])
+        e1, e2 = t[1][:, 1] - t[1][:, 0], t[1][:, 2] - t[1][:, 0]
+        t = tuple(x[np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]) > 1e-6] for x in t)  # a strip's stitches carry no paint
+        if not len(t[0]):
+            continue
+        # one static draw can carry cards all over the level: each piece on its own
+        items += [(k, d, tuple(x[i] for x in t)) for i in solid.islands(t[0])] if solid._identity(d[1]) else [(k, d, t)]
+    def fits(t, size):  # standing or leaning cards of the usual size: the same paint also lies on the ground or spans a hill
+        n = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])
+        return len(t) and np.abs(n[:, 1]).sum() < (0.5 if kind == "icicles" else 0.85) * np.linalg.norm(n, axis=1).sum() and np.ptp(t.reshape(-1, 3), 0).max() < 3 * size
+    size_ = np.median([np.ptp(it[2][0].reshape(-1, 3), 0).max() for it in items]) if items else 0
+    left = [it for it in items if not fits(it[2][0], size_)]
+    items = [it for it in items if fits(it[2][0], size_)]
+    items.sort(key=lambda it: -np.ptp(it[2][0].reshape(-1, 3), 0).max())
+    groups = []  # biggest first: each card joins the first seed it stands within, so a forest doesn't chain into one tree
+    for it in items:
+        q = it[2][0].reshape(-1, 3)
+        cen, w = q.mean(0), np.ptp(q[:, [0, 2]], 0).max()
+        g = None if kind == "icicles" else next((g for g in groups if g[0] == tuple(np.round(it[1][1], 3)) and np.hypot(*(cen - g[1])[[0, 2]]) < max(0.45 * max(g[2], w), 1.3 * size_)), None)
+        g[3].append(it) if g else groups.append((tuple(np.round(it[1][1], 3)), cen, w, [it]))
+    n_ = 0
+    for _, _, _, members in groups:
+        rng_ = np.random.default_rng(members[0][0][0] & 0xffff)
+        geo = cluster_geo(kind, [m[2] for m in members], [labs_[m[1][0]] for m in members], rng_)
+        if geo is None:
+            continue
+        p, n, c = geo
+        g = (p.astype(np.float32), n.astype(np.float32), dds.to_linear(np.clip(c, 0, 1)).astype(np.float32), np.zeros((len(p), 2), np.float32), np.full(len(p), MAT_ID["prop"]))
+        n_ += len(p) // 3
+        if solid._identity(members[0][1][1]):
+            static_parts.append(g)
+            static_hide.update(m[1][0] for m in members)
+            static_done.update(m[0] for m in members)
+        else:
+            pi = add_proto("cluster%d" % len(protos), *g)
+            for m in members:
+                solids[m[0]] = pi
+    for k, d, (dp, du, dc) in left:  # the hidden paint's other static draws stay, redrawn from the capture
+        if d[0] in static_hide and solid._identity(d[1]):
+            static_done.add(k)
+            nrm = np.cross(dp[:, 1] - dp[:, 0], dp[:, 2] - dp[:, 0])
+            nrm = np.repeat(nrm / np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-9), 3, 0)
+            static_parts.append((dp.reshape(-1, 3).astype(np.float32), nrm.astype(np.float32), dds.to_linear(dc.reshape(-1, 3)).astype(np.float32),
+                                 du.reshape(-1, 2).astype(np.float32), np.full(len(dp) * 3, card_mat(labs_[d[0]]))))
+    print("export: real 3D %s for %d game draws in %d models, %d triangles; %d draws kept" % (kind, len(items), len(groups), n_, len(left)))
 
 if static_parts:  # the static world's stand-ins, merged per chunk: one proto each, not one per card (fewer draws)
     p, n, c, u, m = (np.concatenate(x) for x in zip(*static_parts))
