@@ -200,9 +200,9 @@ regenerates the checked-in `look_shaders.h`. In-game: `qa/lookhero.sh`. `blender
 
 ## Known problems
 
-- After a live resolution change, a rules page still loaded shows the 2002 art in every look (HD too) until the next level load: `textures_reset`
-  forgets every tracked texture, and this splash isn't recreated. Older than the Remaster; reached by a pause-menu resolution change, then a Continue.
-- The map's Video preview draws the level in the HD look, not Remaster.
+- Fixed 2026-11-25 (`extracted/look/reports/step7/fixes/`): rules pages lost their HD and Remaster art after a resolution change (textures that
+  survive a Reset now keep their replacements), and the map's Video preview now gets the Remaster pass. Not checked: the preview without MSAA, in
+  maps other than Ghost Town's, or through a resolution change while it plays (it should fall back to HD).
 - The middle of Taz's back is still dark in the zoo when the sun is behind him.
 - The tutorial book's ribbon is thinner and less bright than in HD, and a soft yellow glow remains around the book.
 - The fade for scenery by the camera is not checked in motion, and the water only along one run beside the moat. A sprite
