@@ -67,7 +67,7 @@ def regrade_book(rgb, tint):
     h, w = rgb.shape[:2]
     lum = rgb @ np.array((0.2126, 0.7152, 0.0722))
     back = border_white(lum > 0.22, step=6)  # reachable from the border without crossing the book's outline
-    book = np.asarray(Image.fromarray(~back).filter(ImageFilter.MaxFilter(5)))  # its outline stays crisp
+    book = ~back  # its outline's light edge pixels count as backdrop: kept as painted, they drew a bright rim
     soft = np.stack([blur((rgb[..., c] * 255).astype(np.uint8), w / 400) for c in range(3)], axis=2) / 255.0
     y, x = np.mgrid[0:h, 0:w]
     by, bx = np.nonzero(book)
@@ -77,7 +77,7 @@ def regrade_book(rgb, tint):
     dy, dx = h // 70, w // 140
     shadow[dy:, dx:] = blur((book * 255).astype(np.uint8), w / 70)[:h - dy, :w - dx] / 255.0
     dim = (1 - edge[..., None] * (1 - np.array(tint))) * (1 - 0.42 * shadow[..., None])
-    keep = blur((book * 255).astype(np.uint8), 1.5)[..., None] / 255.0
+    keep = blur((book * 255).astype(np.uint8), 0.7)[..., None] / 255.0
     out = full.copy()
     out[:h] = np.clip(rgb * keep + soft * dim * (1 - keep), 0, 1)
     return out
