@@ -73,7 +73,8 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
   amber behind the unchanged book; the continue room (its own look, number 31, chosen by camera position) is a dark cave with a lamp on the cage.
   Map screens kept: full-screen posters whose colour-coded routes a regrade would fight. Normal levels have no rules page. All in the playable copy.
   User 2026-11-25: keep the continue room; the soft amber rules backdrop was reverted (its stars went blurry).
-  Taz's cream in the night city levels is the earlier shaded one (user's pick): `char_pale = 0` in levels.py for scenes 8-11.
+  Character pale paint is shaded in every level (user's pick, 5277d15): the hold at HD's bright cream read like the flat original.
+  Approved, in progress: the richer saguaro everywhere, quarter-size AO and bloom as the only path.
 - Not checked: bonus-level loading art, a gamepad in these menus, where `boss.png` and `guide.png` splash images appear, continue screens outside westboss.
 - City world done: department store, museum, construction site and city boss (`extracted/look/reports/step7/city-levels/`). Data is in
   `extracted/look/city-levels/<level>/runtime/sceneNN`. Not in the user's playable copy. Not checked: finishing a level, win and lose
