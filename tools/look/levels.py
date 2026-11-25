@@ -869,4 +869,5 @@ LEVELS["safari"]["card_models"] = tuple(x for x in LEVELS["safari"]["card_models
 LEVELS["safari"]["clusters"] = ((("safari/textures/plantspike*",), "spike"), (("safari/textures/safarifringe0[34]",), "fringe"))
 LEVELS["cityboss"]["card_models"] = (("cityboss/textures/cbfloodstand", "iron"),)
 LEVELS["cityboss"]["clusters"] = ((("cityboss/textures/metalballtubes*",), "grille"),)
+LEVELS["cityboss"]["prop_hold"] = 1.3  # the panels and truss keep the paint's bold colour through the tone curve (they read khaki and maroon)
 LEVELS["tazboss1"]["clusters"] = ((("tazboss1/textures/walkway02",), "lip"),)

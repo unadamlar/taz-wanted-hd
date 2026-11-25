@@ -95,6 +95,9 @@ for name, (tint, rough) in LEVEL.get("flats", {}).items():
     MATS[name] = ("", False, OPAQUE, 0, 1000.0, tint, rough, 0, 0)
 if "skin" in LEVEL:  # wrinkled hide for untextured characters, mapped on their bind pose
     MATS["skin"] = ("skin", False, OPAQUE, 0, LEVEL["skin"]["tile"], (1, 1, 1), 0.6, 0, LEVEL["skin"]["grain"])
+HELD_TOP = 8.0  # the prop tint in a level that holds its props' paint: room for scene values over 1
+if "prop_hold" in LEVEL:
+    MATS["prop"] = (*MATS["prop"][:5], (HELD_TOP,) * 3, *MATS["prop"][6:])
 for name, tint in LEVEL.get("tints", {}).items():
     MATS[name] = (*MATS[name][:5], tint, *MATS[name][6:])
 for name in LEVEL.get("triplanar", ()):  # ground that also covers steep banks
@@ -427,7 +430,36 @@ protos = []  # dict(v, i, subs, lo, hi, name)
 place = []  # (proto index, rows or None for identity)
 
 
+def held(c):
+    """The scene colour that post.hlsl's tone curve and grade show closest to display colour c (linear). Its curve takes 14%
+    of the saturation out of the world first, so a saturated paint comes out bolder a little darker than full brightness."""
+    W = np.array((0.2126, 0.7152, 0.0722))
+    con, ex, sat = LEVEL.get("contrast", 1.15) * 1.26, 2 ** LV["grade"]["exposure"], LV["grade"]["saturation"] * 1.17
+    grey = lambda x, f: (x @ W)[..., None] * (1 - f) + x * f
+
+    def shown(x):
+        x = grey(x * ex, 0.86)
+        k = 2.4 * (np.clip((np.log2(np.maximum(x, 1e-4) / 0.18) + 10) / 16.5, 0, 1) - 0.606)
+        y = np.clip(0.5 + k / np.sqrt(1 + 4 * k * k), 0, 1) ** con
+        y[..., 1] += (y[..., 0] - y[..., 1]) * 0.07
+        return np.clip(grey(y, sat), 0, 1)
+
+    def scene(d):
+        s_ = np.clip(np.clip(grey(d, 1 / sat), 0, 1) ** (1 / con) - 0.5, -0.47, 0.44)
+        return np.maximum(grey(0.18 * 2 ** (16.5 * (s_ / np.sqrt(1 - 4 * s_ * s_) / 2.4 + 0.606) - 10), 1 / 0.86), 0) / ex
+
+    d = dds.to_srgb(c)
+    ks = np.linspace(1, 0.4, 31)
+    tries = np.stack([scene(d * k) for k in ks], 1)
+    err = ((shown(tries) - d[:, None]) ** 2).sum(2)
+    return tries[np.arange(len(d)), err.argmin(1)]
+
+
 def add_proto(name, p, n, c, uv, m):
+    if "prop_hold" in LEVEL and "prop" in MAT_ID:  # stand-ins keep their paint through the tone curve like the level's held surfaces
+        k = m == MAT_ID["prop"]
+        c = c.copy()
+        c[k] = np.clip(held(c[k]) * LEVEL["prop_hold"] / HELD_TOP, 0, 1)
     v, vn, vc, vuv, ix, subs = weld(p, n, c, uv, m)
     protos.append(dict(name=name, p=v, n=vn, c=packed(vc), uv=vuv, ix=ix, subs=subs))
     return len(protos) - 1
@@ -1119,7 +1151,7 @@ def iron_geo(alpha, paint, pos, uv, col, size, wood=False):
     lines = solid.strokes(alpha)
     if not lines:
         return []
-    lit = np.clip(col.mean((0, 1)), 0, 1)
+    lit = np.clip(col.mean((0, 1)) * (2 if "prop_hold" in LEVEL else 1), 0, 1)  # held paint: the game's texture x vertex colour x 2
     iron = np.median(paint[alpha > 0.5], 0) * lit
     iron = np.clip(iron * (1.6 if iron.max() < 0.15 else 1.15), 0, 1)  # black ink lifted a little, so it shades round
     rmed = np.median(np.concatenate([r for _, r, *_ in lines]))
