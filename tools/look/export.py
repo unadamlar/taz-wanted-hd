@@ -1462,7 +1462,7 @@ def flat2_geo(kind, T, labs, rng, c, lit):
     """Reimagined 3D for the flat2 kinds: star plants (one per placed plant), mesh grilles and walkway lips (per card)."""
     rgba = game_rgba(labs[0])
     if kind == "spike":
-        c = 0.9 * (0.85 * c + 0.15 * c.mean())  # the grade's saturation turned the flat paint hot pink
+        c = 0.78 * (0.85 * c + 0.15 * c.mean())  # the grade's saturation and light turned the full paint hot pink
         pieces = [(dp, du, dc) for dp, du, dc in T if solid.card_pieces(dp, du) and len(solid.card_pieces(dp, du)) == 1 and np.ptp(du.reshape(-1, 2), 0).min() > 0.9]
         if len(pieces) < len(T):  # cards bent into tiers: a stacked plant on the cards' footprint
             W = np.concatenate([t[0].reshape(-1, 3) for t in T])

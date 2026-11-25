@@ -421,11 +421,12 @@ def star_layer(centre, up, e1, e2, radius, drop, colour, points=10, depth=0.38, 
     top = ring(r, h)
     k = 0.48 + 0.55 * t + 0.17 * tip  # deep at the heart, lighter out to the points
     ctop = np.clip(col * k[..., None], 0, 1)
-    ctop[-2:] = np.clip(col * 1.25 + 0.16, 0, 1)  # the pale rim the paint outlines it with
+    ctop[-2] = np.clip(col * 1.25 + 0.16, 0, 1)  # the paint's pale inner line, then its dark outline on the very edge
+    ctop[-1] = np.clip(col * 0.5, 0, 1)
     th = thick * radius * (1 - 0.55 * t)
     bot = ring(r * 0.985, h - th)
     parts = [_sheet(top, ctop, wrap=True), _sheet(bot[::-1], np.clip(col * 0.42, 0, 1) * np.ones(bot.shape), wrap=True),
-             _sheet(np.stack([top[-1], bot[-1]], 0), np.clip(col * 1.1 + 0.1, 0, 1) * np.ones((2,) + top.shape[1:]), wrap=True)]
+             _sheet(np.stack([top[-1], bot[-1]], 0), np.clip(col * 0.5, 0, 1) * np.ones((2,) + top.shape[1:]), wrap=True)]
     return _faces(*zip(*parts))
 
 
@@ -439,7 +440,7 @@ def starbush(base, height, radius, colour, rng, points=10):
     parts.append((p, n, np.tile(np.clip(col * 0.35, 0, 1), (len(p), 1))))
     for i in range(tiers):
         f = i / max(tiers - 1, 1)  # 0 bottom, 1 top
-        R = radius * (1 - 0.5 * f)
+        R = radius * (1 - 0.32 * f)  # as broad as the painted tiers
         y = height * (0.5 + 0.42 * f)  # each tier a cone whose rim hangs over the one below, like the painted tiers
         parts.append(star_layer(base + up * y, up, e1, e2, R, 0.42 * height * (1 - 0.35 * f), col * (0.92 + 0.16 * f), points,
                                 phase=rng.uniform(0, 2 * np.pi), curl=0.16, thick=0.12))
