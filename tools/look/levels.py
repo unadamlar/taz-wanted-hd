@@ -738,7 +738,7 @@ LEVELS = {
                      clutter_opts=dict(leaves=0.0, pebbles=4.0, stones=0.6), grass_min=2.0, glow=GOLD_GLOW, lamps=dict(CITY_LAMPS, color="#ffc27a", power=4.0, extra=()),
                      relief=dict(textures=("goldmine/textures/minerock*",), min_area=6.0, cell=0.4, depth=0.3, band=1.1, block=1.6, foot=1.8, border=0.8),
                      card_models=(("goldmine/textures/wood_fence*", "wood"),),  # painted plank fences
-                     fog_color="#3a1040", char_fill=(0.2, 0.18, 0.25)),  # the baked magenta light is the mine's mood: kept
+                     fog_color="#3a1040", char_fill=(-0.3, -0.2, -0.3), char_keep=0.5, char_lamp=0.5),  # the baked magenta light is the mine's mood: kept; the pink lanterns at half on characters keep Taz brown (user pick C)
     "grandc": dict(scene=16, pak="grandc", blend="westhub/grandc/grandc.blend", out="westhub/grandc/pass1", rules=GRANDC_RULES, hand=GRANDC_HAND,
                    look=dict(WEST_LOOK, grade=dict(WEST_LOOK["grade"], exposure=0.1, fog=0.02, fog_start=140.0, fog_depth=600.0)),  # wider views than the hub
                    hdri=None, hdri_rotation=0.0, hub=(-65.0, -85.0, 85.0, 65.0), sky_panels=True, night_sky=False, island_boxes=True,

@@ -336,10 +336,9 @@ def bulb(centre, radius, colour, down=(0, -1.0, 0)):
     return _faces(*zip(*parts))
 
 
-def pine(base, height, radius, needle, snow, rng, frost=False):
+def pine(base, height, radius, needle, snow, rng):
     """A stylized fir: stacked tiers with scalloped, drooping skirts and a real underside, thick snow caps poured over
-    each tier, a short trunk. frost: snow-laden white tiers with a band of the paint along each skirt, as the game's
-    white trees with coloured outlines."""
+    each tier, a short trunk. Each tree keeps its paint's colour (user's pick over snow-white tiers, 2026-11-25)."""
     needle, snow = np.asarray(needle, float), np.asarray(snow, float)
     tiers = int(np.clip(round(height / radius * 1.2), 3, 5))
     lobes = 9
@@ -361,11 +360,7 @@ def pine(base, height, radius, needle, snow, rng, frost=False):
         r = R * t ** 0.85 * (1 + 0.1 * wave * t ** 3)
         y = top - h * t - 0.1 * h * (0.5 + 0.5 * wave) * t ** 4
         shade = (0.72 + 0.4 * (1 - t) - 0.12 * f)[..., None]
-        if frost:
-            band = np.clip((t - 0.66) / 0.14, 0, 1)[..., None]  # the paint along the skirt's edge
-            col = np.clip(snow * (0.9 + 0.1 * (1 - t))[..., None] * (1 - band) + needle * shade * band, 0, 1) * np.ones(r.shape + (3,))
-        else:
-            col = np.clip(needle * shade, 0, 1) * np.ones(r.shape + (3,))
+        col = np.clip(needle * shade, 0, 1) * np.ones(r.shape + (3,))
         g = np.stack([base[0] + r * np.cos(a), y, base[2] + r * np.sin(a)], -1)
         parts.append(_sheet(g, col, wrap=True))
         # underside: from the rim back in and up to the trunk, darker
@@ -374,16 +369,16 @@ def pine(base, height, radius, needle, snow, rng, frost=False):
         yu = y[-1:] + 0.28 * h * u ** 0.7
         gu = np.stack([base[0] + ru * np.cos(a), yu, base[2] + ru * np.sin(a)], -1)
         parts.append(_sheet(gu[:, ::-1], np.clip(needle * 0.45, 0, 1) * np.ones(gu.shape)))
-        if not frost:  # a snow cap with drips down the scallops, sitting just proud of the tier
-            ts = np.linspace(0, 1, 6)[:, None]
-            reach = 0.42 + 0.2 * (0.5 + 0.5 * np.cos(lobes * a + ph + i)) ** 3 + 0.06 * np.sin(3 * lobes * a)
-            tt = ts * reach
-            rs = R * tt ** 0.85 * (1 + 0.1 * np.cos(lobes * a + ph + i) * tt ** 3) * 1.035 + 0.012 * R
-            ys = top - h * tt + 0.03 * h * (1 - ts) + 0.015 * h
-            gs = np.stack([base[0] + rs * np.cos(a), ys, base[2] + rs * np.sin(a)], -1)
-            cs = np.clip(snow * (0.92 + 0.1 * (1 - ts))[..., None], 0, 1) * np.ones(gs.shape)
-            parts.append(_sheet(gs, cs, wrap=True))
-            parts.append(_sheet(np.stack([gs[-1], gs[-1] + [0, -0.035 * h, 0] - 0.02 * R * np.stack([np.cos(a[0]), 0 * a[0], np.sin(a[0])], -1)], 0)[:, ::-1], np.clip(snow * 0.82, 0, 1) * np.ones((2,) + gs.shape[1:])))
+        # a snow cap with drips down the scallops, sitting just proud of the tier
+        ts = np.linspace(0, 1, 6)[:, None]
+        reach = 0.42 + 0.2 * (0.5 + 0.5 * np.cos(lobes * a + ph + i)) ** 3 + 0.06 * np.sin(3 * lobes * a)
+        tt = ts * reach
+        rs = R * tt ** 0.85 * (1 + 0.1 * np.cos(lobes * a + ph + i) * tt ** 3) * 1.035 + 0.012 * R
+        ys = top - h * tt + 0.03 * h * (1 - ts) + 0.015 * h
+        gs = np.stack([base[0] + rs * np.cos(a), ys, base[2] + rs * np.sin(a)], -1)
+        cs = np.clip(snow * (0.92 + 0.1 * (1 - ts))[..., None], 0, 1) * np.ones(gs.shape)
+        parts.append(_sheet(gs, cs, wrap=True))
+        parts.append(_sheet(np.stack([gs[-1], gs[-1] + [0, -0.035 * h, 0] - 0.02 * R * np.stack([np.cos(a[0]), 0 * a[0], np.sin(a[0])], -1)], 0)[:, ::-1], np.clip(snow * 0.82, 0, 1) * np.ones((2,) + gs.shape[1:])))
     return _faces(*zip(*parts))
 
 

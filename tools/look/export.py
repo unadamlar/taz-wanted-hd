@@ -1470,7 +1470,7 @@ def cluster_geo(kind, T, labs, rng):
         return [np.concatenate(x) for x in zip(*got)] if got else None
     base, height, _ = props3d.footprint(W)
     tint = c if fam[0][1] < fam[0][0] or fam[0][2] > fam[0][1] else np.array((0.2, 0.58, 0.42)) * lit  # the white-and-green paint: an evergreen
-    return props3d.pine(base, height, 0.52 * np.ptp(W[:, [0, 2]], 0).max(), tint, np.clip(lit * 1.05, 0, 1), rng, kind == "frost")
+    return props3d.pine(base, height, 0.52 * np.ptp(W[:, [0, 2]], 0).max(), tint, np.clip(lit * 1.05, 0, 1), rng)
 
 
 for pats, kind in LEVEL.get("clusters", ()):  # cards that together draw one tree, or a fringe of icicles: a model each
