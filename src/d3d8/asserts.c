@@ -1,4 +1,4 @@
-// Diagnostics for silent quits. The game's assert handler (0x48eb10) prints to a debug log the
+// Diagnostics for silent quits, plus guards for game bugs that crash. The game's assert handler (0x48eb10) prints to a debug log the
 // release never opens, then exits; we log the failure first. The save written on each scene change
 // (FUN_004b8de0) calls FUN_004a1de0 first, which is a no-op unless the label check below says the
 // game is missing something; wrapping it logs the scene request.

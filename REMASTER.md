@@ -86,7 +86,8 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
   Not in the user's playable copy. Safari and the aquarium were mostly seen from fixed cameras, because Taz got stuck early on the test walks.
   Known leftovers: safari's flat tree canopies and palm leaves, painted green edges, a flat cyan water area in one view; faint straight
   lines across the aquarium's sea; slightly hazy ice dome snow.
-- Zoo boss F5/F9 can crash when the load crosses the goal replay (with the look data 2 of 3 runs, without it 3 of 3). Cause unknown, plain `master` not tried.
+- Zoo boss F5/F9 across the end-of-match replay: fixed by 084d699 (the replay's end frees the goal-effect texture; freeing a game texture now voids the
+  quicksave, so F9 is refused). `master` still crashes 9 of 9 and needs that commit for a release (`extracted/look/reports/step7/crashes/notes.md`).
 - Cutscenes use the level's Remaster look and keep their own props (`extracted/look/reports/step7/cutscenes/`). The mod tells a cutscene's textures
   from a level's by the pak they loaded from, so this needs nothing per level. Watched 14 of the 29 cutscenes plus two level endings. Open: the
   Tasmania intro's sky can flash flat lavender (in HD and Original too), and a bark strip crosses the zoo boss pitch in its intro.
@@ -114,6 +115,12 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
 - For the user to judge in the west: the game's painted canyon stripes are kept on its own shapes. The zoo's rebuilt 3D rock would add depth but replace them,
   and the choice carries to ghost town, goldmine, Grand Canyon and westboss.
 - For the user to judge in the city levels: real paint replaces baked colour (store's blue, museum's pink floor, construction huts teal to yellow).
+- Crashes track (2026-11-25, `extracted/look/reports/step7/crashes/`): Taz boss 1 closed a few seconds after the test win when a non-player touched a
+  player-only object (taz.exe+0x23537, also on `master`); `asserts.c` now skips that touch (0 of 5 after, was 1 of 2). A real fight win was not tried.
+  Not reproduced in about 60 Continues and 34 level changes: the d3d9.dll +0x1222a6 crash (freed DXVK memory written earlier; seen once on a zoo boss
+  Continue and once on an rcsafari retry after about 30 loads and 300 screenshots), and one Continue-room crash in `merge.c` `add_piece` on a freed vertex buffer.
+- Playthrough QA (2026-11-25, `extracted/look/reports/step7/playthru/notes.md`): every level and hub on foot, 60 fps throughout. Open: goldmine sweet sign
+  draws black, Taz pale peach in the goldmine, flat green lawn on the main menu (all with the flatscan track). Gamepad not covered.
 - Optimization pass (2026-11-25): most levels run 1.3-2x faster uncapped at 2880x1800 with 4x MSAA, look code 0.5-2.5 ms a frame (was 3-7), no intended
   look change. The zoo and city hubs are now limited by the GPU (grass is about 1.75 ms there); most other levels by the game's thread. Tables and the
   profiling patch: `extracted/look/reports/step7/optim/`. Not measured: main menu, Planet X, zoo boss and ice dome (their state changed between runs).
