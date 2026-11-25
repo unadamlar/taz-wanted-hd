@@ -125,6 +125,12 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
   goes flat near gameplay objects (ghost town and Grand Canyon get it on their next export, unchecked). The main menu's right-hand lawn gets lawn and grass.
   Both in the playable copy. User picks, in the playable copy: ice dome coloured 3D firs and icicles; goldmine Taz lit at half strength by the lanterns
   (`char_lamp 0.5`, also the goldmine race). Ranked list of what's still flat: `survey.md`.
+- Iceroll (2026-11-25, `extracted/look/reports/step7/iceroll/`): the 3D firs and icicles also in the ice race and the zoo hub's ice gate. The ice dome had
+  built 2-6 firs inside each other per painted tree; now one each (122 to 49 firs, ice dome look 2.5 ms a frame, was 2.9). Ghost town, Grand Canyon and
+  the canyon race re-exported with relief flat near objects; only rock right beside a cube stack, the RACE board and a door changed. In the playable copy.
+- Flat2 (2026-11-25, `extracted/look/reports/step7/flat2/`): Taz boss 1's slotted walkway band is a rounded rail over a deep panel with lit pink channels
+  (in the playable copy). Built but held: safari star plants as stacked 3D tiers (lost the paint's sharp outline, read soft) and city boss tube panels
+  and truss as real lattice (read duller than the paint); the flat3 track reworks both. The ice dome's "snow drifts" are plain white ground, not cut-outs.
 - Optimization pass (2026-11-25): most levels run 1.3-2x faster uncapped at 2880x1800 with 4x MSAA, look code 0.5-2.5 ms a frame (was 3-7), no intended
   look change. The zoo and city hubs are now limited by the GPU (grass is about 1.75 ms there); most other levels by the game's thread. Tables and the
   profiling patch: `extracted/look/reports/step7/optim/`. Not measured: main menu, Planet X, zoo boss and ice dome (their state changed between runs).
