@@ -400,3 +400,117 @@ def icicles(width, tops, lengths, radius, ice, snow):
         p, n = _tube(path, r, 7)
         parts.append((p, n, np.clip(ice[None] * (1.05 - 0.3 * (p[:, 1:2] / (L + radius))), 0, 1)))  # deeper blue towards the tip
     return _faces(*zip(*parts))
+
+
+def _star(a, points, depth):
+    """A star's outline as a radius factor at angles a: 1 at its points, 1 - depth halfway between, and how near a point."""
+    tip = 1 - np.abs((a * points / (2 * np.pi)) % 1 - 0.5) * 2
+    return 1 - depth * (1 - tip), tip
+
+
+def star_layer(centre, up, e1, e2, radius, drop, colour, points=10, depth=0.38, curl=0.12, thick=0.07, phase=0.0):
+    """One thick star-shaped leaf layer: round in the middle, sharp points that curl up at their tips, a pale bevelled rim
+    and a dark underside. drop: how far the rim sits below the middle (negative cups it like a rosette)."""
+    col = np.asarray(colour, float)
+    a = np.linspace(0, 2 * np.pi, points * 6 + 1)[None] + phase
+    t = np.linspace(0, 1, 7)[:, None]
+    s, tip = _star(a - phase, points, depth)
+    r = radius * t * (1 - (1 - s) * t ** 1.5)
+    h = -drop * t ** 1.3 + curl * radius * t ** 5 * tip ** 2
+    ring = lambda r_, h_: centre + (r_ * np.cos(a))[..., None] * e1 + (r_ * np.sin(a))[..., None] * e2 + h_[..., None] * up
+    top = ring(r, h)
+    k = 0.48 + 0.55 * t + 0.17 * tip  # deep at the heart, lighter out to the points
+    ctop = np.clip(col * k[..., None], 0, 1)
+    ctop[-2:] = np.clip(col * 1.25 + 0.16, 0, 1)  # the pale rim the paint outlines it with
+    th = thick * radius * (1 - 0.55 * t)
+    bot = ring(r * 0.985, h - th)
+    parts = [_sheet(top, ctop, wrap=True), _sheet(bot[::-1], np.clip(col * 0.42, 0, 1) * np.ones(bot.shape), wrap=True),
+             _sheet(np.stack([top[-1], bot[-1]], 0), np.clip(col * 1.1 + 0.1, 0, 1) * np.ones((2,) + top.shape[1:]), wrap=True)]
+    return _faces(*zip(*parts))
+
+
+def starbush(base, height, radius, colour, rng, points=10):
+    """A reimagined spiky plant: stacked thick star tiers that narrow upward, sharp curled points, a bud on top."""
+    col = np.asarray(colour, float)
+    up, e1, e2 = np.array([0, 1.0, 0]), np.array([1.0, 0, 0]), np.array([0, 0, 1.0])
+    tiers = int(np.clip(round(height / radius * 3.5), 2, 5))
+    parts = []
+    p, n = _tube(np.array([base, base + up * 0.5 * height]), np.array([0.14, 0.1]) * radius, 8)
+    parts.append((p, n, np.tile(np.clip(col * 0.35, 0, 1), (len(p), 1))))
+    for i in range(tiers):
+        f = i / max(tiers - 1, 1)  # 0 bottom, 1 top
+        R = radius * (1 - 0.5 * f)
+        y = height * (0.5 + 0.42 * f)  # each tier a cone whose rim hangs over the one below, like the painted tiers
+        parts.append(star_layer(base + up * y, up, e1, e2, R, 0.42 * height * (1 - 0.35 * f), col * (0.92 + 0.16 * f), points,
+                                phase=rng.uniform(0, 2 * np.pi), curl=0.16, thick=0.12))
+    th = np.linspace(0, np.pi, 6)[:, None]; ph = np.linspace(0, 2 * np.pi, 11)[None]
+    bud = base + up * height * 0.88 + 0.13 * radius * np.stack([np.sin(th) * np.cos(ph), 1.3 * np.cos(th) * np.ones_like(ph), np.sin(th) * np.sin(ph)], -1)
+    parts.append(_sheet(bud, np.clip(col * 1.2 + 0.12, 0, 1) * np.ones(bud.shape), wrap=True))
+    return _faces(*zip(*parts))
+
+
+def grille(rect, cell, frame, pitch, bar, x0, frame_col, wire_col):
+    """A welded mesh panel in a card's metric frame (x along u, y along v, z out): a bevelled frame with bolt heads on both
+    faces and a diagonal lattice of straps (wide bars) or wires inside, one direction over the other. cell: the world size
+    of one texture repeat; rect (x0, x1, y0, y1): the part of it this card shows, framed only along the repeat's own edges.
+    pitch: spacing of the lattice along x; x0: where a bar crosses the repeat's middle row."""
+    fc, wc = np.asarray(frame_col, float), np.asarray(wire_col, float)
+    xa, xb, ya, yb = rect
+    W, H = cell
+    parts = []
+    r = frame / 2
+    on = lambda a, b: abs(a - b) < 0.02 * max(W, H)
+    beams = [((xa, ya + r), (xb, ya + r), on(ya, 0)), ((xa, yb - r), (xb, yb - r), on(yb, H)),
+             ((xa + r, ya), (xa + r, yb), on(xa, 0)), ((xb - r, ya), (xb - r, yb), on(xb, W))]
+    for a, b, keep in beams:
+        if not keep:
+            continue
+        p, n = plank(np.c_[np.array([a, b], float), np.zeros(2)], r, 0.55 * r)
+        parts.append((p, n, np.tile(fc, (len(p), 1))))
+        for t in (0.1, 0.5, 0.9):
+            for z in (1, -1):
+                c = np.array([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, z * 0.55 * r])
+                parts.append(disc(c, 0.3 * r, np.array([0, 0, z * 1.0]), 0.14 * r, np.clip(fc * 1.25 + 0.1, 0, 1), 5))
+    lo = np.array([xa + (frame * 0.8 if on(xa, 0) else 0), ya + (frame * 0.8 if on(ya, 0) else 0)])
+    hi = np.array([xb - (frame * 0.8 if on(xb, W) else 0), yb - (frame * 0.8 if on(yb, H) else 0)])
+    flat = bar > 0.04 * min(W, H)
+    for sgn, z in ((1, 0.25), (-1, -0.25)):
+        for k in range(-int(2 * W / pitch) - 2, int(2 * W / pitch) + 3):
+            c = x0 + k * pitch  # bar through (c, H / 2), slope sgn
+            t = np.array([lo[0] - c, hi[0] - c, (lo[1] - H / 2) * sgn, (hi[1] - H / 2) * sgn])
+            s0, s1 = max(min(t[0], t[1]), min(t[2], t[3])), min(max(t[0], t[1]), max(t[2], t[3]))
+            if s1 - s0 < bar:
+                continue
+            path = np.array([[c + s, H / 2 + sgn * s, z * bar * (0.7 if flat else 1.2)] for s in (s0, s1)])
+            if flat:
+                p, n = plank(path, bar / 2, 0.22 * bar)
+            else:
+                p, n = _tube(path, np.full(2, bar / 2), 6)
+            parts.append((p, n, np.tile(wc, (len(p), 1))))
+    return _faces(*zip(*parts)) if parts else None
+
+
+def lip(length, height, repeat, top_col, body_col, neon):
+    """A raised walkway edge in a card's metric frame (x 0..length, y 0..height downward, z out both ways): a rounded
+    rail on top, a deep panel below with one recessed lit channel per texture repeat, a thin rail at the foot."""
+    tc, bc, nc = (np.asarray(c, float) for c in (top_col, body_col, neon))
+    d = 0.16 * height
+    parts = []
+    tube = lambda y, r, c: (lambda pn: parts.append((pn[0], pn[1], np.tile(c, (len(pn[0]), 1)))))(_tube(np.array([[0, y, 0], [length, y, 0]], float), np.full(2, r), 10))
+    tube(0.13 * height, 0.15 * height, tc)
+    tube(0.96 * height, 0.05 * height, np.clip(bc * 1.3, 0, 1))
+    box = lambda x0, x1, y0, y1, dz, c: (lambda pn: parts.append((pn[0], pn[1], np.tile(c, (len(pn[0]), 1)))))(
+        plank(np.array([[x0, (y0 + y1) / 2, 0], [x1, (y0 + y1) / 2, 0]], float), (y1 - y0) / 2, dz))
+    box(0, length, 0.24 * height, 0.5 * height, d, bc)
+    box(0, length, 0.72 * height, 0.95 * height, d, bc)
+    n = max(1, int(round(length / repeat)))
+    for i in range(n + 1):
+        x = i * length / n
+        box(max(x - 0.05 * repeat, 0), min(x + 0.05 * repeat, length), 0.5 * height, 0.72 * height, d, bc)
+    box(0, length, 0.5 * height, 0.72 * height, 0.25 * d, np.clip(bc * 0.35, 0, 1))  # the channel's back
+    for i in range(n):
+        x0, x1 = (i + 0.05) * length / n + 0.02 * repeat, (i + 0.95) * length / n - 0.02 * repeat
+        for z in (1, -1):
+            p, nn = _tube(np.array([[x0, 0.61 * height, z * 0.55 * d], [x1, 0.61 * height, z * 0.55 * d]]), np.full(2, 0.06 * height), 8)
+            parts.append((p, nn, np.tile(nc, (len(p), 1))))
+    return _faces(*zip(*parts))

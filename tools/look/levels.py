@@ -860,3 +860,10 @@ LEVELS["icedome"]["clusters"] = ((tuple(f"icedome/textures/{n}" for n in ("snowx
                                  (("icedome/textures/frozentreats2", "icedome/textures/frozentreats04"), "icicles"))
 # The menu's right-hand lawn is flat two-tone paint the ground rule missed: lawn material and grass like the left one.
 LEVELS["frontend"]["rules"] += [("frontend/textures/grass_new*", "ground"), ("frontend/textures/tazfern05*", "ground")]
+# Reimagined 3D in place of flat cards (flat2): the safari's spiky star plants, city boss's red truss and mesh tube panels,
+# and the Disco Volcano's walkway edge with lit channels where the paint had see-through slots.
+LEVELS["safari"]["card_models"] = tuple(x for x in LEVELS["safari"]["card_models"] if "plantspike" not in x[0])
+LEVELS["safari"]["clusters"] = ((("safari/textures/plantspike*",), "spike"),)
+LEVELS["cityboss"]["card_models"] = (("cityboss/textures/cbfloodstand", "iron"),)
+LEVELS["cityboss"]["clusters"] = ((("cityboss/textures/metalballtubes*",), "grille"),)
+LEVELS["tazboss1"]["clusters"] = ((("tazboss1/textures/walkway02",), "lip"),)
