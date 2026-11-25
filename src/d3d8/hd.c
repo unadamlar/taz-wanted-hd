@@ -55,6 +55,7 @@ static struct bind *binds; static UINT nbinds;
 static struct wmat { UINT64 hash; int n; float emit[4], c[6][4], w[2][4]; IDirect3DBaseTexture9 *t[4]; } wmats[1024];
 static UINT64 *hides; static UINT nhides, nshades; // the last nshades are baked shadow decals
 static struct light *lights; static UINT nlights;
+static float char_at[3] = { 1e30f }; // where the last character's nearest lamps were found
 static struct file_glow *glows; static UINT nglows;
 static struct { UINT64 hash; float p[3], r; } *swaps; static UINT nswaps;
 static struct solid { UINT64 key, tex; UINT proto; } *solids; static UINT nsolids;
@@ -568,6 +569,7 @@ void hd_unload(void)
     mats = NULL, binds = NULL, hides = NULL, protos = NULL, subs = NULL, runs = NULL, chunks = NULL, vis = NULL;
     nmats = nbinds = nhides = nshades = nprotos = nchunks = 0;
     memset(wmats, 0, sizeof wmats);
+    char_at[0] = 1e30f;
     scene_no = -1, shadow_built = 0;
 }
 
@@ -851,6 +853,7 @@ static void bind_common(hd_dev d)
     sampler(d, SMP_ALBEDO, D3DTEXF_ANISOTROPIC, D3DTEXF_LINEAR, D3DTADDRESS_WRAP);
     sampler(d, SMP_NORMAL2, D3DTEXF_ANISOTROPIC, D3DTEXF_LINEAR, D3DTADDRESS_WRAP);
     sampler(d, SMP_ALBEDO2, D3DTEXF_ANISOTROPIC, D3DTEXF_LINEAR, D3DTADDRESS_WRAP);
+    sampler(d, SMP_FUR, D3DTEXF_LINEAR, D3DTEXF_LINEAR, D3DTADDRESS_WRAP);
     if (light_tex) {
         IDirect3DDevice9_SetTexture(d, SMP_LIGHTS, (IDirect3DBaseTexture9 *)light_tex);
         sampler(d, SMP_LIGHTS, D3DTEXF_POINT, D3DTEXF_NONE, D3DTADDRESS_CLAMP);
@@ -1549,31 +1552,33 @@ void hd_char_alpha(hd_dev d, int on)
 
 void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_colour, float scale, const float *style, struct IDirect3DTexture9 *fur)
 {
-    float k[4] = { use_tex, use_colour, scale, 0 }, two[4][4] = { { 0 } }, hide[4];
+    // c24 stage 0, c26-c29 the two lamps nearest this character, c30 fill, c31 style, c34 hold: one upload per draw
+    static float c[11][4];
+    float k[4] = { use_tex, use_colour, scale, 0 };
     if (skin_mat >= 0 && !use_tex) { // no paint of its own: the level's hide goes through the fur path
-        memcpy(hide, style, 16), hide[2] = mats[skin_mat].cut, style = hide;
+        memcpy(c[7], style, 16), c[7][2] = mats[skin_mat].cut;
         k[3] = mats[skin_mat].tile / 36, fur = (struct IDirect3DTexture9 *)mats[skin_mat].albedo;
+    } else memcpy(c[7], style, 16);
+    memcpy(c[0], k, 16);
+    if (char_at[0] != model_rows[3] || char_at[1] != model_rows[7] || char_at[2] != model_rows[11]) { // a batch of another model
+        float d0 = 1e30f, d1 = 1e30f, (*two)[4] = c + 2;
+        char_at[0] = model_rows[3], char_at[1] = model_rows[7], char_at[2] = model_rows[11];
+        memset(two, 0, 64);
+        for (UINT i = 0; i < nlights; i++) {
+            const struct light *l = &lights[i];
+            float x = l->p[0] - char_at[0], y = l->p[1] - char_at[1], z = l->p[2] - char_at[2], dd = x * x + y * y + z * z;
+            float e[2][4] = { { l->p[0], l->p[1], l->p[2], 1 / (l->r * l->r) }, { l->c[0], l->c[1], l->c[2], 0 } };
+            if (dd < d0) memcpy(two[2], two[0], 32), d1 = d0, memcpy(two[0], e, 32), d0 = dd;
+            else if (dd < d1) memcpy(two[2], e, 32), d1 = dd;
+        }
     }
+    memcpy(c[6], (float[4]){ lv.char_fill[0], lv.char_fill[1], lv.char_fill[2], lv.char_keep }, 16);
+    memcpy(c[10], (float[4]){ lv.exposure, lv.contrast * 1.26f, lv.sat * 1.17f, 0 }, 16);
     IDirect3DDevice9_SetVertexShaderConstantF(d, 60, model_rows, 3);
     ps_constants(d);
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 24, k, 1);
-    float d0 = 1e30f, d1 = 1e30f;
-    for (UINT i = 0; i < nlights; i++) { // the two lamps nearest this character
-        const struct light *l = &lights[i];
-        float x = l->p[0] - model_rows[3], y = l->p[1] - model_rows[7], z = l->p[2] - model_rows[11], dd = x * x + y * y + z * z;
-        float e[2][4] = { { l->p[0], l->p[1], l->p[2], 1 / (l->r * l->r) }, { l->c[0], l->c[1], l->c[2], 0 } };
-        if (dd < d0) memcpy(two[2], two[0], 32), d1 = d0, memcpy(two[0], e, 32), d0 = dd;
-        else if (dd < d1) memcpy(two[2], e, 32), d1 = dd;
-    }
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 26, two[0], 4);
-    float fill[4] = { lv.char_fill[0], lv.char_fill[1], lv.char_fill[2], lv.char_keep };
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 30, fill, 1);
-    float hold[4] = { lv.exposure, lv.contrast * 1.26f, lv.sat * 1.17f, 0 };
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 34, hold, 1);
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 31, style, 1);
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 24, c[0], 11);
     bind_common(d);
     IDirect3DDevice9_SetTexture(d, SMP_FUR, (IDirect3DBaseTexture9 *)fur);
-    sampler(d, SMP_FUR, D3DTEXF_LINEAR, D3DTEXF_LINEAR, D3DTADDRESS_WRAP);
     IDirect3DDevice9_SetPixelShader(d, p_char);
     quick_ok = 0;
 }
