@@ -25,7 +25,7 @@ static int level, loaded_scene = -1;
 #define FRONTEND 1
 static struct rec *recs; static UINT nrecs, cap_recs;     // this frame's character draws, for their sun map
 static HRESULT (WINAPI *draw_real)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT);
-static struct { int frames, want; double look_ms, frame_ms, present_ms; UINT world, game, pieces, merged; LARGE_INTEGER last; } m;
+static struct { int frames, want; UINT64 look, tsc; double present_ms; UINT world, game, pieces, merged; LARGE_INTEGER last; } m;
 static UINT stat_world, stat_game;
 
 // Costume pieces the game attaches to characters (a helmet, a hat) are world draws, made by FUN_0055fb50 from the
@@ -49,12 +49,8 @@ void look_install(void *dp)
     level = settings.tests && atoi(v) ? 4 : 0;
 }
 
-static double now_ms(void)
-{
-    LARGE_INTEGER t, f;
-    QueryPerformanceCounter(&t), QueryPerformanceFrequency(&f);
-    return t.QuadPart * 1000.0 / f.QuadPart;
-}
+// The CPU's cycle counter: under Wine QueryPerformanceCounter is a system call, and two per draw were a fifth of the frame.
+static UINT64 ticks(void) { return __builtin_ia32_rdtsc(); }
 
 static void drop_recs(void)
 {
@@ -62,9 +58,14 @@ static void drop_recs(void)
     nrecs = 0;
 }
 
+// A world draw leaves our shaders bound for the next one: putting the game's back after each cost Direct3D 9 a full
+// rebind per draw (0.9 ms a frame in the city hub). Any other draw puts them back first (quick_restore).
+static int quick_bound;
+
 // Before a device Reset: everything in the default pool goes, or Reset fails. Reloaded by look_frame.
 void look_reset(IDirect3DDevice8 *dev)
 {
+    quick_bound = 0;
     hd_reset();
     drop_recs();
     merge_device_reset();
@@ -427,11 +428,21 @@ static int swapped_object(IDirect3DDevice8 *dev, UINT64 raw)
     return hd_swapped(raw, NULL) && SUCCEEDED(IDirect3DDevice8_GetTransform(dev, D3DTS_WORLD, &w)) && hd_swapped(raw, &w._41);
 }
 
+static void quick_restore(IDirect3DDevice8 *dev)
+{
+    if (!quick_bound) return;
+    quick_bound = 0;
+    DWORD vs;
+    IDirect3DDevice8_GetVertexShader(dev, &vs);
+    hd_world_quick_end(d3d9_device(dev));
+    IDirect3DDevice8_SetVertexShader(dev, vs);
+}
+
 static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count)
 {
     struct IDirect3DDevice9 *d = d3d9_device(dev);
-    if (!merge_on_backbuffer() || hd_post_done()) return 0;
-    if (merge_is_2d(dev)) { // the HUD and menus: finish the 3D picture under them
+    if (!merge_on_backbuffer() || hd_post_done()) return quick_restore(dev), 0;
+    if (merge_is_2d(dev)) { quick_restore(dev); // the HUD and menus: finish the 3D picture under them
         if (loaded_scene == FRONTEND && !api && !hd_post_done() && hd_hidden(textures_bound_hash(0))) { // its painted sky, drawn with no depth test
             hd_redirect(d);
             return 0;
@@ -448,9 +459,9 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
         merge_state_changed();
         return 0;
     }
-    if (backdrop) return 0;   // tone mapping would paint over the 2D already on the back buffer
+    if (backdrop) return quick_restore(dev), 0;   // tone mapping would paint over the 2D already on the back buffer
     hd_redirect(d);
-    if (!hd_redirected()) return 0;
+    if (!hd_redirected()) return quick_restore(dev), 0;
     hd_sky(d);
     if (solid_draw(dev, api, type, start, count)) return 1;
     if (loaded_scene != PLANET_LOOK && merge_draw(dev, api, type, start, count)) return 1; // a few hundred draws: nothing to merge
@@ -466,6 +477,7 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     UINT64 sprite = api == 2 && blend && src == D3DBLEND_SRCALPHA && dst == D3DBLEND_INVSRCALPHA ? textures_bound_hash(0) : 0;
     int halo = sprite == 0x78c161107296791dULL || sprite == 0x23416f5ebf5678ffULL;
     if (halo || (blend && src == D3DBLEND_SRCALPHA && dst == D3DBLEND_ONE && textures_bound(0) && (op == D3DTOP_MODULATE || op == D3DTOP_MODULATE2X))) {
+        quick_restore(dev);
         if (!hd_additions_done()) { // sprites go over the finished world
             if (hd_prepass_needed()) prepass(dev);
             hd_additions(d), merge_state_changed();
@@ -495,7 +507,8 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     if (!zwrite && !fog && !blend && hd_hidden(raw)) return 1; // its sky, also a cutscene pack's copy of it
     if (hd_prepass_needed()) prepass(dev);
     if (blend && !hd_additions_done()) hd_additions(d), merge_state_changed();
-    if (api != 0 || shader != 0x152) return 0;
+    if (api != 0 || shader != 0x152) return quick_restore(dev), 0;
+    if (loaded_scene == PLANET_LOOK) quick_restore(dev);
     if (loaded_scene == PLANET_LOOK && hd_space_begin(d, raw)) { // a redrawn backdrop panel, still at the game's slow turn
         draw_real(dev, type, start, count);
         hd_space_end(d);
@@ -513,12 +526,13 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     IDirect3DDevice8_GetTextureStageState(dev, 0, D3DTSS_COLORARG1, &a1);
     IDirect3DDevice8_GetTextureStageState(dev, 1, D3DTSS_COLOROP, &op1);
     IDirect3DDevice8_GetTextureStageState(dev, 0, D3DTSS_TEXTURETRANSFORMFLAGS, &tt);
-    if (op0 != D3DTOP_MODULATE2X || a1 != D3DTA_TEXTURE || op1 != D3DTOP_DISABLE || !textures_bound(0) || tt) return 0;
+    if (op0 != D3DTOP_MODULATE2X || a1 != D3DTA_TEXTURE || op1 != D3DTOP_DISABLE || !textures_bound(0) || tt) return quick_restore(dev), 0;
     float w[4][4], rows[3][4];
     IDirect3DDevice8_GetTransform(dev, D3DTS_WORLD, (D3DMATRIX *)w);
     for (int i = 0; i < 3; i++)
         for (int j = 0; j < 4; j++) rows[i][j] = w[j][i];
     if (attached) {
+        quick_restore(dev);
         float style[4];
         IDirect3DTexture8 *fur = style_look(dev, style);
         hd_char_alpha(d, 1), char_drawing = 1;
@@ -531,8 +545,7 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
     hd_world_quick(d, rows[0], h);
     if (bark) hd_world_float(d, -4055.5f); // the pond's surface
     draw_real(dev, type, start, count);
-    hd_world_quick_end(d);
-    IDirect3DDevice8_SetVertexShader(dev, shader);
+    quick_bound = 1;
     stat_world++;
     return 1;
 }
@@ -541,10 +554,12 @@ static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT sta
 int look_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count)
 {
     stat_game++;
+    DWORD vs = 0;
+    if (quick_bound && (api || !remaster() || (IDirect3DDevice8_GetVertexShader(dev, &vs), vs != 0x152))) quick_restore(dev);
     if (!remaster()) return 0;
-    double t0 = now_ms();
+    UINT64 t0 = ticks();
     int result = draw4(dev, api, type, start, count);
-    m.look_ms += now_ms() - t0;
+    m.look += ticks() - t0;
     return result;
 }
 
@@ -608,7 +623,8 @@ void look_frame(IDirect3DDevice8 *dev)
         memset(&m, 0, sizeof m);
         m.frames = -30, m.want = n;
     }
-    double t0 = now_ms();
+    quick_restore(dev);
+    UINT64 t0 = ticks();
     hd_set_paused(settings.exe_known && GAME_STATE == 3);
     merge_frame(dev);
     int scene = settings.exe_known ? look_scene(SCENE) : -1;
@@ -624,18 +640,18 @@ void look_frame(IDirect3DDevice8 *dev)
     if (scene < 1) loaded_scene = -1;
     if (remaster()) char_shadows(dev);
     else drop_recs();
-    m.look_ms += now_ms() - t0;
+    m.look += ticks() - t0;
     LARGE_INTEGER t;
     QueryPerformanceCounter(&t);
-    if (m.frames < 0 && ++m.frames == 0) QueryPerformanceCounter(&m.last), m.look_ms = 0, m.world = m.game = m.pieces = m.merged = 0;
+    if (m.frames < 0 && ++m.frames == 0) m.last = t, m.tsc = ticks(), m.look = 0, m.world = m.game = m.pieces = m.merged = 0;
     else if (m.frames >= 0 && m.last.QuadPart) {
         m.frames++, m.world += stat_world, m.game += stat_game, m.pieces += merge_stat_pieces, m.merged += merge_stat_draws;
         if (m.frames == m.want) {
             LARGE_INTEGER fq;
             QueryPerformanceFrequency(&fq);
-            double ms = (t.QuadPart - m.last.QuadPart) * 1000.0 / fq.QuadPart / m.frames;
+            double ms = (t.QuadPart - m.last.QuadPart) * 1000.0 / fq.QuadPart / m.frames, per_tick = ms * m.frames / (ticks() - m.tsc);
             log_line("look: measured level %d%s: %.2f ms/frame (%.1f fps), look code %.2f ms, Present %.2f ms, %u world draws, game issued %u draws, %u of them merged into %u, address space free %lu MB",
-                     level, remaster() ? "" : " (F11 away)", ms, 1000 / ms, m.look_ms / m.frames, m.present_ms / m.frames, m.world / m.frames, m.game / m.frames,
+                     level, remaster() ? "" : " (F11 away)", ms, 1000 / ms, m.look * per_tick / m.frames, m.present_ms / m.frames, m.world / m.frames, m.game / m.frames,
                      m.pieces / m.frames, m.merged / m.frames, avail_mb());
             m.last.QuadPart = 0;
         }

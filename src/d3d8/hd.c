@@ -50,8 +50,12 @@ static struct level {
 static int scene_no = -1;
 static struct mat *mats; static UINT nmats;
 static struct bind *binds; static UINT nbinds;
+// A game texture's binds in file order (the data has at most two), each over the last, and its glow. Worked out once
+// per texture and scene: scanning every bind and glow per world draw was the look's biggest cost per draw.
+static struct wmat { UINT64 hash; int n; float emit[4], c[6][4], w[2][4]; IDirect3DBaseTexture9 *t[4]; } wmats[1024];
 static UINT64 *hides; static UINT nhides, nshades; // the last nshades are baked shadow decals
 static struct light *lights; static UINT nlights;
+static float char_at[3] = { 1e30f }; // where the last character's nearest lamps were found
 static struct file_glow *glows; static UINT nglows;
 static struct { UINT64 hash; float p[3], r; } *swaps; static UINT nswaps;
 static struct solid { UINT64 key, tex; UINT proto; } *solids; static UINT nsolids;
@@ -564,6 +568,8 @@ void hd_unload(void)
     free(mats), free(binds), free(hides), free(protos), free(subs), free(runs), free(chunks), free(vis);
     mats = NULL, binds = NULL, hides = NULL, protos = NULL, subs = NULL, runs = NULL, chunks = NULL, vis = NULL;
     nmats = nbinds = nhides = nshades = nprotos = nchunks = 0;
+    memset(wmats, 0, sizeof wmats);
+    char_at[0] = 1e30f;
     scene_no = -1, shadow_built = 0;
 }
 
@@ -705,9 +711,55 @@ int hd_post_done(void) { return post_done; }
 int hd_additions_done(void) { return additions_done; }
 
 // --- common pass state --------------------------------------------------------------------------
+// A block of only what our passes change (each set once while recording). D3DSBT_ALL also copied every transform
+// and constant: 40 us per capture and again per apply, 18 of each a frame in the zoo hub.
+static void record_block(hd_dev d)
+{
+    DWORD v;
+    float c[128][4];
+    IDirect3DDevice9_BeginStateBlock(d);
+    for (DWORD s = D3DRS_ZENABLE; s <= D3DRS_BLENDOPALPHA; s++)
+        if (SUCCEEDED(IDirect3DDevice9_GetRenderState(d, s, &v))) IDirect3DDevice9_SetRenderState(d, s, v);
+    for (DWORD i = 0; i < 16; i++) {
+        IDirect3DBaseTexture9 *t = NULL;
+        IDirect3DDevice9_GetTexture(d, i, &t);
+        IDirect3DDevice9_SetTexture(d, i, t);
+        if (t) IDirect3DBaseTexture9_Release(t);
+        for (DWORD s = D3DSAMP_ADDRESSU; s <= D3DSAMP_DMAPOFFSET; s++)
+            if (SUCCEEDED(IDirect3DDevice9_GetSamplerState(d, i, s, &v))) IDirect3DDevice9_SetSamplerState(d, i, s, v);
+        for (DWORD s = D3DTSS_COLOROP; i < 8 && s <= D3DTSS_CONSTANT; s++)
+            if (SUCCEEDED(IDirect3DDevice9_GetTextureStageState(d, i, s, &v))) IDirect3DDevice9_SetTextureStageState(d, i, s, v);
+    }
+    IDirect3DVertexShader9 *vs = NULL;
+    IDirect3DPixelShader9 *ps = NULL;
+    IDirect3DVertexDeclaration9 *decl = NULL;
+    IDirect3DIndexBuffer9 *ix = NULL;
+    IDirect3DDevice9_GetVertexShader(d, &vs), IDirect3DDevice9_SetVertexShader(d, vs);
+    IDirect3DDevice9_GetPixelShader(d, &ps), IDirect3DDevice9_SetPixelShader(d, ps);
+    IDirect3DDevice9_GetVertexDeclaration(d, &decl), IDirect3DDevice9_SetVertexDeclaration(d, decl);
+    IDirect3DDevice9_GetIndices(d, &ix), IDirect3DDevice9_SetIndices(d, ix);
+    if (vs) IDirect3DVertexShader9_Release(vs);
+    if (ps) IDirect3DPixelShader9_Release(ps);
+    if (decl) IDirect3DVertexDeclaration9_Release(decl);
+    if (ix) IDirect3DIndexBuffer9_Release(ix);
+    for (UINT i = 0; i < 2; i++) {
+        IDirect3DVertexBuffer9 *b = NULL;
+        UINT off = 0, stride = 0;
+        IDirect3DDevice9_GetStreamSource(d, i, &b, &off, &stride), IDirect3DDevice9_SetStreamSource(d, i, b, off, stride);
+        if (b) IDirect3DVertexBuffer9_Release(b);
+        UINT freq = 1;
+        IDirect3DDevice9_GetStreamSourceFreq(d, i, &freq), IDirect3DDevice9_SetStreamSourceFreq(d, i, freq);
+    }
+    D3DVIEWPORT9 vp;
+    IDirect3DDevice9_GetViewport(d, &vp), IDirect3DDevice9_SetViewport(d, &vp);
+    IDirect3DDevice9_GetVertexShaderConstantF(d, 0, c[0], 128), IDirect3DDevice9_SetVertexShaderConstantF(d, 0, c[0], 128);
+    IDirect3DDevice9_GetPixelShaderConstantF(d, 0, c[0], 40), IDirect3DDevice9_SetPixelShaderConstantF(d, 0, c[0], 40);
+    IDirect3DDevice9_EndStateBlock(d, &sb);
+}
+
 static void save_state(hd_dev d)
 {
-    if (!sb) IDirect3DDevice9_CreateStateBlock(d, D3DSBT_ALL, &sb);
+    if (!sb) record_block(d);
     else IDirect3DStateBlock9_Capture(sb);
 }
 
@@ -743,9 +795,6 @@ void hd_camera(hd_dev d)
     for (int i = 0; i < 4; i++)
         for (int j = 0; j < 4; j++) clip_rows[i][j] = t[j][i];
     for (int a = 0; a < 3; a++) eye[a] = -(v[3][0] * v[a][0] + v[3][1] * v[a][1] + v[3][2] * v[a][2]);
-    LARGE_INTEGER c, f;
-    QueryPerformanceCounter(&c), QueryPerformanceFrequency(&f);
-    now_s = (float)fmod((double)c.QuadPart / f.QuadPart, 3600.0);
 }
 
 const float *hd_view(void) { return view[0]; }
@@ -778,7 +827,9 @@ static void ps_constants(hd_dev d)
     c[14][0] = 1.0f / SMAP, c[14][1] = 1.0f / CMAP;
     memcpy(c[15], lv.water, 12);
     IDirect3DDevice9_SetPixelShaderConstantF(d, 0, c[0], 16);
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 27, light_grid, 1);
+    float lit[3][4] = { { light_grid[0], light_grid[1], light_grid[2], light_grid[3] }, { lv.hold, lv.exposure, lv.contrast * 1.26f, lv.shadow_y + origin[1] },
+                        { lv.unbake_keep, 0, 0, 0 } }; // c27 lights, c28 hold, c29 unbake (the world's; characters overwrite them)
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 27, lit[0], 3);
 }
 
 void hd_invalidate(void) { quick_ok = 0; }
@@ -802,6 +853,7 @@ static void bind_common(hd_dev d)
     sampler(d, SMP_ALBEDO, D3DTEXF_ANISOTROPIC, D3DTEXF_LINEAR, D3DTADDRESS_WRAP);
     sampler(d, SMP_NORMAL2, D3DTEXF_ANISOTROPIC, D3DTEXF_LINEAR, D3DTADDRESS_WRAP);
     sampler(d, SMP_ALBEDO2, D3DTEXF_ANISOTROPIC, D3DTEXF_LINEAR, D3DTADDRESS_WRAP);
+    sampler(d, SMP_FUR, D3DTEXF_LINEAR, D3DTEXF_LINEAR, D3DTADDRESS_WRAP);
     if (light_tex) {
         IDirect3DDevice9_SetTexture(d, SMP_LIGHTS, (IDirect3DBaseTexture9 *)light_tex);
         sampler(d, SMP_LIGHTS, D3DTEXF_POINT, D3DTEXF_NONE, D3DTADDRESS_CLAMP);
@@ -1293,44 +1345,54 @@ void hd_cmap_draw(hd_dev d, struct IDirect3DVertexBuffer9 *v, unsigned stride, i
 void hd_cmap_end(hd_dev d) { shadow_done(d); }
 
 // --- game surfaces ------------------------------------------------------------------------------
-// A game texture's binds in file order (the data has at most two), each over the last.
-void hd_world_material(hd_dev d, unsigned long long hash)
+static void make_wmat(struct wmat *e, UINT64 hash)
 {
     const struct bind *b[2] = { NULL, NULL };
     int n = 0;
-    float emit[4] = { 0, 0, 1, lv.unbake };
+    memset(e, 0, sizeof *e);
+    e->hash = hash;
+    memcpy(e->emit, (float[4]){ 0, 0, 1, lv.unbake }, 16);
     for (UINT i = 0; i < nglows; i++)
         if (glows[i].hash == hash) {
             float span = glows[i].hi - glows[i].lo;
-            emit[0] = glows[i].strength, emit[1] = glows[i].mask ? glows[i].lo : -1, emit[2] = glows[i].mask ? 1 / (fabsf(span) < 0.001f ? 0.001f : span) : 1;
+            e->emit[0] = glows[i].strength, e->emit[1] = glows[i].mask ? glows[i].lo : -1, e->emit[2] = glows[i].mask ? 1 / (fabsf(span) < 0.001f ? 0.001f : span) : 1;
         }
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 26, emit, 1);
-    float keep[4] = { lv.unbake_keep, 0, 0, 0 };
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 29, keep, 1);
-    float hold[4] = { lv.hold, lv.exposure, lv.contrast * 1.26f, lv.shadow_y + origin[1] };
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 28, hold, 1);
     for (UINT i = 0; i < nbinds && n < 2; i++)
         if (binds[i].hash == hash && (UINT)binds[i].mat < nmats) b[n++] = &binds[i];
-    if (!n) {
-        IDirect3DDevice9_SetPixelShader(d, p_world);
-        return;
-    }
-    float c[6][4], w[2][4];
     for (int k = 0; k < n; k++) {
         const struct mat *m = &mats[b[k]->mat];
         static const float weights[4][4] = { { 0, 0, 0, 0 }, { 1, -1, 0, 0 }, { 0.3f, 0.59f, 0.11f, 0 }, { 0, 0, 0, 1 } };
-        memcpy(w[k], weights[b[k]->mask & 3], 16);
+        memcpy(e->w[k], weights[b[k]->mask & 3], 16);
         float span = b[k]->hi - b[k]->lo;
         if (fabsf(span) < 0.001f) span = 0.001f;
-        float e[3][4] = { { m->tile > 0 ? 1 / m->tile : 0, m->nstrength, m->rough, 0 }, { m->tint[0], m->tint[1], m->tint[2], 1 },
+        float c[3][4] = { { m->tile > 0 ? 1 / m->tile : 0, m->nstrength, m->rough, 0 }, { m->tint[0], m->tint[1], m->tint[2], 1 },
                           { (float)b[k]->mask, b[k]->mask ? b[k]->lo : -1, b[k]->mask ? 1 / span : 1, m->flags & F_TRIPLANAR ? 1.0f : 0 } };
-        memcpy(c[k * 3], e, sizeof e);
-        IDirect3DDevice9_SetTexture(d, k ? SMP_NORMAL2 : SMP_NORMAL, m->normal ? (IDirect3DBaseTexture9 *)m->normal : (IDirect3DBaseTexture9 *)flat);
-        IDirect3DDevice9_SetTexture(d, k ? SMP_ALBEDO2 : SMP_ALBEDO, m->albedo ? (IDirect3DBaseTexture9 *)m->albedo : (IDirect3DBaseTexture9 *)white);
+        memcpy(e->c[k * 3], c, sizeof c);
+        e->t[k * 2] = m->normal ? (IDirect3DBaseTexture9 *)m->normal : (IDirect3DBaseTexture9 *)flat;
+        e->t[k * 2 + 1] = m->albedo ? (IDirect3DBaseTexture9 *)m->albedo : (IDirect3DBaseTexture9 *)white;
     }
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 16, c[0], n * 3);
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 22, w[0], n);
-    IDirect3DDevice9_SetPixelShader(d, n == 2 ? p_mat2 : p_mat);
+    e->n = n;
+}
+
+void hd_world_material(hd_dev d, unsigned long long hash)
+{
+    struct wmat *e = NULL, spare;
+    for (UINT i = (UINT)hash & 1023, tries = 0; hash && tries < 64 && !e; i = (i + 1) & 1023, tries++)
+        if (wmats[i].hash == hash) e = &wmats[i];
+        else if (!wmats[i].hash) make_wmat(e = &wmats[i], hash);
+    if (!e) make_wmat(e = &spare, hash);
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 26, e->emit, 1);
+    if (!e->n) {
+        IDirect3DDevice9_SetPixelShader(d, p_world);
+        return;
+    }
+    for (int k = 0; k < e->n; k++) {
+        IDirect3DDevice9_SetTexture(d, k ? SMP_NORMAL2 : SMP_NORMAL, e->t[k * 2]);
+        IDirect3DDevice9_SetTexture(d, k ? SMP_ALBEDO2 : SMP_ALBEDO, e->t[k * 2 + 1]);
+    }
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 16, e->c[0], e->n * 3);
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 22, e->w[0], e->n);
+    IDirect3DDevice9_SetPixelShader(d, e->n == 2 ? p_mat2 : p_mat);
 }
 
 void hd_world_begin(hd_dev d, const float *world)
@@ -1490,31 +1552,33 @@ void hd_char_alpha(hd_dev d, int on)
 
 void hd_char_begin(hd_dev d, const float *model_rows, float use_tex, float use_colour, float scale, const float *style, struct IDirect3DTexture9 *fur)
 {
-    float k[4] = { use_tex, use_colour, scale, 0 }, two[4][4] = { { 0 } }, hide[4];
+    // c24 stage 0, c26-c29 the two lamps nearest this character, c30 fill, c31 style, c34 hold: one upload per draw
+    static float c[11][4];
+    float k[4] = { use_tex, use_colour, scale, 0 };
     if (skin_mat >= 0 && !use_tex) { // no paint of its own: the level's hide goes through the fur path
-        memcpy(hide, style, 16), hide[2] = mats[skin_mat].cut, style = hide;
+        memcpy(c[7], style, 16), c[7][2] = mats[skin_mat].cut;
         k[3] = mats[skin_mat].tile / 36, fur = (struct IDirect3DTexture9 *)mats[skin_mat].albedo;
+    } else memcpy(c[7], style, 16);
+    memcpy(c[0], k, 16);
+    if (char_at[0] != model_rows[3] || char_at[1] != model_rows[7] || char_at[2] != model_rows[11]) { // a batch of another model
+        float d0 = 1e30f, d1 = 1e30f, (*two)[4] = c + 2;
+        char_at[0] = model_rows[3], char_at[1] = model_rows[7], char_at[2] = model_rows[11];
+        memset(two, 0, 64);
+        for (UINT i = 0; i < nlights; i++) {
+            const struct light *l = &lights[i];
+            float x = l->p[0] - char_at[0], y = l->p[1] - char_at[1], z = l->p[2] - char_at[2], dd = x * x + y * y + z * z;
+            float e[2][4] = { { l->p[0], l->p[1], l->p[2], 1 / (l->r * l->r) }, { l->c[0], l->c[1], l->c[2], 0 } };
+            if (dd < d0) memcpy(two[2], two[0], 32), d1 = d0, memcpy(two[0], e, 32), d0 = dd;
+            else if (dd < d1) memcpy(two[2], e, 32), d1 = dd;
+        }
     }
+    memcpy(c[6], (float[4]){ lv.char_fill[0], lv.char_fill[1], lv.char_fill[2], lv.char_keep }, 16);
+    memcpy(c[10], (float[4]){ lv.exposure, lv.contrast * 1.26f, lv.sat * 1.17f, 0 }, 16);
     IDirect3DDevice9_SetVertexShaderConstantF(d, 60, model_rows, 3);
     ps_constants(d);
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 24, k, 1);
-    float d0 = 1e30f, d1 = 1e30f;
-    for (UINT i = 0; i < nlights; i++) { // the two lamps nearest this character
-        const struct light *l = &lights[i];
-        float x = l->p[0] - model_rows[3], y = l->p[1] - model_rows[7], z = l->p[2] - model_rows[11], dd = x * x + y * y + z * z;
-        float e[2][4] = { { l->p[0], l->p[1], l->p[2], 1 / (l->r * l->r) }, { l->c[0], l->c[1], l->c[2], 0 } };
-        if (dd < d0) memcpy(two[2], two[0], 32), d1 = d0, memcpy(two[0], e, 32), d0 = dd;
-        else if (dd < d1) memcpy(two[2], e, 32), d1 = dd;
-    }
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 26, two[0], 4);
-    float fill[4] = { lv.char_fill[0], lv.char_fill[1], lv.char_fill[2], lv.char_keep };
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 30, fill, 1);
-    float hold[4] = { lv.exposure, lv.contrast * 1.26f, lv.sat * 1.17f, 0 };
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 34, hold, 1);
-    IDirect3DDevice9_SetPixelShaderConstantF(d, 31, style, 1);
+    IDirect3DDevice9_SetPixelShaderConstantF(d, 24, c[0], 11);
     bind_common(d);
     IDirect3DDevice9_SetTexture(d, SMP_FUR, (IDirect3DBaseTexture9 *)fur);
-    sampler(d, SMP_FUR, D3DTEXF_LINEAR, D3DTEXF_LINEAR, D3DTADDRESS_WRAP);
     IDirect3DDevice9_SetPixelShader(d, p_char);
     quick_ok = 0;
 }
@@ -1600,6 +1664,9 @@ void hd_post(hd_dev d)
 
 void hd_frame_end(hd_dev d)
 {
+    LARGE_INTEGER c, f; // the shaders' clock, once a frame: under Wine each read is a system call
+    QueryPerformanceCounter(&c), QueryPerformanceFrequency(&f);
+    now_s = (float)fmod((double)c.QuadPart / f.QuadPart, 3600.0);
     hd_solid_flush(d);
     if (redirected) hd_post(d);
     unbind_common(d);
