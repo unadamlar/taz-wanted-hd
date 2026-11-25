@@ -17,6 +17,9 @@ static UINT pow2(UINT n)
     return p;
 }
 
+// The preview's colour surface, while it exists.
+IDirect3DSurface8 *preview_surface(void) { return TARGET ? *(IDirect3DSurface8 **)(TARGET + 0x80) : NULL; }
+
 static BYTE *create_target(UINT w, UINT h, int bits, int depth_bits, int flags)
 {
     UINT sw = SCREEN_W, sh = SCREEN_H; // shown at 240/640 x 180/448 of the screen
@@ -26,7 +29,9 @@ static BYTE *create_target(UINT w, UINT h, int bits, int depth_bits, int flags)
     if (!rt || *(void **)(rt + 0x84) || FAILED(IDirect3DDevice8_GetDepthStencilSurface(DEVICE, &shared))) return rt;
     IDirect3DSurface8_GetDesc(shared, &d);
     IDirect3DSurface8_Release(shared);
-    if (SUCCEEDED(IDirect3DDevice8_CreateDepthStencilSurface(DEVICE, *(UINT *)(rt + 0x90), *(UINT *)(rt + 0x94), d.Format,
+    // Screen-sized at least: the Remaster draws the preview into part of its screen-sized HDR texture with it.
+    UINT dw = *(UINT *)(rt + 0x90), dh = *(UINT *)(rt + 0x94);
+    if (SUCCEEDED(IDirect3DDevice8_CreateDepthStencilSurface(DEVICE, dw > sw ? dw : sw, dh > sh ? dh : sh, d.Format,
                                                             D3DMULTISAMPLE_NONE, &own)))
         *(void **)(rt + 0x84) = own; // released with the target
     return rt;
