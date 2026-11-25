@@ -837,9 +837,10 @@ def relief(cfg):
         for i in range(len(a_)):
             edge_n[frozenset((keys[i], keys[(i + 1) % len(a_)]))] += 1
         faces.append((a_, np.array(uv_) * (1, -1) + (0, 1), n, keys, vc_))  # Direct3D's v runs down
-    g = [c for c, _ in game_faces(lambda l: dress.role_of(l) == "ground")]
-    tris = [t for c in g for t in ([c[[0, 1, 2]]] + ([c[[0, 2, 3]]] if len(c) == 4 else []))]
-    ground = BVHTree.FromPolygons(np.concatenate(tris).tolist(), np.arange(3 * len(tris)).reshape(-1, 3).tolist()) if tris else None
+    def bvh(role):
+        tris = [t for c, _ in game_faces(lambda l: dress.role_of(l) == role) for t in ([c[[0, 1, 2]]] + ([c[[0, 2, 3]]] if len(c) == 4 else []))]
+        return BVHTree.FromPolygons(np.concatenate(tris).tolist(), np.arange(3 * len(tris)).reshape(-1, 3).tolist()) if tris else None
+    ground, play = bvh("ground"), bvh("gameplay")  # flat where Taz walks and behind signs, buttons and pickups by the wall
     hash_ = lambda a, b: np.modf(np.sin(a * 12.9898 + b * 78.233) * 43758.5453)[0] % 1.0
     P, N, U, C = [], [], [], []
     for a_, uv_, n, keys, vc_ in faces:
@@ -864,6 +865,10 @@ def relief(cfg):
                 for q in range(len(p)):
                     hit = ground.ray_cast(p[q] + (0, 5, 0), (0, -1, 0), 20 * K)[0]
                     foot[q] = np.clip((p[q, 1] - hit[1]) / (cfg["foot"] * K), 0, 1) if hit is not None else 1
+            if play:
+                for q in range(len(p)):
+                    hit = play.find_nearest(p[q], (0.1 + cfg["border"]) * K)[3]
+                    foot[q] = min(foot[q], np.clip((hit / K - 0.1) / cfg["border"], 0, 1)) if hit is not None else foot[q]
             edge = np.ones(len(p))
             for e0, e1 in bound:
                 v = e1 - e0
