@@ -47,5 +47,6 @@ c post.hlsl ps_up ps_3_0 ps_up
 c post.hlsl ps_final ps_3_0 ps_final
 c post.hlsl ps_ao ps_3_0 ps_ao
 c post.hlsl ps_ao_blur ps_3_0 ps_ao_blur
+c post.hlsl ps_ao_up ps_3_0 ps_ao_up
 cp "$out" ../look_shaders.h
 wc -c ../look_shaders.h

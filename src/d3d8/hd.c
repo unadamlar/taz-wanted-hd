@@ -82,7 +82,7 @@ static UINT ntexs;
 // Shaders, vertex declarations
 static IDirect3DVertexShader9 *v_world, *v_inst, *v_water, *v_world_float, *v_wind, *v_grass, *v_world_z, *v_inst_z, *v_grass_z, *v_sky, *v_quad, *v_char_z, *v_prop;
 static IDirect3DPixelShader9 *p_space, *p_glass, *p_depth, *p_world, *p_mat, *p_mat2, *p_tiled, *p_inst, *p_card, *p_grass, *p_water, *p_sky, *p_char, *p_glow;
-static IDirect3DPixelShader9 *p_bright, *p_down, *p_up, *p_final, *p_ao, *p_blur;
+static IDirect3DPixelShader9 *p_bright, *p_down, *p_up, *p_final, *p_ao, *p_blur, *p_ao_up;
 static IDirect3DVertexDeclaration9 *d_world, *d_inst, *d_quad, *d_char;
 static int atoc;
 
@@ -90,7 +90,8 @@ static int atoc;
 static IDirect3DSurface9 *hdr_ms, *z_depth, *null_s, *null_c;
 static IDirect3DSurface9 *preview; // a map preview's target: its pass goes to the top left of the plain HDR texture
 static D3DVIEWPORT9 pvp;          // and covers this much of it
-static struct target hdr, zt, ao[2], bloom[NBLOOM];
+static struct target hdr, zt, ao[2], bloom[NBLOOM], zq, aq[2];
+static int lowres; // test runs (taz-hd\lowres file): 1 AO, 2 bloom, 3 both from quarter-size targets
 static IDirect3DTexture9 *smap, *cmap;
 static IDirect3DSurface9 *smap_s, *cmap_s;
 static IDirect3DStateBlock9 *sb;
@@ -289,7 +290,7 @@ static int load_shaders(hd_dev d)
     VS(v_world_z, vs_world_depth); VS(v_inst_z, vs_inst_depth); VS(v_grass_z, vs_grass_depth); VS(v_sky, vs_sky); VS(v_quad, vs_quad); VS(v_char_z, vs_char_depth); VS(v_prop, vs_prop);
     PS(p_depth, ps_depth); PS(p_world, ps_world); PS(p_mat, ps_world_mat); PS(p_mat2, ps_world_mat2); PS(p_tiled, ps_inst_tiled); PS(p_inst, ps_inst); PS(p_card, ps_card);
     PS(p_grass, ps_grass); PS(p_water, ps_water); PS(p_sky, ps_sky); PS(p_glass, ps_glass); PS(p_space, ps_space); PS(p_char, ps_char); PS(p_glow, ps_glow);
-    PS(p_bright, ps_bright); PS(p_down, ps_down); PS(p_up, ps_up); PS(p_final, ps_final); PS(p_ao, ps_ao); PS(p_blur, ps_ao_blur);
+    PS(p_bright, ps_bright); PS(p_down, ps_down); PS(p_up, ps_up); PS(p_final, ps_final); PS(p_ao, ps_ao); PS(p_blur, ps_ao_blur); PS(p_ao_up, ps_ao_up);
     return ok;
 }
 
@@ -608,7 +609,7 @@ static void drop(struct target *t)
 
 static void drop_targets(void)
 {
-    drop(&hdr), drop(&zt), drop(&ao[0]), drop(&ao[1]);
+    drop(&hdr), drop(&zt), drop(&ao[0]), drop(&ao[1]), drop(&zq), drop(&aq[0]), drop(&aq[1]);
     for (int i = 0; i < NBLOOM; i++) drop(&bloom[i]);
     IUnknown **list[] = { (IUnknown **)&preview, (IUnknown **)&hdr_ms, (IUnknown **)&z_depth, (IUnknown **)&null_s, (IUnknown **)&null_c, (IUnknown **)&smap,
                           (IUnknown **)&cmap, (IUnknown **)&smap_s, (IUnknown **)&cmap_s, (IUnknown **)&sb, (IUnknown **)&saved_rt, (IUnknown **)&saved_ds };
@@ -1222,6 +1223,15 @@ static void quad_states(hd_dev d)
     IDirect3DDevice9_SetVertexShader(d, v_quad);
 }
 
+static int quarter_ao(hd_dev d)
+{
+    if (zq.t) return 1;
+    if (make_target(d, &zq, zt.w / 2, zt.h / 2, D3DFMT_R32F) && make_target(d, &aq[0], zq.w, zq.h, D3DFMT_A8R8G8B8)
+        && make_target(d, &aq[1], zq.w, zq.h, D3DFMT_A8R8G8B8)) return 1;
+    drop(&zq), drop(&aq[0]), drop(&aq[1]);
+    return 0;
+}
+
 void hd_prepass_end(hd_dev d)
 {
     cull(clip_rows, eye, lv.fade1);
@@ -1232,12 +1242,28 @@ void hd_prepass_end(hd_dev d)
     sampler(d, 1, D3DTEXF_POINT, D3DTEXF_NONE, D3DTADDRESS_CLAMP);
     float pr[4] = { proj[0][0] ? 1 / proj[0][0] : 1, proj[1][1] ? 1 / proj[1][1] : 1, lv.ao_radius, lv.ao_strength };
     IDirect3DDevice9_SetPixelShaderConstantF(d, 3, pr, 1);
-    float tx = 1.0f / zt.w, ty = 1.0f / zt.h;
-    fullscreen(d, &ao[0], p_ao, zt.t, NULL, tx, ty);
-    sampler(d, 0, D3DTEXF_LINEAR, D3DTEXF_NONE, D3DTADDRESS_CLAMP);
-    fullscreen(d, &ao[1], p_blur, ao[0].t, zt.t, tx, 0);
-    fullscreen(d, &ao[0], p_blur, ao[1].t, zt.t, 0, ty);
-    fullscreen(d, &ao[1], p_blur, ao[0].t, zt.t, tx * 0.5f, ty * 0.5f);
+    if (lowres & 1 && quarter_ao(d)) {
+        // AO at quarter size on a point-sampled copy of the depth, then back to half size along depth edges
+        IDirect3DDevice9_StretchRect(d, zt.s, NULL, zq.s, NULL, D3DTEXF_POINT);
+        float qx = 1.0f / zq.w, qy = 1.0f / zq.h;
+        fullscreen(d, &aq[0], p_ao, zq.t, NULL, qx, qy);
+        sampler(d, 0, D3DTEXF_LINEAR, D3DTEXF_NONE, D3DTADDRESS_CLAMP);
+        fullscreen(d, &aq[1], p_blur, aq[0].t, zq.t, qx, 0);
+        fullscreen(d, &aq[0], p_blur, aq[1].t, zq.t, 0, qy);
+        fullscreen(d, &aq[1], p_blur, aq[0].t, zq.t, qx * 0.5f, qy * 0.5f);
+        sampler(d, 0, D3DTEXF_POINT, D3DTEXF_NONE, D3DTADDRESS_CLAMP);
+        sampler(d, 2, D3DTEXF_POINT, D3DTEXF_NONE, D3DTADDRESS_CLAMP);
+        IDirect3DDevice9_SetTexture(d, 2, (IDirect3DBaseTexture9 *)zt.t);
+        fullscreen(d, &ao[1], p_ao_up, aq[1].t, zq.t, qx, qy);
+        IDirect3DDevice9_SetTexture(d, 2, NULL);
+    } else {
+        float tx = 1.0f / zt.w, ty = 1.0f / zt.h;
+        fullscreen(d, &ao[0], p_ao, zt.t, NULL, tx, ty);
+        sampler(d, 0, D3DTEXF_LINEAR, D3DTEXF_NONE, D3DTADDRESS_CLAMP);
+        fullscreen(d, &ao[1], p_blur, ao[0].t, zt.t, tx, 0);
+        fullscreen(d, &ao[0], p_blur, ao[1].t, zt.t, 0, ty);
+        fullscreen(d, &ao[1], p_blur, ao[0].t, zt.t, tx * 0.5f, ty * 0.5f);
+    }
     IDirect3DDevice9_SetTexture(d, 0, NULL), IDirect3DDevice9_SetTexture(d, 1, NULL);
     IDirect3DDevice9_SetRenderTarget(d, 0, saved_rt);
     IDirect3DDevice9_SetDepthStencilSurface(d, saved_ds);
@@ -1668,22 +1694,24 @@ void hd_post(hd_dev d)
     quad_states(d);
     for (DWORD s = 0; s < 2; s++) sampler(d, s, D3DTEXF_LINEAR, D3DTEXF_NONE, D3DTADDRESS_CLAMP);
     // The ini's numbers are Blender's: its glow is subtler and its AgX curve punchier than ours at the same values.
-    float b[3][4] = { { 0 }, { lv.bloom_t, lv.bloom_t * 0.5f, lv.bloom_s * 0.3f, lv.exposure }, { lv.sat * 1.17f, lv.contrast * 1.26f, 0, 0 } };
-    if (paused) b[1][0] = b[1][1] = 0, b[1][2] = 1.0f / NBLOOM, b[2][2] = 1, b[2][3] = 0.36f; // the bloom chain, unthresholded, is a blur of the picture
+    // Each level adds about the same energy, so a chain without the half-size level is scaled up to match.
+    int b0 = lowres & 2 ? 1 : 0;
+    float b[3][4] = { { 0 }, { lv.bloom_t, lv.bloom_t * 0.5f, lv.bloom_s * 0.3f * (b0 ? (float)NBLOOM / (NBLOOM - 1) : 1), lv.exposure }, { lv.sat * 1.17f, lv.contrast * 1.26f, 0, 0 } };
+    if (paused) b[1][0] = b[1][1] = 0, b[1][2] = 1.0f / (NBLOOM - b0), b[2][2] = 1, b[2][3] = 0.36f; // the bloom chain, unthresholded, is a blur of the picture
     IDirect3DDevice9_SetPixelShaderConstantF(d, 1, b[1], 2);
-    fullscreen(d, &bloom[0], p_bright, hdr.t, NULL, 1.0f / hdr.w, 1.0f / hdr.h);
-    for (int i = 1; i < NBLOOM; i++)
+    fullscreen(d, &bloom[b0], p_bright, hdr.t, NULL, 1.0f / hdr.w, 1.0f / hdr.h);
+    for (int i = b0 + 1; i < NBLOOM; i++)
         fullscreen(d, &bloom[i], p_down, bloom[i - 1].t, NULL, 1.0f / bloom[i - 1].w, 1.0f / bloom[i - 1].h);
     IDirect3DDevice9_SetRenderState(d, D3DRS_ALPHABLENDENABLE, TRUE);
     IDirect3DDevice9_SetRenderState(d, D3DRS_SRCBLEND, D3DBLEND_ONE);
     IDirect3DDevice9_SetRenderState(d, D3DRS_DESTBLEND, D3DBLEND_ONE);
-    for (int i = NBLOOM - 1; i > 0; i--)
+    for (int i = NBLOOM - 1; i > b0; i--)
         fullscreen(d, &bloom[i - 1], p_up, bloom[i].t, NULL, 1.0f / bloom[i].w, 1.0f / bloom[i].h);
     IDirect3DDevice9_SetRenderState(d, D3DRS_ALPHABLENDENABLE, FALSE);
     D3DSURFACE_DESC pd = { .Width = tw, .Height = th };
     if (preview) IDirect3DSurface9_GetDesc(preview, &pd), quad_u = (float)pvp.Width / hdr.w, quad_v = (float)pvp.Height / hdr.h;
     struct target back = { NULL, preview ? preview : bb, pd.Width, pd.Height };
-    fullscreen(d, &back, p_final, hdr.t, bloom[0].t, 1.0f / hdr.w, 1.0f / hdr.h);
+    fullscreen(d, &back, p_final, hdr.t, bloom[b0].t, 1.0f / hdr.w, 1.0f / hdr.h);
     quad_u = quad_v = 1;
     if (preview) IDirect3DSurface9_Release(preview), preview = NULL;
     IDirect3DDevice9_SetTexture(d, 0, NULL), IDirect3DDevice9_SetTexture(d, 1, NULL);
@@ -1693,6 +1721,16 @@ void hd_post(hd_dev d)
     IDirect3DDevice9_SetViewport(d, &v);
     if (ds) IDirect3DSurface9_Release(ds);
     IDirect3DSurface9_Release(bb);
+}
+
+static void check_lowres(void)
+{
+    FILE *f = capture_tests() ? fopen("taz-hd\\lowres", "r") : NULL;
+    if (!f) return;
+    if (fscanf(f, "%d", &lowres) != 1) lowres = 0;
+    fclose(f);
+    DeleteFileA("taz-hd\\lowres");
+    log_line("hd: lowres %d", lowres);
 }
 
 void hd_frame_end(hd_dev d)
@@ -1706,4 +1744,5 @@ void hd_frame_end(hd_dev d)
     post_done = additions_done = prepass_done = sky_done = 0;
     ndone = 0;
     check_reload(d);
+    check_lowres();
 }

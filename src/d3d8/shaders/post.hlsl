@@ -114,3 +114,20 @@ float4 ps_ao_blur(Quad i) : COLOR
         }
     return sum / total;
 }
+
+// Quarter-size AO back to half size: the four nearest samples, by bilinear weight and by how close their depth
+// (SRC2, quarter size) is to this pixel's (SRC3, half size), so occlusion doesn't leak across depth edges.
+sampler2D SRC3  : register(s2);
+float4 ps_ao_up(Quad i) : COLOR
+{
+    float z = tex2D(SRC3, i.uv).r;
+    float2 t = TEXEL_SRC.xy, q = i.uv / t - 0.5, b = floor(q), f = q - b;
+    float sum = 0, total = 0;
+    for (int k = 0; k < 4; k++) {
+        float2 o = float2(k % 2, k / 2), uv = (b + o + 0.5) * t, wb = lerp(1 - f, f, o);
+        float w = wb.x * wb.y / (abs(tex2Dlod(SRC2, float4(uv, 0, 0)).r - z) / (z * 0.02 + 2) + 0.02);
+        sum += tex2Dlod(SRC, float4(uv, 0, 0)).r * w;
+        total += w;
+    }
+    return sum / max(total, 1e-6);
+}
