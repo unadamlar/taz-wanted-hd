@@ -75,7 +75,8 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
   User 2026-11-25: keep the continue room; the soft amber rules backdrop was reverted (its stars went blurry).
   Character pale paint is shaded in every level (user's pick, 5277d15): the hold at HD's bright cream read like the flat original.
   AO and bloom run at quarter size only (user saw no difference; about -0.3 ms in the zoo and city hubs). Paused-frame blur slightly softer.
-  Saguaros are ribbed, striped and domed like the painted cactus (museum, west hub, Grand Canyon, canyon race; data `extracted/look/saguaro/<level>/runtime`).
+  Saguaros are ribbed and domed, a muted olive with soft grooves (striped like the paint they read as a watermelon); museum, west hub, Grand Canyon,
+  canyon race; data `extracted/look/saguaro2/<level>/runtime` (department store's flowers: `extracted/look/saguaro/deptstr/runtime`).
 - Not checked: bonus-level loading art, a gamepad in these menus, where `boss.png` and `guide.png` splash images appear, continue screens outside westboss.
 - City world done: department store, museum, construction site and city boss (`extracted/look/reports/step7/city-levels/`). Data is in
   `extracted/look/city-levels/<level>/runtime/sceneNN`. Not in the user's playable copy. Not checked: finishing a level, win and lose
