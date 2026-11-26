@@ -1410,8 +1410,8 @@ def paint_light(col):
 def guardrail_geo(alpha, paint, pos, uv, col):
     """A painted guard rail as steel beams bolted to timber posts, each in the paint's own bands. The paint: beams running
     along v, once per repeat a post across them that leaves the card at its u=1 edge (the ground). The beams follow each
-    run of cards round its corners unbroken. They go on both faces of the posts, since which side the road is on is not
-    known; posts go a little into the ground."""
+    run of cards round its corners unbroken, in the card's plane with the posts inside them (thinner front to back), so
+    either side reads as the paint and the gap between the beams stays open; posts go a little into the ground."""
     a = alpha > 0.5
     h, w = a.shape
     beam = a.all(0)  # painted the whole way along
@@ -1468,7 +1468,7 @@ def guardrail_geo(alpha, paint, pos, uv, col):
         chains.append(chain)
     dv_med = np.median([np.linalg.norm(c["dv"]) for c in cards])
     p_hw = (y1 - y0) / 2 / h * dv_med
-    p_hd = 0.5 * p_hw
+    p_hd = min(0.5 * p_hw, 0.25 * min(b[1] for b in beams) * np.median([np.linalg.norm(c["du"]) for c in cards]))  # inside the beams
     steel, wood = MAT_ID.get("d_iron", MAT_ID["prop"]), MAT_ID.get("board", MAT_ID["prop"])
     out = []
     for chain in chains:
@@ -1490,9 +1490,7 @@ def guardrail_geo(alpha, paint, pos, uv, col):
             z = np.cross(dus, tg)
             z /= np.maximum(np.linalg.norm(z, axis=1, keepdims=True), 1e-9)
             hw = half * np.mean([np.linalg.norm(cards[i]["du"]) for i, _ in chain])
-            hd = 0.35 * hw
-            for zs in (1, -1):
-                out.append((*props3d.profiled(pts + zs * (p_hd + hd) * z, hw, hd, [(tone(b), t0, t1) for b, t0, t1 in bands], normal=z), steel))
+            out.append((*props3d.profiled(pts, hw, 0.35 * hw, [(tone(b), t0, t1) for b, t0, t1 in bands], normal=z), steel))
         bolt = tone(max(beams[0][2], key=lambda b: b[0].sum())[0])
         for i, _ in chain:  # posts, and a bolt through each beam into each post
             c = cards[i]
@@ -1507,7 +1505,7 @@ def guardrail_geo(alpha, paint, pos, uv, col):
                 for ub, half, _ in beams:
                     hw = half * np.linalg.norm(c["du"])
                     for zs in (1, -1):
-                        out.append((*props3d.disc(c["at"](c["k0"] + ub, vc) + zs * (p_hd + 2 * 0.35 * hw) * zc, 0.2 * hw, zs * zc, 0.05 * hw, bolt, sides=8), steel))
+                        out.append((*props3d.disc(c["at"](c["k0"] + ub, vc) + zs * 0.35 * hw * zc, 0.2 * hw, zs * zc, 0.05 * hw, bolt, sides=8), steel))
     return [(p[k], n[k], np.zeros((len(p), 2)), c[k], np.full(len(p), m)) for p, n, c, m in out for k in [game_winding(p, n)]]
 
 
