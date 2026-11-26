@@ -154,7 +154,8 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
   hard dark dashes the paint's grain strokes left (that code deleted); firs in the zoo hub, ice dome and ice race are about a fifth slimmer, sized from
   the painted tree's lower third, so Taz stops in front of the branches as in HD instead of inside them. All in the playable copy. Bosscol
   (`extracted/look/reports/step7/bosscol/`): city boss 3D panels in the cards' own colours, matching the paint in wide views, darker up close; code
-  merged, data `extracted/look/bosscol/cityboss-h` waiting on the user.
+  merged; the user kept the 3D panels, data `extracted/look/bosscol/cityboss-h` in the playable copy. Pink Taz boss 1 channels, no sky reorder and
+  the dropped fences, hedges and leaves confirmed.
 - Optimization pass (2026-11-25): most levels run 1.3-2x faster uncapped at 2880x1800 with 4x MSAA, look code 0.5-2.5 ms a frame (was 3-7), no intended
   look change. The zoo and city hubs are now limited by the GPU (grass is about 1.75 ms there); most other levels by the game's thread. Tables and the
   profiling patch: `extracted/look/reports/step7/optim/`. Not measured: main menu, Planet X, zoo boss and ice dome (their state changed between runs).
