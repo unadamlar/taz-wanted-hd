@@ -1297,39 +1297,94 @@ def merged(bands, tol=0.1):
 
 
 def picket_parts(alpha, paint):
-    """A painted picket fence: (path, half widths, bands, half depth, z) in texels for each post, picket and rail."""
+    """A painted picket fence: (path, half widths, bands, half depth, z) in texels for each post, picket and rail. Pickets
+    painted leaning (broken ones) lean too."""
     a = alpha > 0.5
     h, w = a.shape
-    cov = a.mean(1)
-    rail = cov > 0.97
-    body = ~rail & (cov > 0.3)
     luma = paint @ np.array([0.3, 0.59, 0.11])
+    cov = a.mean(1)
+    rail = (cov > 0.99) & np.array([np.std(luma[y][a[y]]) < 0.06 for y in range(h)])  # one flat grey right across
+    body = ~rail & (cov > 0.3)
     parts = []
-    for r in np.split(np.flatnonzero(rail), np.flatnonzero(np.diff(np.flatnonzero(rail)) > 1) + 1) if rail.any() else []:
-        y = np.arange(r[0], r[-1] + 1)
-        hw = len(y) / 2
-        bands = merged([(np.median(paint[yy][a[yy]], 0), 2 * k / len(y) - 1, 2 * (k + 1) / len(y) - 1) for k, yy in enumerate(y)])
-        parts.append((np.c_[np.linspace(-0.5, w + 0.5, 17), np.full(17, r[0] + hw)], np.full(17, hw), bands, 0.45 * hw, -1))  # cut where the card ends
+    runs = lambda m: [(r[0], r[-1] + 1) for r in np.split(np.flatnonzero(m), np.flatnonzero(np.diff(np.flatnonzero(m)) > 1) + 1)] if m.any() else []
+    for y0, y1 in runs(rail):
+        hw = (y1 - y0) / 2
+        bands = merged([(np.median(paint[y][a[y]], 0), 2 * k / (y1 - y0) - 1, 2 * (k + 1) / (y1 - y0) - 1) for k, y in enumerate(range(y0, y1))])
+        parts.append((np.c_[np.linspace(-0.5, w + 0.5, 17), np.full(17, y0 + hw)], np.full(17, hw), bands, 0.45 * hw, -1))  # cut where the card ends
     post = a.mean(0) > 0.9
     op = a[body].mean(0)
     lum = np.array([np.median(luma[body, x][a[body, x]]) if a[body, x].any() else 0 for x in range(w)])
     dark = lum < 0.9 * np.minimum(np.roll(lum, 1), np.roll(lum, -1))  # a separator line: darker than the pickets either side
-    keep = (op > 0.5) & ~dark
-    for is_post, cols in ((True, post), (False, keep & ~post)):
-        runs = np.flatnonzero(np.diff(np.r_[0, cols.astype(int), 0]))
-        for x0, x1 in zip(runs[::2], runs[1::2]):
+    ys = np.flatnonzero(body)
+    used, ends, widths, cols_ = post.copy(), [], [], []
+    typ = np.median([x1 - x0 for x0, x1 in runs((op > 0.5) & ~dark & ~post) if x1 - x0 >= 2] or [4])
+    split = lambda r: [(r[0] + k * (r[1] - r[0]) // n, r[0] + (k + 1) * (r[1] - r[0]) // n) for n in [max(1, int(round((r[1] - r[0]) / typ)))] for k in range(n)]
+    for is_post, cols in ((True, post), (False, (op > 0.5) & ~dark & ~post)):
+        for x0, x1 in (runs(cols) if is_post else [q for r in runs(cols) for q in split(r)]):  # two pickets painted touching: two
             if x1 - x0 < 2 and not is_post:
                 continue
+            used[x0:x1] = True
             xc, hw = (x0 + x1) / 2, (x1 - x0) / 2
             mid = a[:, min(int(xc), w - 1)]
             top, bot = int(np.argmax(mid)), h - int(np.argmax(mid[::-1]))
-            ys = np.flatnonzero(body)
             bands = merged([(np.median(paint[ys, x][a[ys, x]], 0) if a[ys, x].any() else paint[ys, x].mean(0), (x - xc) / hw, (x + 1 - xc) / hw)
                             for x in range(x0, x1)])  # a column each
+            if not is_post:
+                ends.append((top, bot)); widths.append(x1 - x0); cols_ += [b[0] for b in bands]
             pointed = not is_post and a[top:top + 2, x0:x1].mean() < 0.7
             tip = min(hw * 1.2, (bot - top) * 0.3) if pointed else 0
             ys_ = np.r_[np.linspace(bot, top + tip, max(2, int((bot - top - tip) / 14) + 2)), [top] if pointed else []]  # cut where the card ends
-            parts.append((np.c_[np.full(len(ys_), xc), ys_], np.r_[np.full(len(ys_) - pointed, hw), [0.08 * hw] if pointed else []], bands, (0.6 if is_post else 0.3) * hw, 0))
+            parts.append((np.c_[np.full(len(ys_), xc), ys_], np.r_[np.full(len(ys_) - pointed, hw), [0.08 * hw] if pointed else []], bands, (1.0 if is_post else 0.3) * hw, 0))
+    left = a & ~rail[:, None] & ~used[None, :] & ~dark[None, :]
+    link = left.copy()  # a leaning picket crosses the rails: joined through them
+    for y0, y1 in runs(rail):
+        if 0 < y0 and y1 < h:
+            link[y0:y1] |= (left[y0 - 1] & left[y1])[None, :] | (np.roll(left[y0 - 1], 1) & left[y1])[None, :] | (np.roll(left[y0 - 1], -1) & left[y1])[None, :]
+    seen = np.zeros_like(link)
+    for y_, x_ in zip(*np.nonzero(left)):
+        if seen[y_, x_]:
+            continue
+        stack, px_ = [(y_, x_)], []
+        seen[y_, x_] = True
+        while stack:
+            y, x = stack.pop()
+            px_.append((y, x))
+            for yy, xx in ((y + 1, x), (y - 1, x), (y, x + 1), (y, x - 1), (y + 1, x + 1), (y + 1, x - 1), (y - 1, x + 1), (y - 1, x - 1)):
+                if 0 <= yy < h and 0 <= xx < w and link[yy, xx] and not seen[yy, xx]:
+                    seen[yy, xx] = True
+                    stack.append((yy, xx))
+        q = np.array([(x + 0.5, y + 0.5) for y, x in px_ if left[y, x]])
+        if len(q) < 12:  # a stray speck
+            continue
+        c0 = q.mean(0)
+        ax = np.linalg.svd(q - c0, full_matrices=False)[2][0]
+        ax = -ax if ax[1] > 0 else ax  # up the picket
+        t = (q - c0) @ ax
+        length = np.ptp(t) + 1
+        if length < 3 * max(len(q) / length, 1):
+            continue
+        hw = max(len(q) / length / 2, 1.5)
+        col_ = np.median(paint[(q[:, 1]).astype(int), (q[:, 0]).astype(int)], 0)
+        top, bot = np.median(ends, 0) if ends else (t.max(), t.min())
+        t0, t1 = (bot - c0[1]) / ax[1], (top - c0[1]) / ax[1]  # a broken picket made whole, still leaning
+        tip = 1.2 * hw
+        ts = np.r_[np.linspace(t0, t1 - tip, max(2, int((t1 - t0 - tip) / 14) + 2)), t1]
+        path = c0 + np.outer(ts, ax)
+        span = slice(int(max(path[:, 0].min() - hw, 0)), int(min(path[:, 0].max() + hw + 1, w)))
+        if used[span].mean() > 0.6:  # the other half of a broken picket already stands here
+            continue
+        used[span] = True
+        parts.append((path, np.r_[np.full(len(ts) - 1, hw), 0.08 * hw], [(col_, -1.0, 1.0)], 0.3 * hw, 0))
+    if ends:  # missing pickets: whole ones in the gap
+        top, bot = np.median(ends, 0)
+        pw = np.median(widths)
+        for x0, x1 in runs(~used):
+            n = int(round((x1 - x0) / (pw + 1)))
+            for k in range(n):
+                xc = x0 + (k + 0.5) * (x1 - x0) / n
+                hw, tip = pw / 2, 1.2 * pw / 2
+                ys_ = np.r_[np.linspace(bot, top + tip, max(2, int((bot - top - tip) / 14) + 2)), top]
+                parts.append((np.c_[np.full(len(ys_), xc), ys_], np.r_[np.full(len(ys_) - 1, hw), 0.08 * hw], [(np.median(cols_, 0), -1.0, 1.0)], 0.3 * hw, 0))
     return parts
 
 
@@ -1340,9 +1395,11 @@ def profiled_geo(kind, alpha, paint, pos, uv, col, size):
     h, w = alpha.shape
     px = np.array(size, float) / [w, h]
     lit = np.clip(col.mean((0, 1)), 0, 1)
-    if "unbake" in LEVEL:  # a night level's baked light is blue: keep only how bright it is, as its own surfaces do
-        lit = np.full(3, min(2 * lit.max(), 1))
-    tone = lambda c: np.clip(np.asarray(c) * lit * 1.15, 0, 1)
+    if "unbake" in LEVEL:  # a night level's baked light, as its own surfaces take it: its brightness and unbake_keep of its tint
+        keep = LEVEL.get("unbake_keep", 0)
+        lit = min(2 * lit.max(), 1) * ((1 - keep) + keep * lit / max(lit.max(), 1e-4))
+    gain = 0.85 if kind == "pickets" else 1.15  # each matched by eye and by pixel to the paint in the same view
+    tone = lambda c: np.clip(np.asarray(c) * lit * gain, 0, 1)
     P, N, C, grain = [], [], [], []
     if kind == "pickets":
         parts = picket_parts(alpha, paint)
@@ -1406,10 +1463,11 @@ def profiled_geo(kind, alpha, paint, pos, uv, col, size):
     cc = np.tile(cc, (len(pw) // len(p), 1))
     a_, e1, e2 = uv[:, 0], uv[:, 1] - uv[:, 0], uv[:, 2] - uv[:, 0]
     det = e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]
-    rel = q[:, None] - a_[None]
+    rel = q.reshape(-1, 3, 2).mean(1)[:, None] - a_[None]
     l1 = (rel[..., 0] * e2[:, 1] - rel[..., 1] * e2[:, 0]) / det
     l2 = (e1[:, 0] * rel[..., 1] - e1[:, 1] * rel[..., 0]) / det
-    keep = (np.minimum(np.minimum(l1, l2), 1 - l1 - l2) > -0.01).any(1).reshape(-1, 3).all(1)
+    # a triangle belongs to the piece of card its middle is on: the game can draw one card as two draws
+    keep = (np.minimum(np.minimum(l1, l2), 1 - l1 - l2) > -1e-4).any(1)
     k = (np.nonzero(keep)[0][:, None] * 3 + [0, 1, 2]).ravel()
     return [(pw[k], nw[k], np.zeros((len(k), 2)), cc[k], np.full(len(k), MAT_ID.get("board", MAT_ID["prop"])))]
 
