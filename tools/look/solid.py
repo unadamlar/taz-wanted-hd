@@ -424,7 +424,9 @@ def _tidy(lines, w, wrap):
             xy = xy.copy()
             xy[0], xy[-1] = pos[a], pos[b]
             edges.append((a, b, xy, r))
-    rmed = np.median(np.concatenate([e[3] for e in edges]))
+    if not edges:  # only specks
+        return []
+    rmed =np.median(np.concatenate([e[3] for e in edges]))
     seam = lambda n: wrap and not 1 <= pos[n][0] <= w - 2
     for final in (False, True):
         while True:

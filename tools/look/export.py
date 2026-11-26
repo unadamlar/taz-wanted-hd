@@ -842,14 +842,19 @@ def solid_mat(label, tint=(1, 1, 1), rough=0.6, flags=TWO_SIDED):
     return MAT_ID[name]
 
 
+def game_winding(p, n):
+    """Vertex order that turns each triangle to game space winding for its normal: one-sided materials cull the rest."""
+    tri = p.reshape(-1, 3, 3)
+    flip = (np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]) * n.reshape(-1, 3, 3).mean(1)).sum(1) > 0
+    order = np.tile([0, 1, 2], (len(tri), 1))
+    order[flip] = [0, 2, 1]
+    return (np.arange(len(tri))[:, None] * 3 + order).ravel()
+
+
 def place_static(name, p, n, uv, c, mat):
     """Hides nothing itself. Split along the chunk grid so the parts cull separately."""
     p, n, uv, c = p.astype(np.float32), n.astype(np.float32), uv.astype(np.float32), dds.to_linear(c).astype(np.float32)
-    tri = p.reshape(-1, 3, 3)
-    flip = (np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]) * n.reshape(-1, 3, 3).mean(1)).sum(1) > 0  # game space winding
-    order = np.tile([0, 1, 2], (len(tri), 1))
-    order[flip] = [0, 2, 1]
-    k = (np.arange(len(tri))[:, None] * 3 + order).ravel()
+    k = game_winding(p, n)
     p, n, uv, c = p[k], n[k], uv[k], c[k]
     cen = p.reshape(-1, 3, 3).mean(1)
     cell = (np.floor(cen[:, 0] / CHUNK).astype(np.int64) << 32) + np.floor(cen[:, 2] / CHUNK).astype(np.int64)
@@ -1296,6 +1301,12 @@ def merged(bands, tol=0.1):
     return out
 
 
+def runs(m):
+    """(start, end) of each run of True."""
+    i = np.flatnonzero(m)
+    return [(r[0], r[-1] + 1) for r in np.split(i, np.flatnonzero(np.diff(i) > 1) + 1)] if len(i) else []
+
+
 def picket_parts(alpha, paint):
     """A painted picket fence: (path, half widths, bands, half depth, z) in texels for each post, picket and rail. Pickets
     painted leaning (broken ones) lean too."""
@@ -1306,7 +1317,6 @@ def picket_parts(alpha, paint):
     rail = (cov > 0.99) & np.array([np.std(luma[y][a[y]]) < 0.06 for y in range(h)])  # one flat grey right across
     body = ~rail & (cov > 0.3)
     parts = []
-    runs = lambda m: [(r[0], r[-1] + 1) for r in np.split(np.flatnonzero(m), np.flatnonzero(np.diff(np.flatnonzero(m)) > 1) + 1)] if m.any() else []
     for y0, y1 in runs(rail):
         hw = (y1 - y0) / 2
         bands = merged([(np.median(paint[y][a[y]], 0), 2 * k / (y1 - y0) - 1, 2 * (k + 1) / (y1 - y0) - 1) for k, y in enumerate(range(y0, y1))])
@@ -1388,16 +1398,126 @@ def picket_parts(alpha, paint):
     return parts
 
 
+def paint_light(col):
+    """The baked light a rebuilt card's paint keeps; on a level that unbakes, its brightness and unbake_keep of its tint."""
+    lit = np.clip(col.mean((0, 1)), 0, 1)
+    if "unbake" in LEVEL:
+        keep = LEVEL.get("unbake_keep", 0)
+        lit = min(2 * lit.max(), 1) * ((1 - keep) + keep * lit / max(lit.max(), 1e-4))
+    return lit
+
+
+def guardrail_geo(alpha, paint, pos, uv, col):
+    """A painted guard rail as steel beams bolted to timber posts, each in the paint's own bands. The paint: beams running
+    along v, once per repeat a post across them that leaves the card at its u=1 edge (the ground). The beams follow each
+    run of cards round its corners unbroken. They go on both faces of the posts, since which side the road is on is not
+    known; posts go a little into the ground."""
+    a = alpha > 0.5
+    h, w = a.shape
+    beam = a.all(0)  # painted the whole way along
+    posts = runs(a[:, ~beam].any(1))
+    if not beam.any() or not posts:
+        return []
+    plain = np.ones(h, bool)
+    for y0, y1 in posts:
+        plain[y0:y1] = False
+    y0, y1 = posts[0]
+    p_bands = merged([(np.median(paint[y][a[y] & ~beam], 0), 2 * (y - y0) / (y1 - y0) - 1, 2 * (y + 1 - y0) / (y1 - y0) - 1) for y in range(y0, y1)])
+    top = np.flatnonzero(a[y0:y1].any(0))[0] / w
+    beams = [((x0 + x1) / 2 / w, (x1 - x0) / 2 / w, merged([(np.median(paint[plain, x], 0), 1 - 2 * (x + 1 - x0) / (x1 - x0), 1 - 2 * (x - x0) / (x1 - x0))
+                                                            for x in range(x0, x1)])) for x0, x1 in runs(beam)]
+    cards, seen = [], set()
+    for t in solid.islands(np.concatenate([pos, 100 * uv], 2)):  # card by card: a run's cards repeat one uv range
+        P_, U_ = pos[t], uv[t]
+        if (key := np.unique(np.round(P_.reshape(-1, 3)), axis=0).tobytes()) in seen:  # the same card in two draws
+            continue
+        seen.add(key)
+        e1, e2 = U_[:, 1] - U_[:, 0], U_[:, 2] - U_[:, 0]
+        det = e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]
+        k = int(np.abs(det).argmax())
+        if abs(det[k]) < 1e-8:
+            continue
+        d1, d2 = P_[k, 1] - P_[k, 0], P_[k, 2] - P_[k, 0]
+        du, dv = (d1 * e2[k, 1] - d2 * e1[k, 1]) / det[k], (d2 * e1[k, 0] - d1 * e2[k, 0]) / det[k]
+        lo, hi = U_.reshape(-1, 2).min(0), U_.reshape(-1, 2).max(0)
+        cards.append(dict(at=lambda u, v, A=P_[k, 0], a0=U_[k, 0], du=du, dv=dv: A + du * (u - a0[0]) + dv * (v - a0[1]),
+                          v=(lo[1], hi[1]), k0=np.floor(lo[0] + 1e-6), du=du, dv=dv, lit=paint_light(col[t])))
+    if not cards:
+        return []
+    end = lambda i, j: cards[i]["at"](cards[i]["k0"] + 0.5, cards[i]["v"][j])
+    tol = 0.05 * np.median([np.linalg.norm(end(i, 1) - end(i, 0)) for i in range(len(cards))])
+    nb = {}  # (card, end) -> (card, end) it meets
+    for i in range(len(cards)):
+        for j in (0, 1):
+            for i2 in range(i + 1, len(cards)):
+                for j2 in (0, 1):
+                    if np.linalg.norm(end(i, j) - end(i2, j2)) < tol and (i, j) not in nb and (i2, j2) not in nb:
+                        nb[i, j], nb[i2, j2] = (i2, j2), (i, j)
+    chains, seen = [], set()
+    for start in sorted(range(len(cards)), key=lambda i: ((i, 0) in nb) + ((i, 1) in nb)):  # open ends first
+        if start in seen:
+            continue
+        j = 0 if (start, 0) not in nb else 1 if (start, 1) not in nb else 0
+        chain, i = [], start
+        while i not in seen:
+            seen.add(i)
+            chain.append((i, j))  # enters card i at end j
+            if (i, 1 - j) not in nb:
+                break
+            i, j = nb[i, 1 - j]
+        chains.append(chain)
+    dv_med = np.median([np.linalg.norm(c["dv"]) for c in cards])
+    p_hw = (y1 - y0) / 2 / h * dv_med
+    p_hd = 0.5 * p_hw
+    steel, wood = MAT_ID.get("d_iron", MAT_ID["prop"]), MAT_ID.get("board", MAT_ID["prop"])
+    out = []
+    for chain in chains:
+        lit = np.mean([cards[i]["lit"] for i, _ in chain], 0)
+        tone = lambda c: np.clip(np.asarray(c) * lit * 1.15, 0, 1)
+        for ub, half, bands in beams:
+            pts, dus = [], []
+            for n_, (i, j) in enumerate(chain):
+                c = cards[i]
+                if n_ == 0:
+                    pts.append(c["at"](c["k0"] + ub, c["v"][j])); dus.append(c["du"])
+                q = c["at"](c["k0"] + ub, c["v"][1 - j])
+                if n_ + 1 < len(chain):  # a joint: where both cards put it
+                    c2 = cards[chain[n_ + 1][0]]
+                    q = (q + c2["at"](c2["k0"] + ub, c2["v"][chain[n_ + 1][1]])) / 2
+                pts.append(q); dus.append(c["du"] if n_ + 1 == len(chain) else c["du"] + c2["du"])
+            pts, dus = np.array(pts), np.array(dus)
+            tg = np.gradient(pts, axis=0)
+            z = np.cross(dus, tg)
+            z /= np.maximum(np.linalg.norm(z, axis=1, keepdims=True), 1e-9)
+            hw = half * np.mean([np.linalg.norm(cards[i]["du"]) for i, _ in chain])
+            hd = 0.35 * hw
+            for zs in (1, -1):
+                out.append((*props3d.profiled(pts + zs * (p_hd + hd) * z, hw, hd, [(tone(b), t0, t1) for b, t0, t1 in bands], normal=z), steel))
+        bolt = tone(max(beams[0][2], key=lambda b: b[0].sum())[0])
+        for i, _ in chain:  # posts, and a bolt through each beam into each post
+            c = cards[i]
+            zc = np.cross(c["du"], c["dv"])
+            zc /= np.linalg.norm(zc)
+            for k in range(int(np.floor(c["v"][0])), int(np.ceil(c["v"][1])) + 1):
+                vc = k + (y0 + y1) / 2 / h
+                if not c["v"][0] <= vc < c["v"][1]:
+                    continue
+                path = np.array([c["at"](c["k0"] + top, vc), c["at"](c["k0"] + 1.12, vc)])
+                out.append((*props3d.profiled(path, p_hw, p_hd, [(tone(b), t0, t1) for b, t0, t1 in p_bands], normal=zc), wood))
+                for ub, half, _ in beams:
+                    hw = half * np.linalg.norm(c["du"])
+                    for zs in (1, -1):
+                        out.append((*props3d.disc(c["at"](c["k0"] + ub, vc) + zs * (p_hd + 2 * 0.35 * hw) * zc, 0.2 * hw, zs * zc, 0.05 * hw, bolt, sides=8), steel))
+    return [(p[k], n[k], np.zeros((len(p), 2)), c[k], np.full(len(p), m)) for p, n, c, m in out for k in [game_winding(p, n)]]
+
+
 def profiled_geo(kind, alpha, paint, pos, uv, col, size):
     """Painted boards and picket fences rebuilt as real boards that keep the paint's colour bands (pale edge lines, dark
     outline) as hard stripes. boards: along the paint's strokes, tapered as painted, with its dark grain; pickets: a picket
     fence read column by column."""
     h, w = alpha.shape
     px = np.array(size, float) / [w, h]
-    lit = np.clip(col.mean((0, 1)), 0, 1)
-    if "unbake" in LEVEL:  # a night level's baked light, as its own surfaces take it: its brightness and unbake_keep of its tint
-        keep = LEVEL.get("unbake_keep", 0)
-        lit = min(2 * lit.max(), 1) * ((1 - keep) + keep * lit / max(lit.max(), 1e-4))
+    lit = paint_light(col)
     gain = 0.85 if kind == "pickets" else 1.15  # each matched by eye and by pixel to the paint in the same view
     tone = lambda c: np.clip(np.asarray(c) * lit * gain, 0, 1)
     P, N, C, grain = [], [], [], []
@@ -1472,7 +1592,7 @@ def profiled_geo(kind, alpha, paint, pos, uv, col, size):
     return [(pw[k], nw[k], np.zeros((len(k), 2)), cc[k], np.full(len(k), MAT_ID.get("board", MAT_ID["prop"])))]
 
 
-STRIPS = ("banister", "iron", "wood", "boards", "pickets")  # painted along a run of cards that turns corners: any number of facings
+STRIPS = ("banister", "iron", "wood", "boards", "pickets", "guardrail")  # painted along a run of cards that turns corners: any number of facings
 solids, static_hide, static_parts, static_done = {}, set(), [], set()
 cfg = dict(LEVEL.get("solids") or dict(cards={}, soft=()))
 cfg["cards"] = dict(cfg["cards"])
@@ -1511,19 +1631,33 @@ if cfg["cards"] or cfg["soft"]:
             if spec.get("links"):
                 p, n, u, c = solid.chain_on_cards(pos, uv, col)
             elif spec.get("auto"):
-                parts, kept, traced = [], [], {}
+                parts, kept, traced, built = [], [], {}, set()
                 for d, (dp, du, dc) in zip(ds, T):
                     lab = label_of(d[0])
                     kind = cfg["cards"][lab]["kind"]  # a placed plant mixes kinds: its leaves and its flower
                     if lab not in traced:
-                        rgba = game_rgba(lab) if kind != "pickets" else pixel_art(lab)  # pickets are read column by column, at the game's own pixels
+                        rgba = pixel_art(lab) if kind in ("pickets", "boards", "guardrail") else game_rgba(lab)  # read at the game's own pixels
                         step_ = max(1, rgba.shape[0] // 256, rgba.shape[1] // 256)
                         traced[lab] = rgba[::step_, ::step_, 3], rgba[::step_, ::step_, :3]  # traced at up to 256 px
                     small, paint = traced[lab]
                     got, sil, cols = [], [], []
+                    if kind == "guardrail" and lab not in built:  # its runs cross draws: built once, from all of them
+                        built.add(lab)
+                        got += guardrail_geo(small, paint, *(np.concatenate([t_[k] for d_, t_ in zip(ds, T) if label_of(d_[0]) == lab]) for k in range(3)))
                     # a fence's boards run across a twisted card's two triangles: one piece, or they break at the fold
-                    for t in (solid.islands(dp) if kind in ("wood", "boards", "pickets") else solid.flat_pieces(dp, du) if kind in STRIPS else solid.card_pieces(dp, du)):
+                    for t in (solid.islands(dp) if kind in ("wood", "pickets") else solid.islands(np.concatenate([dp, 100 * du], 2)) if kind == "boards"  # card by card: a run's cards repeat one uv range
+                              else [] if kind == "guardrail" else solid.flat_pieces(dp, du) if kind in STRIPS else solid.card_pieces(dp, du)):
                         tu, size = du[t], solid.repeat_size(dp[t], du[t])
+                        if kind == "boards" and np.ptp(tu.reshape(-1, 2), 0).max() < 1e-3:  # a modelled box painted in one texel's colour
+                            y_, x_ = (int(np.floor(tu[0, 0, k] * small.shape[1 - k])) % small.shape[1 - k] for k in (1, 0))
+                            if small[y_, x_] > 0.5:  # a see-through texel is one of the game's invisible walls
+                                q_ = dp[t]
+                                f_ = np.cross(q_[:, 1] - q_[:, 0], q_[:, 2] - q_[:, 0])
+                                f_ *= np.sign(((q_.mean(1) - q_.reshape(-1, 3).mean(0)) * f_).sum(1, keepdims=True) + 1e-9)  # outward
+                                f_ = np.repeat(f_ / np.maximum(np.linalg.norm(f_, axis=1, keepdims=True), 1e-9), 3, 0)
+                                c_ = np.clip(paint[y_, x_] * paint_light(dc[t]) * 1.15, 0, 1)
+                                got.append((q_.reshape(-1, 3), f_, np.zeros((len(f_), 2)), np.tile(c_, (len(f_), 1)), np.full(len(f_), MAT_ID.get("board", MAT_ID["prop"]))))
+                            continue
                         a_ = small
                         if np.ptp(tu[..., 0]) <= 1.001 and np.ptp(tu[..., 1]) <= 1.001:  # one repeat: only the part of the texture the card shows
                             a_ = small * solid.uv_mask(tu - np.floor(tu.reshape(-1, 2).min(0) + 1e-6), small.shape)
@@ -1648,7 +1782,7 @@ if cfg["cards"] or cfg["soft"]:
                     # each draw its own prototype: a placed plant's leaves are shared by its red and blue copies
                     if "unbake" in LEVEL:  # as the game's baked light: its brightness only, so the paint keeps its colour.
                         # A flat-colour stand-in gets one brightness per piece, so its modelled shading (a cactus's ribs) stays.
-                        got = [(p_, n_, u_, c_ * np.maximum(np.percentile(c_.max(1), 90) if np.isin(m_, [MAT_ID.get("prop"), MAT_ID.get("board")]).all() else c_.max(1, keepdims=True), 1e-4) ** (LEVEL["unbake"] - 1), m_)
+                        got = [(p_, n_, u_, c_ * np.maximum(np.percentile(c_.max(1), 90) if np.isin(m_, [MAT_ID.get(k) for k in ("prop", "board", "d_plank", "d_iron")]).all() else c_.max(1, keepdims=True), 1e-4) ** (LEVEL["unbake"] - 1), m_)
                                for p_, n_, u_, c_, m_ in got]
                     p, n, u, c, m = (np.concatenate(x) for x in zip(*got))
                     kept.append((d, (p.astype(np.float32), n.astype(np.float32), dds.to_linear(np.clip(c, 0, 1)).astype(np.float32), u.astype(np.float32), m)))
@@ -1661,6 +1795,7 @@ if cfg["cards"] or cfg["soft"]:
                     kept = [(d, geo) for d, geo in kept if (solid.key_of(d[4]), d[0]) not in static_done]  # a sweep frame repeats the hero's
                     static_parts.extend(geo for _, geo in kept)
                     static_done.update((solid.key_of(d[4]), d[0]) for d, _ in kept)
+                    static_done.update((solid.key_of(d[4]), d[0]) for d in ds if cfg["cards"].get(label_of(d[0]), {}).get("kind") == "guardrail")  # built with the first
                     for d, (dp, du, dc) in zip(ds, T):  # a draw that gave no stand-in, next to ones that did
                         if (solid.key_of(d[4]), d[0]) not in static_done:
                             static_done.add((solid.key_of(d[4]), d[0]))

@@ -571,17 +571,19 @@ def lip(length, height, repeat, top_col, body_col, neon):
     return _faces(*zip(*parts))
 
 
-def profiled(path, half_w, half_d, bands, chamfer=0.25, edge=0.45):
+def profiled(path, half_w, half_d, bands, chamfer=0.25, edge=0.45, normal=(0, 0, 1.0)):
     """A board with chamfered long edges along a path in a card's plane (z out of it), coloured across its width by the
     paint's own bands as hard stripes on both faces: the paint's pale edge lines land near the chamfers, its dark outline
     on the edge walls. half_w: a number or one per point (0 at a picket's point).
-    bands: (colour, t0, t1) across the width, t from -1 to 1 along the path's left side (z x tangent)."""
+    bands: (colour, t0, t1) across the width, t from -1 to 1 along the path's left side (z x tangent).
+    normal: z, one for all or one per point (a beam that follows a run of cards round its corners)."""
     path = np.asarray(path, float)
     hw = np.broadcast_to(np.asarray(half_w, float), len(path))
-    z = np.array([0, 0, 1.0])
+    z = np.broadcast_to(np.asarray(normal, float), path.shape)
     t_ = np.gradient(path, axis=0)
     t_ /= np.linalg.norm(t_, axis=1, keepdims=True)
     s = np.cross(z, t_)
+    s /= np.linalg.norm(s, axis=1, keepdims=True)
     cols = [np.asarray(c, float) for c, _, _ in bands]
     cut = sorted({round(float(x), 4) for _, a, b in bands for x in (a, b)} | {-1.0, 1.0})
     ts = np.array(sorted(set(cut) | {round(-1 + chamfer, 4), round(1 - chamfer, 4)}))
@@ -592,7 +594,7 @@ def profiled(path, half_w, half_d, bands, chamfer=0.25, edge=0.45):
     ring += [(t, -zz, band(0.5 * (t + prof[max(i - 1, 0)][0]))) for i, (t, zz) in reversed(list(enumerate(prof)))]
     wall = [np.clip(band(1.0) * 0.75, 0, 1), np.clip(band(-1.0) * 0.75, 0, 1)]
     P, C, F = [], [], []
-    at = lambda i, t, zz: path[i] + t * hw[i] * s[i] + zz * z
+    at = lambda i, t, zz: path[i] + t * hw[i] * s[i] + zz * z[i]
     m = len(ring)
     for j in range(m):
         (t0, z0, c0), (t1, z1, _) = ring[j], ring[(j + 1) % m]
@@ -603,7 +605,7 @@ def profiled(path, half_w, half_d, bands, chamfer=0.25, edge=0.45):
             a, b, c, d = at(i, t0, z0), at(i + 1, t0, z0), at(i + 1, t1, z1), at(i, t1, z1)
             P += [a, b, c, a, c, d]
             C += [col] * 6
-            o = out[0] * s[i] + out[2] * z
+            o = out[0] * s[i] + out[2] * z[i]
             F += [o, o]
     end = np.clip(min(cols, key=lambda c: c.sum()) * 0.7, 0, 1)
     for i, sg in ((0, -1), (len(path) - 1, 1)):
