@@ -1381,8 +1381,8 @@ def paint_light(col):
 def guardrail_geo(alpha, paint, pos, uv, col):
     """A painted guard rail as steel beams bolted to timber posts, each in the paint's own bands. The paint: beams running
     along v, once per repeat a post across them that leaves the card at its u=1 edge (the ground). The beams follow each
-    run of cards round its corners unbroken. They go on both faces of the posts, since which side the road is on is not
-    known; posts go a little into the ground."""
+    run of cards round its corners unbroken, in the card's plane with the posts inside them (thinner front to back), so
+    either side reads as the paint and the gap between the beams stays open; posts go a little into the ground."""
     a = alpha > 0.5
     h, w = a.shape
     beam = a.all(0)  # painted the whole way along
@@ -1439,7 +1439,7 @@ def guardrail_geo(alpha, paint, pos, uv, col):
         chains.append(chain)
     dv_med = np.median([np.linalg.norm(c["dv"]) for c in cards])
     p_hw = (y1 - y0) / 2 / h * dv_med
-    p_hd = 0.5 * p_hw
+    p_hd = min(0.5 * p_hw, 0.25 * min(b[1] for b in beams) * np.median([np.linalg.norm(c["du"]) for c in cards]))  # inside the beams
     steel, wood = MAT_ID.get("d_iron", MAT_ID["prop"]), MAT_ID.get("board", MAT_ID["prop"])
     out = []
     for chain in chains:
@@ -1461,9 +1461,7 @@ def guardrail_geo(alpha, paint, pos, uv, col):
             z = np.cross(dus, tg)
             z /= np.maximum(np.linalg.norm(z, axis=1, keepdims=True), 1e-9)
             hw = half * np.mean([np.linalg.norm(cards[i]["du"]) for i, _ in chain])
-            hd = 0.35 * hw
-            for zs in (1, -1):
-                out.append((*props3d.profiled(pts + zs * (p_hd + hd) * z, hw, hd, [(tone(b), t0, t1) for b, t0, t1 in bands], normal=z), steel))
+            out.append((*props3d.profiled(pts, hw, 0.35 * hw, [(tone(b), t0, t1) for b, t0, t1 in bands], normal=z), steel))
         bolt = tone(max(beams[0][2], key=lambda b: b[0].sum())[0])
         for i, _ in chain:  # posts, and a bolt through each beam into each post
             c = cards[i]
@@ -1478,20 +1476,20 @@ def guardrail_geo(alpha, paint, pos, uv, col):
                 for ub, half, _ in beams:
                     hw = half * np.linalg.norm(c["du"])
                     for zs in (1, -1):
-                        out.append((*props3d.disc(c["at"](c["k0"] + ub, vc) + zs * (p_hd + 2 * 0.35 * hw) * zc, 0.2 * hw, zs * zc, 0.05 * hw, bolt, sides=8), steel))
+                        out.append((*props3d.disc(c["at"](c["k0"] + ub, vc) + zs * 0.35 * hw * zc, 0.2 * hw, zs * zc, 0.05 * hw, bolt, sides=8), steel))
     return [(p[k], n[k], np.zeros((len(p), 2)), c[k], np.full(len(p), m)) for p, n, c, m in out for k in [game_winding(p, n)]]
 
 
 def profiled_geo(kind, alpha, paint, pos, uv, col, size):
     """Painted boards and picket fences rebuilt as real boards that keep the paint's colour bands (pale edge lines, dark
-    outline) as hard stripes. boards: along the paint's strokes, tapered as painted, with its dark grain; pickets: a picket
-    fence read column by column."""
+    outline) as hard stripes. boards: along the paint's strokes, tapered as painted; pickets: a picket fence read column
+    by column."""
     h, w = alpha.shape
     px = np.array(size, float) / [w, h]
     lit = paint_light(col)
     gain = 0.85 if kind == "pickets" else 1.15  # each matched by eye and by pixel to the paint in the same view
     tone = lambda c: np.clip(np.asarray(c) * lit * gain, 0, 1)
-    P, N, C, grain = [], [], [], []
+    P, N, C = [], [], []
     if kind == "pickets":
         parts = picket_parts(alpha, paint)
     else:
@@ -1515,19 +1513,6 @@ def profiled_geo(kind, alpha, paint, pos, uv, col, size):
             hw = np.maximum(slope * ends + icpt, 1)
             if bands:
                 parts.append((c0 + np.outer(ends, ax), hw, bands, 0.3 * hw, 0))
-            if kind == "boards":  # the paint's dark grain strokes, cut into both faces as hard dark lines
-                yy, xx = np.mgrid[:h, :w] + 0.5
-                rel = np.stack([(xx - c0[0] + w / 2) % w - w / 2, yy - c0[1]], -1)  # the texture repeats across
-                ta, tc = rel @ ax, rel @ [-ax[1], ax[0]]
-                lum = paint @ np.array([0.3, 0.59, 0.11])
-                body = max(bands, key=lambda b: b[2] - b[1])[0] @ np.array([0.3, 0.59, 0.11])
-                inside = (np.abs(tc) < 0.55 * np.maximum(slope * ta + icpt, 1)) & (ta > e0) & (ta < e1) & (alpha > 0.5)
-                for gxy, gr, *_ in solid.strokes(inside & (lum < 0.8 * body), wrap=False) if (inside & (lum < 0.8 * body)).sum() > 3 else []:
-                    if len(gxy) >= 3:
-                        gt = (gxy + 0.5 - c0) @ ax
-                        gz = 0.3 * np.maximum(slope * gt + icpt, 1) * 1.04
-                        k_ = np.unique(np.r_[np.arange(0, len(gxy), 3), len(gxy) - 1])
-                        grain.append((gxy[k_] + 0.5, gz[k_] * np.linalg.norm(np.array([-ax[1], ax[0]]) * px), np.median([paint[int(q[1]) % h, int(q[0]) % w] for q in gxy], 0), gr[k_] + 0.5))
     for path, hw, bands, hd, zs in parts:
         d = path[-1] - path[0]
         sc = np.linalg.norm(np.array([-d[1], d[0]]) / max(np.linalg.norm(d), 1e-9) * px)  # world size of a texel across it
@@ -1536,15 +1521,6 @@ def profiled_geo(kind, alpha, paint, pos, uv, col, size):
         if zs:  # a rail, behind the pickets
             p = p + [0, 0, zs * (np.max(hd) * sc + 0.6 * sc)]
         P.append(p); N.append(n); C.append(c)
-    for gxy, gz, gc, gw in grain:
-        d = np.gradient(gxy, axis=0)
-        d /= np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-9)
-        sd = np.c_[-d[:, 1], d[:, 0]] * 0.55 * gw[:, None] * np.r_[0.4, np.ones(len(gw) - 2), 0.4][:len(gw), None]  # tapered ends, like a brush stroke
-        for zs in (1, -1):
-            lo, hi = np.c_[(gxy - sd) * px, zs * gz], np.c_[(gxy + sd) * px, zs * gz]
-            P.append(np.concatenate([np.array([lo[i], lo[i + 1], hi[i + 1], lo[i], hi[i + 1], hi[i]]) for i in range(len(gxy) - 1)]))
-            N.append(np.tile([0, 0, zs * 1.0], (len(P[-1]), 1)))
-            C.append(np.tile(np.clip(tone(gc) * 0.8, 0, 1), (len(P[-1]), 1)))
     if not P:
         return []
     p, n, cc = np.concatenate(P), np.concatenate(N), np.concatenate(C)
@@ -1993,8 +1969,20 @@ def cluster_geo(kind, T, labs, rng):
                 got.append((q[0][:-1], q[1][:-1], C))
         return [np.concatenate(x) for x in zip(*got)] if got else None
     base, height, _ = props3d.footprint(W)
+    # fitted to the paint, not the cards: the tiers' see-through corners stick out, and the game stops Taz at the paint's edge
+    alpha, bc, Q = {l: game_rgba(l)[..., 3] > 0.5 for l in set(labs)}, np.random.default_rng(0).dirichlet((1, 1, 1), 500), []
+    for (dp, du, _), l in zip(T, labs):
+        q, uv = np.einsum("kj,njc->nkc", bc, dp).reshape(-1, 3), np.einsum("kj,njc->nkc", bc, du).reshape(-1, 2)
+        h_, w_ = alpha[l].shape
+        Q.append(q[alpha[l][np.floor(uv[:, 1] * h_).astype(int) % h_, np.floor(uv[:, 0] * w_).astype(int) % w_]])
+    low = np.concatenate(Q)
+    low = low[low[:, 1] < base[1] + 0.3 * height][:, [0, 2]]
+    radius = 0.52 * np.ptp(W[:, [0, 2]], 0).max()
+    if len(low):
+        base[[0, 2]] = (low.min(0) + low.max(0)) / 2
+        radius = 0.5 * np.ptp(low, 0).max() / 1.1  # the fir's scallops reach 1.1 radius
     tint = c if fam[0][1] < fam[0][0] or fam[0][2] > fam[0][1] else np.array((0.2, 0.58, 0.42)) * lit  # the white-and-green paint: an evergreen
-    return props3d.pine(base, height, 0.52 * np.ptp(W[:, [0, 2]], 0).max(), tint, np.clip(lit * 1.05, 0, 1), rng)
+    return props3d.pine(base, height, radius, tint, np.clip(lit * 1.05, 0, 1), rng)
 
 
 for pats, kind in LEVEL.get("clusters", ()):  # cards that together draw one tree, or a fringe of icicles: a model each
