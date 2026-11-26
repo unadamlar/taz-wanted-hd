@@ -1780,9 +1780,9 @@ if cfg["cards"] or cfg["soft"]:
                     if not got:  # a draw that gave nothing stays the game's own
                         continue
                     # each draw its own prototype: a placed plant's leaves are shared by its red and blue copies
-                    if "unbake" in LEVEL:  # as the game's baked light: its brightness only, so the paint keeps its colour.
+                    if "unbake" in LEVEL and kind not in ("boards", "guardrail"):  # as the game's baked light: its brightness only, so the paint keeps its colour (boards: paint_light).
                         # A flat-colour stand-in gets one brightness per piece, so its modelled shading (a cactus's ribs) stays.
-                        got = [(p_, n_, u_, c_ * np.maximum(np.percentile(c_.max(1), 90) if np.isin(m_, [MAT_ID.get(k) for k in ("prop", "board", "d_plank", "d_iron")]).all() else c_.max(1, keepdims=True), 1e-4) ** (LEVEL["unbake"] - 1), m_)
+                        got = [(p_, n_, u_, c_ * np.maximum(np.percentile(c_.max(1), 90) if np.isin(m_, [MAT_ID.get("prop"), MAT_ID.get("board")]).all() else c_.max(1, keepdims=True), 1e-4) ** (LEVEL["unbake"] - 1), m_)
                                for p_, n_, u_, c_, m_ in got]
                     p, n, u, c, m = (np.concatenate(x) for x in zip(*got))
                     kept.append((d, (p.astype(np.float32), n.astype(np.float32), dds.to_linear(np.clip(c, 0, 1)).astype(np.float32), u.astype(np.float32), m)))
