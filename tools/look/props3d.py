@@ -504,12 +504,13 @@ def fringe(edge, bands, widths, thick, curl, tip):
     return np.r_[P, p], np.r_[np.repeat(n, 3, 0), nn], np.r_[np.array(C), np.tile(body, (len(p), 1))]
 
 
-def grille(rect, cell, frame, pitch, bar, x0, frame_col, wire_col):
+def grille(rect, cell, frame, pitch, bar, x0, frame_col, wire_col, edge_col):
     """A welded mesh panel in a card's metric frame (x along u, y along v, z out): a bevelled frame with bolt heads on both
     faces and a diagonal lattice of straps (wide bars) or wires inside, one direction over the other. cell: the world size
     of one texture repeat; rect (x0, x1, y0, y1): the part of it this card shows, framed only along the repeat's own edges.
-    pitch: spacing of the lattice along x; x0: where a bar crosses the repeat's middle row."""
-    fc, wc = np.asarray(frame_col, float), np.asarray(wire_col, float)
+    pitch: spacing of the lattice along x; x0: where a bar crosses the repeat's middle row. Wires face out in wire_col
+    and turn to edge_col round their sides, as the paint's wires have an outline and a glow round them."""
+    fc, wc, ec = (np.asarray(c_, float) for c_ in (frame_col, wire_col, edge_col))
     xa, xb, ya, yb = rect
     W, H = cell
     parts = []
@@ -541,7 +542,7 @@ def grille(rect, cell, frame, pitch, bar, x0, frame_col, wire_col):
                 p, n = plank(path, bar / 2, 0.22 * bar)
             else:
                 p, n = _tube(path, np.full(2, bar / 2), 6)
-            parts.append((p, n, np.tile(wc, (len(p), 1))))
+            parts.append((p, n, ec + (wc - ec) * n[:, 2:] ** 2))
     return _faces(*zip(*parts)) if parts else None
 
 
