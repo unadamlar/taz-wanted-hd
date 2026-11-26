@@ -144,6 +144,11 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
 - Canyon (2026-11-26, `extracted/look/reports/step7/canyon/`): the big flat west walls built out as level rock strata in their own paint, replacing the
   thin relief. Held, not installed (branch `canyon`, data `extracted/look/canyon/`): up close the slabs read patchy with smeared paint, mid distance
   barely changes, and level bands cross the painted stripes the 2026-11-24 decision keeps.
+- Westrail (2026-11-26, `extracted/look/reports/step7/westrail/`): Grand Canyon's painted guard rails are lavender steel beams on timber posts with
+  bolts, its plank cards (tower X braces, rail fences) real boards, and the rock relief no longer draws its invisible walls as solid brown sheets
+  (one hid the steel bridge). In the playable copy (+10.6k triangles, look code about +0.1 ms). For the user: plank ramps in wood grain and blue
+  pipes in steel finish instead of sandstone grain (mild; branch `held-ramp-grain`, data `extracted/look/westrail/grandc-c`). Dropped: canyon race
+  plank fences (paler or plain blocks as boards), west hub (nothing flat worth it), the Grand Canyon wire gate.
 - Optimization pass (2026-11-25): most levels run 1.3-2x faster uncapped at 2880x1800 with 4x MSAA, look code 0.5-2.5 ms a frame (was 3-7), no intended
   look change. The zoo and city hubs are now limited by the GPU (grass is about 1.75 ms there); most other levels by the game's thread. Tables and the
   profiling patch: `extracted/look/reports/step7/optim/`. Not measured: main menu, Planet X, zoo boss and ice dome (their state changed between runs).
