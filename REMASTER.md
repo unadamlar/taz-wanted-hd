@@ -135,7 +135,7 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
   and pale inner line, and its blue and purple roof fringes as thick zigzag skirts; both in the playable copy. Aquarium palm crowns and zoo boss hedges
   already read fine. For the user: city boss panels in bold lemon and red (`cityboss-colours.jpg`, data `extracted/look/flat3/cityboss-c`, not installed;
   the lattice loses the painted cards' deep blue and glow), and ghost town's rails as real boards (`ghost-rails.jpg`, duller than the paint; superseded
-  by flat4's retry). Board fences now use a quarter of the triangles, so the goldmine's change on its next export (unchecked).
+  by flat4's retry). Board fences now use a quarter of the triangles, the goldmine's railing re-exported 2026-11-26: same look, 5,472 to 1,440 triangles, in the playable copy.
 - Flat4 (2026-11-26, `extracted/look/reports/step7/flat4/`): the construction site's white picket fences are real pickets and rails in the level's
   night blue, slanted broken pickets leaning, thick posts kept (in the playable copy, +60k triangles). Dropped: chain-link and electric fences (3D wire
   came out coarse, pale and heavy; the paint already reads as fine wire), city hub road barriers (only seen from outside the play area). For the user:
