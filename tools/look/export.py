@@ -95,9 +95,6 @@ for name, (tint, rough) in LEVEL.get("flats", {}).items():
     MATS[name] = ("", False, OPAQUE, 0, 1000.0, tint, rough, 0, 0)
 if "skin" in LEVEL:  # wrinkled hide for untextured characters, mapped on their bind pose
     MATS["skin"] = ("skin", False, OPAQUE, 0, LEVEL["skin"]["tile"], (1, 1, 1), 0.6, 0, LEVEL["skin"]["grain"])
-HELD_TOP = 8.0  # the prop tint in a level that holds its props' paint: room for scene values over 1
-if "prop_hold" in LEVEL:
-    MATS["prop"] = (*MATS["prop"][:5], (HELD_TOP,) * 3, *MATS["prop"][6:])
 for name, tint in LEVEL.get("tints", {}).items():
     MATS[name] = (*MATS[name][:5], tint, *MATS[name][6:])
 for name in LEVEL.get("triplanar", ()):  # ground that also covers steep banks
@@ -436,36 +433,7 @@ protos = []  # dict(v, i, subs, lo, hi, name)
 place = []  # (proto index, rows or None for identity)
 
 
-def held(c):
-    """The scene colour that post.hlsl's tone curve and grade show closest to display colour c (linear). Its curve takes 14%
-    of the saturation out of the world first, so a saturated paint comes out bolder a little darker than full brightness."""
-    W = np.array((0.2126, 0.7152, 0.0722))
-    con, ex, sat = LEVEL.get("contrast", 1.15) * 1.26, 2 ** LV["grade"]["exposure"], LV["grade"]["saturation"] * 1.17
-    grey = lambda x, f: (x @ W)[..., None] * (1 - f) + x * f
-
-    def shown(x):
-        x = grey(x * ex, 0.86)
-        k = 2.4 * (np.clip((np.log2(np.maximum(x, 1e-4) / 0.18) + 10) / 16.5, 0, 1) - 0.606)
-        y = np.clip(0.5 + k / np.sqrt(1 + 4 * k * k), 0, 1) ** con
-        y[..., 1] += (y[..., 0] - y[..., 1]) * 0.07
-        return np.clip(grey(y, sat), 0, 1)
-
-    def scene(d):
-        s_ = np.clip(np.clip(grey(d, 1 / sat), 0, 1) ** (1 / con) - 0.5, -0.47, 0.44)
-        return np.maximum(grey(0.18 * 2 ** (16.5 * (s_ / np.sqrt(1 - 4 * s_ * s_) / 2.4 + 0.606) - 10), 1 / 0.86), 0) / ex
-
-    d = dds.to_srgb(c)
-    ks = np.linspace(1, 0.4, 31)
-    tries = np.stack([scene(d * k) for k in ks], 1)
-    err = ((shown(tries) - d[:, None]) ** 2).sum(2)
-    return tries[np.arange(len(d)), err.argmin(1)]
-
-
 def add_proto(name, p, n, c, uv, m):
-    if "prop_hold" in LEVEL and "prop" in MAT_ID:  # stand-ins keep their paint through the tone curve like the level's held surfaces
-        k = m == MAT_ID["prop"]
-        c = c.copy()
-        c[k] = np.clip(held(c[k]) * LEVEL["prop_hold"] / HELD_TOP, 0, 1)
     v, vn, vc, vuv, ix, subs = weld(p, n, c, uv, m)
     protos.append(dict(name=name, p=v, n=vn, c=packed(vc), uv=vuv, ix=ix, subs=subs))
     return len(protos) - 1
@@ -1176,11 +1144,14 @@ def iron_geo(alpha, paint, pos, uv, col, size, wood=False):
     lines = solid.strokes(alpha)
     if not lines:
         return []
-    lit = np.clip(col.mean((0, 1)) * (2 if "prop_hold" in LEVEL else 1), 0, 1)  # held paint: the game's texture x vertex colour x 2
+    lit = np.clip(col.mean((0, 1)), 0, 1)
     if wood and "unbake" in LEVEL:  # a night level's baked light is blue: like its own surfaces, boards keep only how bright (x 2) it is
         lit = np.full(3, min(2 * lit.max(), 1))
     iron = np.median(paint[alpha > 0.5], 0) * lit
-    iron = np.clip(iron * (1.6 if iron.max() < 0.15 else 1.15), 0, 1)  # black ink lifted a little, so it shades round
+    if LEVEL.get("card_paint"):  # the colour the game draws the card in: texture x vertex colour x 2
+        iron = np.clip(iron * 2, 0, 1)
+    else:
+        iron = np.clip(iron * (1.6 if iron.max() < 0.15 else 1.15), 0, 1)  # black ink lifted a little, so it shades round
     rmed = np.median(np.concatenate([r for _, r, *_ in lines]))
     on = lambda q: 0 <= q[1] < h and alpha[int(q[1]), int(q[0]) % w] > 0.5
 
@@ -1891,6 +1862,9 @@ def corners(xy, tol):
     return xy[sorted(keep)]
 
 
+card_tint = {}  # card_paint: per texture, the vertex colour most of its cards carry (a few were captured lit white)
+
+
 def rebuilt_geo(kind, T, labs, rng, c, lit):
     """Reimagined 3D for flat paint: star plants (one per placed plant), mesh grilles and walkway lips (per card)."""
     rgba = game_rgba(labs[0])
@@ -1934,11 +1908,16 @@ def rebuilt_geo(kind, T, labs, rng, c, lit):
             inner = rgba[fw:h - fw, fw:w - fw]
             bar = pitch * (1 - np.sqrt(1 - min((inner[..., 3] > 0.5).mean(), 0.95))) / np.sqrt(2)  # two crossing families of bars cover this share
             frame_col = np.median(np.r_[rgba[:fw // 2].reshape(-1, 4), rgba[:, :fw // 2].reshape(-1, 4)][:, :3], 0)
-            q = inner[inner[..., 3] > 0.5][:, :3]
-            wire_col = np.median(q[q.sum(1) >= np.median(q.sum(1))], 0)  # the wires' face, not their dark outline
+            q = inner[..., :3].reshape(-1, 3)
+            face = (inner[..., 3] > 0.5).ravel()
+            face &= q.sum(1) >= np.median(q[face].sum(1))  # the wires' face, not their dark outline
+            on = inner[..., 3] > 0.5
+            for _ in range(max(w // 128, 1)):  # a game texel round the wires: their outline and the colour that bleeds out of the cut
+                on[1:] |= on[:-1]; on[:-1] |= on[1:]; on[:, 1:] |= on[:, :-1]; on[:, :-1] |= on[:, 1:]
+            wire_col, edge_col = np.median(q[face], 0), q[on.ravel() & ~face].mean(0)  # blue panels: lavender wires in deep blue and violet
             px = size[0] / w
             geo = props3d.grille((lo[0] * size[0], hi[0] * size[0], lo[1] * size[1], hi[1] * size[1]), size, fw * px, pitch * px, max(bar * px, 3.0),
-                                 ((starts[0] + ends[0]) / 2 if len(starts) else w / 2) * px, np.clip(frame_col, 0, 1), np.clip(wire_col, 0, 1))  # the paint itself: lit by the baked light it read khaki
+                                 ((starts[0] + ends[0]) / 2 if len(starts) else w / 2) * px, *np.clip(np.array([frame_col, wire_col, edge_col]) * card_tint.get(labs[0], 0.5) * 2, 0, 1))  # as the game draws the cards
             if geo is None:
                 continue
             P, N, C = geo
@@ -2039,6 +2018,10 @@ for pats, kind in LEVEL.get("clusters", ()):  # cards that together draw one tre
         n = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])
         return len(t) and np.abs(n[:, 1]).sum() < (0.5 if kind == "icicles" else CARD_UP_SHARE.get(kind, 0.85)) * np.linalg.norm(n, axis=1).sum() and np.ptp(t.reshape(-1, 3), 0).max() < 3 * size
     size_ = np.median([np.ptp(it[2][0].reshape(-1, 3), 0).max() for it in items]) if items else 0
+    if LEVEL.get("card_paint"):
+        for l in set(labs_.values()):
+            vc = collections.Counter(tuple(np.round(v, 3)) for it in items if labs_[it[1][0]] == l for v in it[2][2].reshape(-1, 3))
+            card_tint[l] = np.array(vc.most_common(1)[0][0]) if vc else 0.5
     left = [it for it in items if not (fits(it[2][0], size_) and rebuildable(kind, it[2]))]
     items = [it for it in items if fits(it[2][0], size_) and rebuildable(kind, it[2])]
     items.sort(key=lambda it: -np.ptp(it[2][0].reshape(-1, 3), 0).max())
