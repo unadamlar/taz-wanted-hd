@@ -1990,8 +1990,20 @@ def cluster_geo(kind, T, labs, rng):
                 got.append((q[0][:-1], q[1][:-1], C))
         return [np.concatenate(x) for x in zip(*got)] if got else None
     base, height, _ = props3d.footprint(W)
+    # fitted to the paint, not the cards: the tiers' see-through corners stick out, and the game stops Taz at the paint's edge
+    alpha, bc, Q = {l: game_rgba(l)[..., 3] > 0.5 for l in set(labs)}, np.random.default_rng(0).dirichlet((1, 1, 1), 500), []
+    for (dp, du, _), l in zip(T, labs):
+        q, uv = np.einsum("kj,njc->nkc", bc, dp).reshape(-1, 3), np.einsum("kj,njc->nkc", bc, du).reshape(-1, 2)
+        h_, w_ = alpha[l].shape
+        Q.append(q[alpha[l][np.floor(uv[:, 1] * h_).astype(int) % h_, np.floor(uv[:, 0] * w_).astype(int) % w_]])
+    low = np.concatenate(Q)
+    low = low[low[:, 1] < base[1] + 0.3 * height][:, [0, 2]]
+    radius = 0.52 * np.ptp(W[:, [0, 2]], 0).max()
+    if len(low):
+        base[[0, 2]] = (low.min(0) + low.max(0)) / 2
+        radius = 0.5 * np.ptp(low, 0).max() / 1.1  # the fir's scallops reach 1.1 radius
     tint = c if fam[0][1] < fam[0][0] or fam[0][2] > fam[0][1] else np.array((0.2, 0.58, 0.42)) * lit  # the white-and-green paint: an evergreen
-    return props3d.pine(base, height, 0.52 * np.ptp(W[:, [0, 2]], 0).max(), tint, np.clip(lit * 1.05, 0, 1), rng)
+    return props3d.pine(base, height, radius, tint, np.clip(lit * 1.05, 0, 1), rng)
 
 
 for pats, kind in LEVEL.get("clusters", ()):  # cards that together draw one tree, or a fringe of icicles: a model each
