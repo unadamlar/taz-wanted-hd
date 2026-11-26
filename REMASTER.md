@@ -134,8 +134,16 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
 - Flat3 (2026-11-26, `extracted/look/reports/step7/flat3/`): safari star plants rebuilt as crisp faceted star tiers keeping the paint's dark outline
   and pale inner line, and its blue and purple roof fringes as thick zigzag skirts; both in the playable copy. Aquarium palm crowns and zoo boss hedges
   already read fine. For the user: city boss panels in bold lemon and red (`cityboss-colours.jpg`, data `extracted/look/flat3/cityboss-c`, not installed;
-  the lattice loses the painted cards' deep blue and glow), and ghost town's rails as real boards (`ghost-rails.jpg`, duller than the paint, held on
-  branch `held-ghost-rails`). Board fences now use a quarter of the triangles, so the goldmine's change on its next export (unchecked).
+  the lattice loses the painted cards' deep blue and glow), and ghost town's rails as real boards (`ghost-rails.jpg`, duller than the paint; superseded
+  by flat4's retry). Board fences now use a quarter of the triangles, so the goldmine's change on its next export (unchecked).
+- Flat4 (2026-11-26, `extracted/look/reports/step7/flat4/`): the construction site's white picket fences are real pickets and rails in the level's
+  night blue, slanted broken pickets leaning, thick posts kept (in the playable copy, +60k triangles). Dropped: chain-link and electric fences (3D wire
+  came out coarse, pale and heavy; the paint already reads as fine wire), city hub road barriers (only seen from outside the play area). For the user:
+  ghost town rails as boards keeping the paint's stripes and brightness (`ghost-boards.jpg`, matches the paint plus thickness; branch
+  `held-ghost-boards`, data `extracted/look/flat4/ghost`). If dropped, the `boards` kind and `board` material in export.py lose their only user.
+- Canyon (2026-11-26, `extracted/look/reports/step7/canyon/`): the big flat west walls built out as level rock strata in their own paint, replacing the
+  thin relief. Held, not installed (branch `canyon`, data `extracted/look/canyon/`): up close the slabs read patchy with smeared paint, mid distance
+  barely changes, and level bands cross the painted stripes the 2026-11-24 decision keeps.
 - Optimization pass (2026-11-25): most levels run 1.3-2x faster uncapped at 2880x1800 with 4x MSAA, look code 0.5-2.5 ms a frame (was 3-7), no intended
   look change. The zoo and city hubs are now limited by the GPU (grass is about 1.75 ms there); most other levels by the game's thread. Tables and the
   profiling patch: `extracted/look/reports/step7/optim/`. Not measured: main menu, Planet X, zoo boss and ice dome (their state changed between runs).
