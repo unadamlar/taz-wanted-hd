@@ -340,12 +340,12 @@ def on_card(P, N, pos, uv, col, size, tiled=None):
     return [np.concatenate(x) for x in zip(*parts)]
 
 
-def strokes(alpha, wrap=True):
+def strokes(alpha):
     """The painted strokes of a cut-out (wrought iron, wire) as centre lines: [(points (k, 2) in texels, x right and
     y down, half widths (k,), free at start, free at end)]. A free end stops in the paint, not at a joint or the
-    texture's edge. wrap: the texture repeats along x, so strokes run on across its edges."""
+    texture's edge. The texture repeats along x, so strokes run on across its edges."""
     h, w = alpha.shape
-    m = np.tile(alpha > 0.5, (1, 3)) if wrap else alpha > 0.5
+    m = np.tile(alpha > 0.5, (1, 3))
     m = np.pad(m, 1)
     depth = np.zeros(m.shape)  # erosions a texel survives: its distance to the edge
     e = m.copy()
@@ -385,19 +385,17 @@ def strokes(alpha, wrap=True):
                 seen |= {(line[-1], nxt[0]), (nxt[0], line[-1])}
                 line.append(nxt[0])
             yx = np.array(line, float)
-            out.append((yx[:, ::-1] - [1 + (w if wrap else 0), 1], depth[tuple(np.array(line).T)] - 0.5))
-    if wrap:  # the middle copy's share: cut where a line leaves it
-        keep = []
-        for xy, r in out:
-            inside = (xy[:, 0] >= 0) & (xy[:, 0] < w)
-            for run in np.split(np.arange(len(xy)), np.nonzero(np.diff(inside.astype(int)))[0] + 1):
-                if inside[run[0]] and len(run) > 1:
-                    keep.append((xy[run], r[run]))
-        out = keep
-    return _tidy(out, w, wrap) if out else []
+            out.append((yx[:, ::-1] - [1 + w, 1], depth[tuple(np.array(line).T)] - 0.5))
+    keep = []  # the middle copy's share: cut where a line leaves it
+    for xy, r in out:
+        inside = (xy[:, 0] >= 0) & (xy[:, 0] < w)
+        for run in np.split(np.arange(len(xy)), np.nonzero(np.diff(inside.astype(int)))[0] + 1):
+            if inside[run[0]] and len(run) > 1:
+                keep.append((xy[run], r[run]))
+    return _tidy(keep, w) if keep else []
 
 
-def _tidy(lines, w, wrap):
+def _tidy(lines, w):
     """Joints made of several skeleton texels become one point, short side spurs go (a spear head's corners), and
     runs through two-way joints are merged."""
     ends = np.array([p for xy, _ in lines for p in (xy[0], xy[-1])])
@@ -427,7 +425,7 @@ def _tidy(lines, w, wrap):
     if not edges:  # only specks
         return []
     rmed =np.median(np.concatenate([e[3] for e in edges]))
-    seam = lambda n: wrap and not 1 <= pos[n][0] <= w - 2
+    seam = lambda n: not 1 <= pos[n][0] <= w - 2
     for final in (False, True):
         while True:
             deg = collections.Counter(n for e in edges for n in e[:2])

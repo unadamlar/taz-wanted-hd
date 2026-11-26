@@ -1511,14 +1511,14 @@ def guardrail_geo(alpha, paint, pos, uv, col):
 
 def profiled_geo(kind, alpha, paint, pos, uv, col, size):
     """Painted boards and picket fences rebuilt as real boards that keep the paint's colour bands (pale edge lines, dark
-    outline) as hard stripes. boards: along the paint's strokes, tapered as painted, with its dark grain; pickets: a picket
-    fence read column by column."""
+    outline) as hard stripes. boards: along the paint's strokes, tapered as painted; pickets: a picket fence read column
+    by column."""
     h, w = alpha.shape
     px = np.array(size, float) / [w, h]
     lit = paint_light(col)
     gain = 0.85 if kind == "pickets" else 1.15  # each matched by eye and by pixel to the paint in the same view
     tone = lambda c: np.clip(np.asarray(c) * lit * gain, 0, 1)
-    P, N, C, grain = [], [], [], []
+    P, N, C = [], [], []
     if kind == "pickets":
         parts = picket_parts(alpha, paint)
     else:
@@ -1542,19 +1542,6 @@ def profiled_geo(kind, alpha, paint, pos, uv, col, size):
             hw = np.maximum(slope * ends + icpt, 1)
             if bands:
                 parts.append((c0 + np.outer(ends, ax), hw, bands, 0.3 * hw, 0))
-            if kind == "boards":  # the paint's dark grain strokes, cut into both faces as hard dark lines
-                yy, xx = np.mgrid[:h, :w] + 0.5
-                rel = np.stack([(xx - c0[0] + w / 2) % w - w / 2, yy - c0[1]], -1)  # the texture repeats across
-                ta, tc = rel @ ax, rel @ [-ax[1], ax[0]]
-                lum = paint @ np.array([0.3, 0.59, 0.11])
-                body = max(bands, key=lambda b: b[2] - b[1])[0] @ np.array([0.3, 0.59, 0.11])
-                inside = (np.abs(tc) < 0.55 * np.maximum(slope * ta + icpt, 1)) & (ta > e0) & (ta < e1) & (alpha > 0.5)
-                for gxy, gr, *_ in solid.strokes(inside & (lum < 0.8 * body), wrap=False) if (inside & (lum < 0.8 * body)).sum() > 3 else []:
-                    if len(gxy) >= 3:
-                        gt = (gxy + 0.5 - c0) @ ax
-                        gz = 0.3 * np.maximum(slope * gt + icpt, 1) * 1.04
-                        k_ = np.unique(np.r_[np.arange(0, len(gxy), 3), len(gxy) - 1])
-                        grain.append((gxy[k_] + 0.5, gz[k_] * np.linalg.norm(np.array([-ax[1], ax[0]]) * px), np.median([paint[int(q[1]) % h, int(q[0]) % w] for q in gxy], 0), gr[k_] + 0.5))
     for path, hw, bands, hd, zs in parts:
         d = path[-1] - path[0]
         sc = np.linalg.norm(np.array([-d[1], d[0]]) / max(np.linalg.norm(d), 1e-9) * px)  # world size of a texel across it
@@ -1563,15 +1550,6 @@ def profiled_geo(kind, alpha, paint, pos, uv, col, size):
         if zs:  # a rail, behind the pickets
             p = p + [0, 0, zs * (np.max(hd) * sc + 0.6 * sc)]
         P.append(p); N.append(n); C.append(c)
-    for gxy, gz, gc, gw in grain:
-        d = np.gradient(gxy, axis=0)
-        d /= np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-9)
-        sd = np.c_[-d[:, 1], d[:, 0]] * 0.55 * gw[:, None] * np.r_[0.4, np.ones(len(gw) - 2), 0.4][:len(gw), None]  # tapered ends, like a brush stroke
-        for zs in (1, -1):
-            lo, hi = np.c_[(gxy - sd) * px, zs * gz], np.c_[(gxy + sd) * px, zs * gz]
-            P.append(np.concatenate([np.array([lo[i], lo[i + 1], hi[i + 1], lo[i], hi[i + 1], hi[i]]) for i in range(len(gxy) - 1)]))
-            N.append(np.tile([0, 0, zs * 1.0], (len(P[-1]), 1)))
-            C.append(np.tile(np.clip(tone(gc) * 0.8, 0, 1), (len(P[-1]), 1)))
     if not P:
         return []
     p, n, cc = np.concatenate(P), np.concatenate(N), np.concatenate(C)
