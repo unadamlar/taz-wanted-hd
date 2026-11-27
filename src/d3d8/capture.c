@@ -76,6 +76,8 @@ void capture_scene(void)
     if (ok && !strcmp(word, "intro")) *(BYTE *)(0x6c9860 + *(int *)0x6c8eec * 0x13d4 + scene * 0xa8) &= ~1; // hub intro not seen yet
     if (ok) {
         log_line("capture: going to scene %d", scene);
+        // Start point names (players 1, 2) a door or checkpoint left; the next level only uses its own when they are 0.
+        *(DWORD *)0x704ce8 = *(DWORD *)0x704cec = 0;
         ((void(__cdecl *)(void *, int))0x4a9730)(GAME, scene);
     }
 }
