@@ -35,7 +35,7 @@ that needs a model file: new hands, springs (bouncing ears, fur, tail), a dense 
 | Model | Scene | Captured | Built | Checked in game | Notes |
 |---|---|---|---|---|---|
 | Taz (normal) | all | yes | yes | yes | hands, shading, ear rims, 4 springs |
-| Surfer | 6 aqua | yes | yes | yes | in the HD look the outline shows through along the fold where the belly meets the shorts, as a broken line (seen 2026-11-27; the Remaster look draws no outline). Not the paint: the black swatch rows sit at brow height |
+| Surfer | 6 aqua | yes | yes | yes | in the HD look the outline shows through along the fold where the belly meets the shorts, as a broken line (seen 2026-11-27; the Remaster look draws no outline). Not the paint: the black swatch rows sit at brow height. Tried pushing the outline back along the line of sight by its width (2026-11-27): it also erased the real line where the shorts' hem sits on the thigh, so it was reverted |
 | Snowboarder (goggles) | 4 icedome | yes | yes | yes | camera starts behind a wall; checked running about |
 | Skater (cap, board) | 5 safari | yes | yes | yes | |
 | Jersey 23 and cap | 9 deptstr | yes | yes | yes | |

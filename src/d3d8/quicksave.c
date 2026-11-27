@@ -141,6 +141,7 @@ static void quickload(void)
     stop_newer_sounds();
     DWORD t = GetTickCount();
     copy_all(1);
+    controls_quickloaded();
     log_line("quickload: scene %d in %lu ms", saved_scene, GetTickCount() - t);
     overlay_toast("Quickloaded");
 }

@@ -71,6 +71,7 @@ IDirect3DSurface8 *preview_surface(void);
 void smooth_install(IDirect3DDevice8 *dev);
 void controls_patch(void);
 void controls_frame(void);
+void controls_quickloaded(void);
 void controls_apply(void);
 int controls_row_count(void);
 int controls_capturing(void);

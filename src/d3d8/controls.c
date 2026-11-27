@@ -274,6 +274,9 @@ static void find_gamepad(void)
     if (p1_pad && channel(p1_pad, X1) == p1_x1) bind_gamepad(p1_pad, 1);
 }
 
+// A quickload can go back to before the pad was opened: look at once rather than up to 2 s later.
+void controls_quickloaded(void) { find_gamepad(); }
+
 static void __cdecl keyboard_defaults(BYTE *pad, int player)
 {
     KEYBOARD_DEFAULTS(pad, player);
