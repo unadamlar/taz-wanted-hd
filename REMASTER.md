@@ -102,7 +102,7 @@ Rolling out the look, two tracks at a time. Track state and resume steps: `extra
 - Taz bosses done: tazboss1 (Disco Volcano; `glow_add` draws its additive flames as the game does) and tazboss2 (Sam's zeppelin). Taz's cream reads cooler
   than HD in tazboss1, and the zeppelin's force field is clear glass where HD shows near-solid cyan.
 - Bonus levels done (21-29): eight reuse their story level's block through `_bonus()` in `levels.py`; detasmania has its own on the Taz hub's surfaces.
-  rcgoldmine, rcicedome and deconstruct drop Taz into an endless fall from every entry; tests place him with the scripts in `extracted/look/westhub/bonus/`.
+  rcgoldmine, rcicedome and deconstruct used to drop Taz into an endless fall from the test jump (leftover start point names; fixed in `capture.c` 2026-11-27).
   Deconstruct is dark and Taz reads as a dark shape there; deaqua's flat deep-blue sea is now clear turquoise water over sand.
 - Every scene now has Remaster data, and the user's playable copy has all of it (2026-11-24, e1852b5).
 - Real 3D objects in place of painted cards so far: safari, Taz hub, west hub, museum (cloth banners, saguaro), department store (one 3D flower per
