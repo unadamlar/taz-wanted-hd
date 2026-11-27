@@ -69,8 +69,10 @@ Every cutscene pak carries its own re-export of Taz (3,010-3,254 vertices; the s
 first zoo scene's second copy), so each needs its own file. The buffer fingerprint can be read straight from the pak:
 the 52-byte vertex block sits whole in the `.obe` (`tools/pak.py unpack`, then FNV-1a over that run). The `taz.obe`
 copies (hub endings, level endings, hub "done" scenes) draw most of Taz untextured, coloured by vertex colour; the
-build carries vertex colours through to the file, so those come out in their own colours (checked against
-`hd_models=0` in the construction "done" scene, 2026-11-27).
+build carries vertex colours through to the file. Their textured parts (eyes, inner ears, toes, mouth) use a doubled
+texture blend and the untextured body a plain one, so the DLL gives each group of a replacement its own batch's blend;
+before that those parts came out half bright, grey. Checked against `hd_models=0` in the construction "done" scene
+(2026-11-27): same colours, rounder fingers.
 
 Recording (`qa/cutcap.sh <out> <seconds> <trigger file> <text>` writes the trigger, then one capture a second):
 hub intros `scene "<n> intro"`; boss intros play on a plain jump; boss endings and level endings on an empty
@@ -96,7 +98,7 @@ the first zoo scene after a new game in an empty slot. `qa/capfp.py --sum <dir>`
 | Taz boss 2 intro, ending (cs18, cs19) | 399cb658aefc58f4, fe37f65685c69c86 | yes | |
 | end of game (cs20) | 88dc76337d1df517 | yes | |
 | zoo, city, west hub endings | 489e6c57a184a1c4, 07b6647e0087cd0f, 6b832bbc88ffb8f1 | yes | |
-| level endings: icedome, safari, aqua | 34bf6e1c2d2f027c, 7acf43e33bb20625, e104b2437b3d6f31 | yes | icedome: yes, colours right |
+| level endings: icedome, safari, aqua | 34bf6e1c2d2f027c, 7acf43e33bb20625, e104b2437b3d6f31 | yes | icedome: drawn (shot before the blend fix below, not since) |
 | level endings: deptstr, museum (two copies), contruct | 3dcf74b568e3d9dd, ef75d4b63b1763d1, cc94cb8cd5619e6f, c06fbec7cc2d5b24 | yes | contruct: loads, drawn |
 | level endings: ghost, goldmine, grandc | b3a2e9336af3c43e, e4d12b6c9e636f90, 0c20f4ae41cac4be | yes | |
 | zoo hub "done": icedome, safari, aqua | ba48771e6282c4cf, 65a30a0f07d3d211, d22f2d9403fe37f4 | yes | |
