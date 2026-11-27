@@ -578,6 +578,12 @@ static void __cdecl camera_update(BYTE *cam)
     c[0x18] = full;
     if (tilt && tilt_step) lift(c, c + 12, tilt_step), tilt_step = 0;
     if (keep) spin(c + 8, c + 12, wrap(before - heading(c + 8, c + 12)) * keep);
+    // The eye eases to its height so slowly that in a long fall it was left 1,500 units above Taz, looking
+    // straight down past where he would land. Keep it near the height it is easing to.
+    if ((flags & 0x1b00) == 0x1000 && !*(void **)(cam + 0xac)) {
+        float hi = c[9] + 150, lo = c[9] - 300;
+        c[1] = c[1] > hi ? hi : c[1] < lo ? lo : c[1];
+    }
     // The eye trails Taz further than the point it looks at, which turned the view during sideways
     // runs. Aim it along its destination, at a limited rate so a jump in heading can't snap the view.
     if (follow && FPS > 0 && full > 0) {
