@@ -504,6 +504,42 @@ def fringe(edge, bands, widths, thick, curl, tip):
     return np.r_[P, p], np.r_[np.repeat(n, 3, 0), nn], np.r_[np.array(C), np.tile(body, (len(p), 1))]
 
 
+def turf(xs, cover, bulge, grass, soil, rng, blade_gap):
+    """A grassy sod edge in a card's metric frame (x along, y down from its top edge, z out of the card): a rounded lip
+    reaching cover(x) down, bulging out by bulge, its underside darkening into soil, and grass blades along its top
+    leaning out and drooping over it. xs: sample points along the edge; cover: the lip's depth at each."""
+    xs, cover = np.asarray(xs, float), np.asarray(cover, float)
+    grass, soil = np.asarray(grass, float), np.asarray(soil, float)
+    s = np.linspace(0, 1, 9)
+    y = cover[None, :] * s[:, None]
+    z = np.broadcast_to(bulge * (np.sin(np.pi * np.minimum(s * 0.85, 1)) ** 0.7 * (1 - 0.55 * s))[:, None], y.shape)
+    grid = np.stack([np.broadcast_to(xs, y.shape), y, z], 2)
+    shade = np.clip((s - 0.45) / 0.55, 0, 1)[:, None, None]
+    cols = grass * (1 - 0.45 * np.clip(s / 0.8, 0, 1))[:, None, None] * (1 - shade) + soil * shade
+    P, N, C = _sheet(grid, np.broadcast_to(cols, grid.shape).copy())
+    parts = [(P, N, C)]
+    for x in np.arange(xs[0], xs[-1], blade_gap) + rng.random(int(np.ceil((xs[-1] - xs[0]) / blade_gap))) * blade_gap:
+        k = min(np.searchsorted(xs, x), len(xs) - 1)
+        root = np.array([x, cover[k] * rng.uniform(0.02, 0.3), bulge * rng.uniform(0.4, 0.9)])
+        d = np.array([rng.uniform(-0.35, 0.35), rng.uniform(-0.9, -0.2), rng.uniform(0.6, 1.0)])
+        d /= np.linalg.norm(d)
+        length, width = cover[k] * rng.uniform(0.45, 1.0), blade_gap * rng.uniform(0.7, 1.2)
+        t = np.linspace(0, 1, 5)
+        spine = root + np.outer(t * length, d) + np.outer(rng.uniform(0.3, 0.7) * length * t ** 2, (0, 1.0, 0))  # droops down (y)
+        side = np.cross(d, (0, 0, 1.0)); side = side / max(np.linalg.norm(side), 1e-9)
+        w = width * (1 - t) ** 0.8
+        L, R = spine + w[:, None] * side, spine - w[:, None] * side
+        g = grass * rng.uniform(0.75, 1.15)
+        for i in range(4):
+            for q in ((L[i], R[i], R[i + 1]), (L[i], R[i + 1], L[i + 1])):
+                q = np.array(q)
+                f = np.cross(q[1] - q[0], q[2] - q[0]); f /= max(np.linalg.norm(f), 1e-9)
+                f = f if f[2] >= 0 else -f
+                c = np.tile(g * (0.7 + 0.3 * t[i]), (3, 1))
+                parts += [(q, np.tile(f, (3, 1)), c), (q[::-1], np.tile(-f, (3, 1)), c * 0.8)]
+    return tuple(np.concatenate(x) for x in zip(*parts))
+
+
 def grille(rect, cell, frame, pitch, bar, x0, frame_col, wire_col, edge_col):
     """A welded mesh panel in a card's metric frame (x along u, y along v, z out): a bevelled frame with bolt heads on both
     faces and a diagonal lattice of straps (wide bars) or wires inside, one direction over the other. cell: the world size

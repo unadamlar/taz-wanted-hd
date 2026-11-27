@@ -1788,13 +1788,15 @@ if cfg["cards"] or cfg["soft"]:
         for d in ds:
             solids.setdefault((solid.key_of(d[4]), d[0]), pi)  # the same model can come in several paints
 
-CARD_UP_SHARE = {"spike": 1.01, "grille": 1.01, "lip": 0.5, "fringe": 0.5}  # how much of a card may face up and still count
-PER_CARD = ("icicles", "grille", "lip", "fringe")  # kinds built card by card, not one model per cluster
+CARD_UP_SHARE = {"spike": 1.01, "grille": 1.01, "lip": 0.5, "fringe": 0.5, "turf": 0.9}  # how much of a card may face up and still count
+PER_CARD = ("icicles", "grille", "lip", "fringe", "turf")  # kinds built card by card, not one model per cluster
 
 
 def rebuildable(kind, t):
     """Pieces a kind can rebuild; the rest stay the game's cards: grilles want whole uv rectangles, lips the full band."""
     du = t[1].reshape(-1, 2)
+    if kind == "turf":  # a rim strip may show only the painted teeth's band
+        return np.ptp(du[:, 1]) > 0.3
     if kind in ("lip", "fringe"):
         return np.ptp(du[:, 1]) > 0.8
     if kind == "grille":
@@ -1898,7 +1900,7 @@ def rebuilt_geo(kind, T, labs, rng, c, lit):
                 continue
             P, N, C = geo
             Q = np.c_[u0 + P[:, 0] / size[0], v0 + P[:, 1] / size[1], P[:, 2]]
-        elif kind == "fringe":  # a zigzag skirt: its teeth from the paint's outline, its colour bands from the paint's edge
+        elif kind in ("fringe", "turf"):  # a zigzag skirt: its teeth from the paint's outline, its colour bands from the paint's edge
             v_ = solid.uv_axes(dp, du)[1]
             u0, u1, v0, v1 = fu[:, 0].min(), fu[:, 0].max(), fu[:, 1].min(), fu[:, 1].max()
             down = 1 if v_[1] < 0 else -1
@@ -1909,15 +1911,31 @@ def rebuilt_geo(kind, T, labs, rng, c, lit):
             xs = np.linspace(u0, u1, int((u1 - u0) * 96) + 2)
             cut = a[::down][:, ((xs % 1) * w).astype(int) % w]
             depth = (h - np.argmax(cut[::-1], 0)) / h * (v1 - v0) * size[1]  # the lowest paint in each column
-            E = corners(np.c_[(xs - u0) * size[0], depth], 0.03 * depth.max())
-            tip = [float(E[i, 1] >= max(E[max(i - 1, 0), 1], E[min(i + 1, len(E) - 1), 1])) for i in range(len(E))]
-            dark, pale, wd, wp = edge_bands(rgba)
-            px = size[1] / 128 / 1.2  # world size of one step of edge_bands' peeling
             paint = lambda x: np.clip((x * lit * 1.3 - (x * lit * 1.3).mean()) * 1.3 + (x * lit * 1.3).mean(), 0, 1)  # the paint under its baked light, more saturated
-            P, N, C = props3d.fringe(E, (paint(c / lit), paint(pale), paint(dark)), (wp * px, 1.4 * wd * px), 0.07 * depth.max(), 0.2, tip)  # the outline a little bolder
+            if kind == "turf":  # a sod lip over the painted teeth, as deep as the deepest tooth near each point
+                H = depth.max()
+                run = max(int(len(xs) / max((u1 - u0) * 6, 1)), 1)
+                env = np.array([depth[max(i - run, 0):i + run + 1].max() for i in range(len(depth))])
+                X = (xs - u0) * size[0]
+                X = X[0] + (X - X[0]) * 1.04 - 0.02 * (X[-1] - X[0])  # a little past both ends, so neighbours overlap
+                P, N, C = props3d.turf(X, env * 1.08, 0.18 * H, paint(c / lit) * 1.15, c * [0.38, 0.28, 0.18], rng, 0.045 * H)  # the sod darkens to soil underneath
+            else:
+                E = corners(np.c_[(xs - u0) * size[0], depth], 0.03 * depth.max())
+                tip = [float(E[i, 1] >= max(E[max(i - 1, 0), 1], E[min(i + 1, len(E) - 1), 1])) for i in range(len(E))]
+                dark, pale, wd, wp = edge_bands(rgba)
+                px = size[1] / 128 / 1.2  # world size of one step of edge_bands' peeling
+                P, N, C = props3d.fringe(E, (paint(c / lit), paint(pale), paint(dark)), (wp * px, 1.4 * wd * px), 0.07 * depth.max(), 0.2, tip)  # the outline a little bolder
             top = v0 if down > 0 else v1
             Q = np.c_[u0 + P[:, 0] / size[0], top + down * P[:, 1] / size[1], P[:, 2]]
             N = N * [1, down, 1]
+            if kind == "turf":  # out of the card is away from the middle of the rim it is part of, not where its paint faces
+                (A, B, C_), e1, e2 = dp[0], du[0, 1] - du[0, 0], du[0, 2] - du[0, 0]
+                side = np.cross((B - A) * e2[1] - (C_ - A) * e1[1], (C_ - A) * e1[0] - (B - A) * e2[0]) / (e1[0] * e2[1] - e1[1] * e2[0])
+                away = dp.reshape(-1, 3).mean(0) - rim_centre
+                flat = abs(side[1]) > 0.7 * np.linalg.norm(side)  # painted on the ground: the lip stands up
+                if (side[1] < 0) if flat else side[[0, 2]] @ away[[0, 2]] < 0:
+                    Q[:, 2] *= -1
+                    N = N * [1, 1, -1]
         else:  # lip: rail up top, a panel with lit channels where the paint has its see-through slot
             v_ = solid.uv_axes(dp, du)[1]
             u0, u1, v0, v1 = fu[:, 0].min(), fu[:, 0].max(), fu[:, 1].min(), fu[:, 1].max()
@@ -2002,9 +2020,9 @@ for pats, kind in LEVEL.get("clusters", ()):  # cards that together draw one tre
             continue
         # one static draw can carry cards all over the level: each piece on its own
         items += [(k, d, tuple(x[i] for x in t)) for i in solid.islands(t[0])] if solid._identity(d[1]) else [(k, d, t)]
-    def fits(t, size):  # standing or leaning cards of the usual size: the same paint also lies on the ground or spans a hill
+    def fits(t, size):  # standing or leaning cards of the usual size: the same paint also lies on the ground or spans a hill (a rim runs any length)
         n = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])
-        return len(t) and np.abs(n[:, 1]).sum() < (0.5 if kind == "icicles" else CARD_UP_SHARE.get(kind, 0.85)) * np.linalg.norm(n, axis=1).sum() and np.ptp(t.reshape(-1, 3), 0).max() < 3 * size
+        return len(t) and np.abs(n[:, 1]).sum() < (0.5 if kind == "icicles" else CARD_UP_SHARE.get(kind, 0.85)) * np.linalg.norm(n, axis=1).sum() and (kind == "turf" or np.ptp(t.reshape(-1, 3), 0).max() < 3 * size)
     size_ = np.median([np.ptp(it[2][0].reshape(-1, 3), 0).max() for it in items]) if items else 0
     if LEVEL.get("card_paint"):
         for l in set(labs_.values()):
@@ -2013,6 +2031,7 @@ for pats, kind in LEVEL.get("clusters", ()):  # cards that together draw one tre
     left = [it for it in items if not (fits(it[2][0], size_) and rebuildable(kind, it[2]))]
     items = [it for it in items if fits(it[2][0], size_) and rebuildable(kind, it[2])]
     items.sort(key=lambda it: -np.ptp(it[2][0].reshape(-1, 3), 0).max())
+    rim_centre = np.concatenate([it[2][0].reshape(-1, 3) for it in items]).mean(0) if items else np.zeros(3)
     groups = []  # biggest first: each card joins the first seed it stands within, so a forest doesn't chain into one tree
     for it in items:
         q = it[2][0].reshape(-1, 3)

@@ -879,8 +879,9 @@ LEVELS["grandc"].update(board_tint=(1.0, 1.0, 1.0), board_detail="d_plank")
 LEVELS["contruct"]["card_models"] = (("contruct/textures/fencesteel*", "pickets"), ("contruct_ecs/fencesteel3", "pickets"))
 
 # The title screen's island (user, 2026-11-27: the land strip, the tree-base greenery and the flowers "don't look remastered"):
-# the Taz hub's rock and bark, its 3D flowers and leaves, and the two-tone zigzag lawn paint as lawn. The zigzag rim is still paint.
+# the Taz hub's rock and bark, its 3D flowers and leaves, the two-tone zigzag lawn paint as lawn, and a grassy sod lip on the zigzag rim.
 _F = lambda rules: [(p.replace("tazhub/", "frontend/", 1), r) for p, r in rules]
-LEVELS["frontend"].update(tiles=TAZHUB_TILES, detail=_F(TAZHUB_DETAIL), materials=tuple(TAZHUB_TILES) + LEVELS["frontend"]["materials"],
-                          card_models=(("frontend/textures/fgre", "flower"), ("frontend/textures/safarifruitree12", "leaf")))
+LEVELS["frontend"].update(tiles=TAZHUB_TILES, detail=_F(TAZHUB_DETAIL) + [("frontend/textures/pestfront01", "d_cliff")], materials=tuple(TAZHUB_TILES) + LEVELS["frontend"]["materials"],
+                          card_models=(("frontend/textures/fgre", "flower"), ("frontend/textures/safarifruitree12", "leaf")),
+                          clusters=((("frontend/textures/pestfront02",), "turf"),))
 LEVELS["frontend"]["rules"] = LEVELS["frontend"]["rules"][:1] + [("frontend/textures/tazfern0[2346]*", "lawn")] + LEVELS["frontend"]["rules"][1:]
