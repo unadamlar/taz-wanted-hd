@@ -104,8 +104,8 @@ the first zoo scene after a new game in an empty slot. `qa/capfp.py --sum <dir>`
 | zoo hub "done": icedome, safari, aqua | ba48771e6282c4cf, 65a30a0f07d3d211, d22f2d9403fe37f4 | yes | |
 | city hub "done": deptstr, museum, contruct | 974855e996eba92b, 24294615a0371159, 5f929bdd1c191dd7 | yes | contruct: yes, same colours as the original |
 | west hub "done": ghost and goldmine (one file), grandc | a6a50830afbd15fa, 33eea9f78a8d4736 | yes | |
-| story intro (maingameintro) | e4bdb8d62945c2de | no | a jump to its scene 35 goes straight on to the zoo; not recorded |
-| Taz in the dinghy (zoo hub "aqua done") | cbf1d1be77f60890 | no | a separate 1,450-vertex model; not seen in the recording |
+| story intro (maingameintro) | e4bdb8d62945c2de | yes | plays after the logos at startup (recorded by booting without pressing anything); checked 2026-11-27: fists up over Sylvester, new model |
+| dinghy (aquarium ending) | e8761e0b3069bcc9 in that ending; cbf1d1be77f60890 is the hub copy | not needed | the boat, not Taz: the ending draws Taz (3,070 vertices), the dinghy (2,035) and three sharks; it gets the automatic smoothing |
 
 ## Other characters
 
