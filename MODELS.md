@@ -63,6 +63,48 @@ wears it when the level starts; press Jump to close the level's intro page.
 | Explorer | 28 rcgoldmine | n/a | n/a | | hat and whip on Taz's own model; jumping there also falls |
 | Skater | 29 rcsafari | yes | yes | yes | |
 
+### Cutscenes
+
+Every cutscene pak carries its own re-export of Taz (3,010-3,254 vertices; the same 1,039-point body except the
+first zoo scene's second copy), so each needs its own file. The buffer fingerprint can be read straight from the pak:
+the 52-byte vertex block sits whole in the `.obe` (`tools/pak.py unpack`, then FNV-1a over that run). The `taz.obe`
+copies (hub endings, level endings, hub "done" scenes) draw most of Taz untextured, coloured by vertex colour; the
+build carries vertex colours through to the file, so those come out in their own colours (checked against
+`hd_models=0` in the construction "done" scene, 2026-11-27).
+
+Recording (`qa/cutcap.sh <out> <seconds> <trigger file> <text>` writes the trigger, then one capture a second):
+hub intros `scene "<n> intro"`; boss intros play on a plain jump; boss endings and level endings on an empty
+`complete`; a hub ending by marking its three levels won, reloading the hub and winning it (`qa/hubwin.sh`, which also
+records the boss intro after); hub "done" scenes play when Return closes a level's results page (`qa/cutdone.sh`);
+the first zoo scene after a new game in an empty slot. `qa/capfp.py --sum <dir>` lists the buffers seen and
+`qa/cutbuild.sh <name> <fingerprint> <dir>` builds from up to seven frames spread over the scene. Files are about
+9 MB each.
+
+| Cutscene | Fingerprint | Built | Checked in game |
+|---|---|---|---|
+| main menu Taz (frontend) | bb8d46fefde74e65 | yes | loads |
+| first zoo scene (cs02) | 233e5ac80281f380 | yes | |
+| first zoo scene, second copy | be7c13679bcc13c0 | yes, NOHANDS=1 (an extra hand bone) | |
+| zoo hub intro (cs03) | 3d1122e6904ff360 | yes | yes: new hands, smooth outline |
+| city hub intro (cs07) | 8a2365474c2658fa | yes | |
+| west hub intro (cs11) | 8b62364a368ad815 | yes | |
+| city boss intro and ending, Taz hub intro (cs09, cs10, cs15) | dccd2445320dff50 | yes | |
+| zoo boss intro, westboss ending (cs05, cs14) | 272f4054586c218f | yes | loads, drawn |
+| zoo boss ending (cs06) | 4015a2204f32820d | yes | loads, drawn |
+| westboss intro (cs13) | 9cadecf172c55d33 | yes | |
+| Taz boss 1 intro, ending (cs16, cs17) | c1521e05e8a2a154, 5c1dabe616c7f502 | yes | |
+| Taz boss 2 intro, ending (cs18, cs19) | 399cb658aefc58f4, fe37f65685c69c86 | yes | |
+| end of game (cs20) | 88dc76337d1df517 | yes | |
+| zoo, city, west hub endings | 489e6c57a184a1c4, 07b6647e0087cd0f, 6b832bbc88ffb8f1 | yes | |
+| level endings: icedome, safari, aqua | 34bf6e1c2d2f027c, 7acf43e33bb20625, e104b2437b3d6f31 | yes | icedome: yes, colours right |
+| level endings: deptstr, museum (two copies), contruct | 3dcf74b568e3d9dd, ef75d4b63b1763d1, cc94cb8cd5619e6f, c06fbec7cc2d5b24 | yes | contruct: loads, drawn |
+| level endings: ghost, goldmine, grandc | b3a2e9336af3c43e, e4d12b6c9e636f90, 0c20f4ae41cac4be | yes | |
+| zoo hub "done": icedome, safari, aqua | ba48771e6282c4cf, 65a30a0f07d3d211, d22f2d9403fe37f4 | yes | |
+| city hub "done": deptstr, museum, contruct | 974855e996eba92b, 24294615a0371159, 5f929bdd1c191dd7 | yes | contruct: yes, same colours as the original |
+| west hub "done": ghost and goldmine (one file), grandc | a6a50830afbd15fa, 33eea9f78a8d4736 | yes | |
+| story intro (maingameintro) | e4bdb8d62945c2de | no | a jump to its scene 35 goes straight on to the zoo; not recorded |
+| Taz in the dinghy (zoo hub "aqua done") | cbf1d1be77f60890 | no | a separate 1,450-vertex model; not seen in the recording |
+
 ## Other characters
 
 All get the automatic smoothing and shading. A model file only pays off where it adds something visible;
@@ -75,7 +117,6 @@ most of these characters already animate their floppy parts with their own bones
 | Gossamer | 7 zooboss (goalkeeper, close to camera) | 01036cdeaa4e7c03 | yes | dense surface, no springs, built with `PERBONE=1`. Checked in his goal celebrations (2026-11-15): facing the camera and covering his face, smooth outline, clean brows, no black shards (`qa/models-check/pairs/gossamer-fixed.jpg`; `gossamer-face-auto-old-fixed.jpg` shows automatic smoothing, the first dense build and this one). The first build had sawtooth brows: the game drew him with its one-bone shader, which ignores a dense model's blended weights. `qa/gossamer.sh <out>` takes the shots. |
 | Tweety | zoo hub (flies around the Tutorial 1 book) | 9ccd72fd73041cc4 | yes | dense surface only. All 12 bones moved in 28 frames. Checked from behind at about 250 pixels tall (2026-11-15): drawn whole, head round, head feathers there. Not seen from the front in game, and not compared with the automatic smoothing in the same view Rebuilt with `PERBONE=1` after the checks described here; the rebuilt file loads but has not been looked at in game. |
 | Zookeeper | 14 ghost (recorded), 4 icedome (seen) | adbdee12889a7268 | yes | dense surface only. Checked once in game, catching Taz in the ghost level (2026-11-15): drawn whole with his net, smooth outline, no gaps. Face hidden under the cap in that shot; not compared with the automatic smoothing in the same view Rebuilt with `PERBONE=1` after the checks described here; the rebuilt file loads but has not been looked at in game. |
-| Taz in cutscenes | every cutscene | one per cutscene | no | each cutscene (cs02-cs20 `*_tazdevil.obe`, hub `taz.obe`) carries its own Taz, so his new hands and springs are missing there; the Taz scripts should work on them once recorded |
 | She-Devil, Daffy, Elmer, Wile E. Coyote, Sylvester, Mecha-Tweety | cutscenes only (She-Devil also the 2-player levels) | one per cutscene | no | cutscene versions are separate models (`cs05_shedevil.obe` ...); a scene jump skips intros once seen (save flag at 0x6c9860 + slot*0x13d4 + scene*0xa8, bit 1) |
 
 Seen while recording, not built: the ghost level has two more characters (a95143be45888734, 1,652 vertices,

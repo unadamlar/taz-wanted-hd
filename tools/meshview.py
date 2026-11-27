@@ -40,8 +40,9 @@ vb = next(k for k in vbs if fnv(vbs[k]) == int(which, 16)) if len(which) == 16 e
 raw = vbs[vb]
 h = fnv(raw)
 V = [struct.unpack_from('<3f3f4B3fI2f', raw, k * 52) for k in range(len(raw) // 52)]
-passes = [[d for d in f[1] if d[0] == vb and d[4]] for f in frames]  # same buffer address in every frame of one run
-# A character drawn more than once a frame (two players, crowds) repeats its batches: keep the first one.
+passes = [[d for d in f[1] if d[0] == vb] for f in frames]  # same buffer address in every frame of one run
+# The lit pass comes first; the outline pass, or a second copy of the character (two players, crowds), repeats
+# its batches: keep the first run. Batches can be untextured: most cutscene Taz copies colour by vertex.
 passes = [next((p[:k] for k in range(1, len(p)) if p[k][1:4] == p[0][1:4]), p) for p in passes]
 batches = [(d[2], d[3], d[1]) for d in passes[0]]
 assert all([(d[2], d[3], d[1]) for d in p] == batches for p in passes), 'captures draw different batches'
@@ -56,7 +57,7 @@ def bone(bi, reg):
     if list(palette[bi].values()).count(bones[key]) > 1: merged.add(bones[key])  # two bones moved alike in every frame given
     return bones[key]
 
-verts, vindex, faces, uvs, nors, mats, groups, texs = [], {}, [], [], [], [], defaultdict(dict), []
+verts, vindex, faces, uvs, nors, cols, mats, groups, texs = [], {}, [], [], [], [], [], defaultdict(dict), []
 for bi, (i, ty, st, ct, tex, c) in enumerate(passes[0]):
     if tex not in [t for t, _ in texs]: texs.append((tex, bi))
     tri = [(st + t, st + t + 1, st + t + 2)[::(-1 if t & 1 else 1)] if ty == 5 else (st + 3 * t, st + 3 * t + 1, st + 3 * t + 2) for t in range(ct)]
@@ -74,6 +75,7 @@ for bi, (i, ty, st, ct, tex, c) in enumerate(passes[0]):
             f.append(vi)
             uvs.append((V[k][14], 1 - V[k][15]))
             nors.append((V[k][10], V[k][12], V[k][11]))
+            cols.append([(V[k][13] >> s & 255) / 255 for s in (16, 8, 0, 24)])  # D3DCOLOR ARGB
         faces.append(f)
         mats.append([t for t, _ in texs].index(tex))
 
@@ -84,6 +86,7 @@ uv = me.uv_layers.new()
 for k in range(len(me.loops)): uv.data[k].uv = uvs[k]
 for k, p in enumerate(me.polygons): p.material_index, p.use_smooth = mats[k], True
 me.normals_split_custom_set(nors)
+me.color_attributes.new('col', 'FLOAT_COLOR', 'CORNER').data.foreach_set('color', [x for c in cols for x in c])
 for tex, bi in texs:
     m = bpy.data.materials.new(names.get(tex, '%016x' % tex))
     m['batch'] = bi  # the game binds this texture for batch bi; the replacement borrows it from there

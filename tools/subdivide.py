@@ -33,7 +33,10 @@ def painted_black(p):  # a black line painted on a lighter texture, under the fa
 faces = [[] for _ in me.edges]
 for p in me.polygons:
     for li in p.loop_indices: faces[me.loops[li].edge_index].append(p.index)
-detail = [(any(k in me.materials[p.material_index].name for k in EYES) or painted_black(p)) for p in me.polygons]
+col = me.attributes['col'].data if 'col' in me.attributes else None
+def coloured_black(p):  # untextured parts drawn black by their vertex colour (eye rims, brows)
+    return col is not None and all(max(col[li].color[:3]) < 0.15 for li in p.loop_indices)
+detail = [(any(k in me.materials[p.material_index].name for k in EYES) or painted_black(p) or coloured_black(p)) for p in me.polygons]
 dv = {v for p, d in zip(me.polygons, detail) if d for v in p.vertices}
 detail = [any(v in dv for v in p.vertices) for p in me.polygons]
 crease = [1.0 if any(detail[i] for i in f) or len(f) == 2 and me.polygons[f[0]].normal.dot(me.polygons[f[1]].normal) < 0.5 else 0.0

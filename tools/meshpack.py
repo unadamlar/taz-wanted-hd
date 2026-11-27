@@ -24,6 +24,11 @@ def places(v):  # per bone (tools/subdivide.py): where it alone puts the point, 
     return ws, ps + [(v.co.x, v.co.z, v.co.y)] * (6 - len(ps))
 
 uv = me.uv_layers.active.data
+col = me.attributes['col'].data if 'col' in me.attributes else None
+def d3dcolor(li):
+    if not col: return 0x7f7f7f7f
+    r, g, b, a = (min(255, max(0, round(x * 255))) for x in col[li].color)
+    return a << 24 | r << 16 | g << 8 | b
 normal = me.corner_normals
 tris = []  # (texbatch, bones, corners)
 for t in me.loop_triangles:
@@ -32,7 +37,7 @@ for t in me.loop_triangles:
         v = me.vertices[me.loops[li].vertex_index]
         n = normal[li].vector
         ws, extra = places(v) if bent else (weights(v), ())
-        corners.append(((v.co.x, v.co.z, v.co.y), ws, (n.x, n.z, n.y), (uv[li].uv.x, 1 - uv[li].uv.y), extra))
+        corners.append(((v.co.x, v.co.z, v.co.y), ws, (n.x, n.z, n.y), (uv[li].uv.x, 1 - uv[li].uv.y), extra, d3dcolor(li)))
     bones = frozenset(b for c in corners for b, _ in c[1])
     tris.append((me.materials[t.material_index]['batch'], bones, corners))
 
@@ -55,10 +60,10 @@ for tb, have, take in groups:
     reg = {b: i * 3 for i, b in enumerate(have)}
     local, first = {}, len(idx)
     for _, _, corners in take:
-        for p, ws, n, t, extra in corners:
+        for p, ws, n, t, extra, rgba in corners:
             w = [x for _, x in ws[:3]] + [0] * (3 - len(ws[:3]))
             bi = [reg[b] for b, _ in ws[:3]] + [0] * (4 - len(ws[:3]))
-            v = struct.pack('<3f3f4B3fI2f', *p, *w, *bi, *n, 0x7f7f7f7f, *t)
+            v = struct.pack('<3f3f4B3fI2f', *p, *w, *bi, *n, rgba, *t)
             more_w = [x for _, x in ws[3:]] + [0] * (3 - len(ws[3:]))
             more_b = [reg[b] for b, _ in ws[3:]] + [0] * (3 - len(ws[3:]))
             x = b''.join(struct.pack('<3f', *q) for q in extra) + struct.pack('<6f', *more_w, *more_b) if extra else b''
