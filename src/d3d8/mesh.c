@@ -56,6 +56,7 @@ struct rep {
     DWORD frame;
     LARGE_INTEGER when;
     IDirect3DBaseTexture8 **tex;
+    DWORD *op;              // per batch: stage 0 colour op (cutscene Taz copies mix untextured MODULATE batches with MODULATE2X ones)
     IDirect3DVertexBuffer8 *vb, *places;
     IDirect3DIndexBuffer8 *ib;
     UINT next;
@@ -111,6 +112,7 @@ static int read_rep(struct rep *r)
     r->bones = calloc(r->h->nbones + r->h->nsprings, sizeof *r->bones);
     r->swing = calloc(r->h->nsprings, sizeof *r->swing);
     r->tex = calloc(r->h->nbatches, sizeof *r->tex);
+    r->op = calloc(r->h->nbatches, sizeof *r->op);
     log_line("mesh: %s, %lu vertices, %lu triangles in %lu groups for %lu batches, %lu springs", r->path, r->h->nverts,
              r->h->nindices / 3, r->h->ngroups, r->h->nbatches, r->h->nsprings);
     return 1;
@@ -331,6 +333,8 @@ static void draw_replacement(IDirect3DDevice8 *dev, struct rep *r, IDirect3DVert
     float saved[48][4], c[48][4];
     IDirect3DDevice8_GetVertexShaderConstant(dev, 0, saved, 48);
     IDirect3DBaseTexture8 *cur = textures_bound(0);
+    DWORD curop;
+    IDirect3DDevice8_GetTextureStageState(dev, 0, D3DTSS_COLOROP, &curop);
     IDirect3DIndexBuffer8 *gib = NULL;
     UINT gbase = 0;
     IDirect3DDevice8_GetIndices(dev, &gib, &gbase);
@@ -341,6 +345,7 @@ static void draw_replacement(IDirect3DDevice8 *dev, struct rep *r, IDirect3DVert
             memcpy(c[k * 3], r->bones[g->bones[k]], sizeof r->bones[0]);
         IDirect3DDevice8_SetVertexShaderConstant(dev, 0, c, g->nbones * 3);
         IDirect3DDevice8_SetTexture(dev, 0, r->tex[g->texbatch]);
+        IDirect3DDevice8_SetTextureStageState(dev, 0, D3DTSS_COLOROP, r->op[g->texbatch]);
         IDirect3DDevice8_SetIndices(dev, r->ib, g->base);
         group_verts = g->nverts;
         style_draw(dev, D3DPT_TRIANGLELIST, g->first, g->tris, draw_indexed);
@@ -348,6 +353,7 @@ static void draw_replacement(IDirect3DDevice8 *dev, struct rep *r, IDirect3DVert
     IDirect3DDevice8_SetIndices(dev, gib, gbase);
     if (gib) IDirect3DIndexBuffer8_Release(gib);
     IDirect3DDevice8_SetTexture(dev, 0, cur);
+    IDirect3DDevice8_SetTextureStageState(dev, 0, D3DTSS_COLOROP, curop);
     IDirect3DDevice8_SetStreamSource(dev, 0, game, 52);
     if (bent) IDirect3DDevice8_SetStreamSource(dev, 1, NULL, 0);
     if (use != vs) IDirect3DDevice8_SetVertexShader(dev, vs);
@@ -381,6 +387,7 @@ HRESULT mesh_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT
     for (UINT b = 0; b < r->h->nbones; b++) // few bones per batch; a scan of ~50 is cheap
         if (r->sources[b].batch == i) memcpy(r->bones[b], c[r->sources[b].reg], sizeof r->bones[0]);
     r->tex[i] = textures_bound(0);
+    IDirect3DDevice8_GetTextureStageState(dev, 0, D3DTSS_COLOROP, &r->op[i]);
     r->next = i + 1;
     if (r->next == r->h->nbatches) {
         r->next = 0;
