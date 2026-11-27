@@ -35,7 +35,7 @@ that needs a model file: new hands, springs (bouncing ears, fur, tail), a dense 
 | Model | Scene | Captured | Built | Checked in game | Notes |
 |---|---|---|---|---|---|
 | Taz (normal) | all | yes | yes | yes | hands, shading, ear rims, 4 springs |
-| Surfer | 6 aqua | yes | yes | yes | belly crease line sometimes draws dashed |
+| Surfer | 6 aqua | yes | yes | yes | in the HD look the outline shows through along the fold where the belly meets the shorts, as a broken line (seen 2026-11-27; the Remaster look draws no outline). Not the paint: the black swatch rows sit at brow height |
 | Snowboarder (goggles) | 4 icedome | yes | yes | yes | camera starts behind a wall; checked running about |
 | Skater (cap, board) | 5 safari | yes | yes | yes | |
 | Jersey 23 and cap | 9 deptstr | yes | yes | yes | |
@@ -43,7 +43,7 @@ that needs a model file: new hands, springs (bouncing ears, fur, tail), a dense 
 | Werewolf | 14 ghost | yes | yes | yes | built with NOHANDS=1 to keep its claws |
 | Cowboy | 16 grandc | yes | yes | yes | |
 | Tarzan | 18 tazhub | yes | yes | yes | checked running about |
-| Ninja | 10 museum | yes | yes | partly | jumping straight to the museum drops Taz into an endless fall; the costume shows for ~24 frames before each respawn takes it off, which was enough to record and to see it drawn |
+| Ninja | 10 museum | yes | yes | partly | jumping straight to the museum drops Taz into an endless fall; the costume shows for ~24 frames before each respawn takes it off, which was enough to record and to see it drawn. Placing him does not help: with his fall speed zeroed he still drops through the street and the marble hall from a standstill, so the jump leaves the level without a floor (2026-11-27). Needs the entry through the city hub; its museum entrance is not one of the 0x44 door objects |
 | Explorer hat and whip | 15 goldmine | n/a | n/a | yes | the goldmine costume only adds a hat and whip; Taz's own model (and file) is used |
 
 ### Bonus levels
@@ -115,7 +115,7 @@ most of these characters already animate their floppy parts with their own bones
 | Elephant | 7 zooboss (Elephant Pong) | 1d44544a0d4eebd7 | yes | ears swing (2 springs); checked drawn whole close up, the swing itself not caught on screen. The ears are thin plates whose rim points serve front and back; `tools/normals.py` (PLATES) gives each side its own normals, so they no longer shade dark or show black outline wedges |
 | Yosemite Sam | 7 zooboss (in the stands), 17 westboss | dba92834ff14d74c | no | never close in play: about 40 pixels wide at 2880x1800 in westboss (top edge of the screen) and as far off in the zooboss stands. A dense file was built and drew whole in westboss with no crash (2026-11-15) but shows nothing at that size, so it was dropped |
 | Gossamer | 7 zooboss (goalkeeper, close to camera) | 01036cdeaa4e7c03 | yes | dense surface, no springs, built with `PERBONE=1`. Checked in his goal celebrations (2026-11-15): facing the camera and covering his face, smooth outline, clean brows, no black shards (`qa/models-check/pairs/gossamer-fixed.jpg`; `gossamer-face-auto-old-fixed.jpg` shows automatic smoothing, the first dense build and this one). The first build had sawtooth brows: the game drew him with its one-bone shader, which ignores a dense model's blended weights. `qa/gossamer.sh <out>` takes the shots. |
-| Tweety | zoo hub (flies around the Tutorial 1 book) | 9ccd72fd73041cc4 | yes | dense surface only. All 12 bones moved in 28 frames. Checked from behind at about 250 pixels tall (2026-11-15): drawn whole, head round, head feathers there. Not seen from the front in game, and not compared with the automatic smoothing in the same view Rebuilt with `PERBONE=1` after the checks described here; the rebuilt file loads but has not been looked at in game. |
+| Tweety | zoo hub (flies around the Tutorial 1 book) | 9ccd72fd73041cc4 | yes | dense surface only. All 12 bones moved in 28 frames. Checked from behind at about 250 pixels tall (2026-11-15): drawn whole, head round, head feathers there. Not seen from the front in game, and not compared with the automatic smoothing in the same view Rebuilt with `PERBONE=1`; the rebuilt file checked 2026-11-27 in the Tutorial 1 scene, where she flies up to the camera: whole, rounded, head feathers there, face clean from the side. Her lopsided head is the original model's shape (same in the Original 2002 look). |
 | Zookeeper | 14 ghost (recorded), 4 icedome (seen) | adbdee12889a7268 | yes | dense surface only. Checked once in game, catching Taz in the ghost level (2026-11-15): drawn whole with his net, smooth outline, no gaps. Face hidden under the cap in that shot; not compared with the automatic smoothing in the same view Rebuilt with `PERBONE=1` after the checks described here; the rebuilt file loads but has not been looked at in game. |
 | She-Devil, Daffy, Elmer, Wile E. Coyote, Sylvester, Mecha-Tweety | cutscenes only (She-Devil also the 2-player levels) | one per cutscene | no | cutscene versions are separate models (`cs05_shedevil.obe` ...); a scene jump skips intros once seen (save flag at 0x6c9860 + slot*0x13d4 + scene*0xa8, bit 1) |
 
