@@ -1,4 +1,4 @@
-// d3d8.dll proxy: loads the system d3d8 and patches vtable entries we care about.
+// d3d8.dll proxy: runs the game on Direct3D 9 through d3d8to9 and patches vtable entries we care about.
 #define COBJMACROS
 #include <stdarg.h>
 #include <stdio.h>
@@ -76,6 +76,7 @@ static HRESULT WINAPI hook_Present(IDirect3DDevice8 *dev, CONST RECT *src, CONST
     static int scene = -1;
     if (settings.exe_known && SCENE != scene) log_line("scene %d", scene = SCENE);
     if (!settings.passthrough) {
+        look_frame(dev);
         textures_frame();
         if (settings.exe_known) controls_frame();
         settings_frame();
@@ -87,7 +88,12 @@ static HRESULT WINAPI hook_Present(IDirect3DDevice8 *dev, CONST RECT *src, CONST
         capture_frame();
     }
     if (settings.fps_limit > 0) limit_frame_rate(settings.fps_limit);
-    return real_Present(dev, src, dst, wnd, dirty);
+    LARGE_INTEGER t0, t1, f;
+    QueryPerformanceCounter(&t0);
+    HRESULT hr = real_Present(dev, src, dst, wnd, dirty);
+    QueryPerformanceCounter(&t1), QueryPerformanceFrequency(&f);
+    look_present_ms((t1.QuadPart - t0.QuadPart) * 1000.0 / f.QuadPart);
+    return hr;
 }
 
 // A key going down while the game is the window in front (keys typed into other programs don't count).
@@ -126,7 +132,7 @@ static HRESULT WINAPI hook_CreateDevice(IDirect3D8 *d3d, UINT adapter, D3DDEVTYP
     log_line("CreateDevice -> 0x%08lx, %u samples", hr, pp->MultiSampleType);
     if (SUCCEEDED(hr) && !real_Present) {
         patch((void **)&(*dev)->lpVtbl->Present, hook_Present, (void **)&real_Present);
-        if (!settings.passthrough) textures_install(*dev), display_install(*dev), smooth_install(*dev);
+        if (!settings.passthrough) textures_install(*dev), display_install(*dev), smooth_install(*dev), merge_install(*dev);
     }
     return hr;
 }
@@ -156,17 +162,8 @@ __declspec(dllexport) IDirect3D8 *WINAPI Direct3DCreate8(UINT sdk)
 {
     static int checked;
     if (!checked++ && in_game && !settings.passthrough) check_version();
-    char path[MAX_PATH];
-    GetSystemDirectoryA(path, MAX_PATH);
-    strcat(path, "\\d3d8.dll");
-    HMODULE real = LoadLibraryA(path);
-    IDirect3D8 *(WINAPI *create)(UINT) = real ? (void *)GetProcAddress(real, "Direct3DCreate8") : NULL;
-    if (!create) {
-        log_line("could not load %s", path);
-        return NULL;
-    }
-    IDirect3D8 *d3d = create(sdk);
-    log_line("Direct3DCreate8(%u) -> %p", sdk, d3d);
+    IDirect3D8 *d3d = d3d8to9_create();
+    log_line("Direct3DCreate8(%u) -> %p (on Direct3D 9)", sdk, d3d);
     if (d3d && in_game && !real_CreateDevice)
         patch((void **)&d3d->lpVtbl->CreateDevice, hook_CreateDevice, (void **)&real_CreateDevice);
     return d3d;
@@ -200,6 +197,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         asserts_patch();
         real_OutputDebugStringA = patch_import("KERNEL32.dll", "OutputDebugStringA", hook_OutputDebugStringA);
     } else if (reason == DLL_PROCESS_DETACH) {
+        if (!game_quit) log_line("process ending, and the game did not ask to quit (Wine or a driver ended it)");
         textures_report();
     }
     return TRUE;

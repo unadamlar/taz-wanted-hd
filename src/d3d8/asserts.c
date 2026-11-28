@@ -1,4 +1,4 @@
-// Diagnostics for silent quits. The game's assert handler (0x48eb10) prints to a debug log the
+// Diagnostics for silent quits, plus guards for game bugs that crash. The game's assert handler (0x48eb10) prints to a debug log the
 // release never opens, then exits; we log the failure first. The save written on each scene change
 // (FUN_004b8de0) calls FUN_004a1de0 first, which is a no-op unless the label check below says the
 // game is missing something; wrapping it logs the scene request.
@@ -15,8 +15,11 @@ static void __cdecl on_assert(const char *file, int line, const char *msg)
     ((void(__cdecl *)(int))0x5dbfd4)(1); // the game's own exit()
 }
 
+int scene_requests;
+
 __attribute__((used)) static void __cdecl log_scene_request(int scene)
 {
+    scene_requests++;
     log_line("saving on the way to scene %d", scene);
 }
 
@@ -39,8 +42,11 @@ static void WINAPI hook_PostQuitMessage(int code)
     real_PostQuitMessage(code);
 }
 
+int game_quit;
+
 static void WINAPI hook_ExitProcess(UINT code)
 {
+    game_quit = 1;
     log_line("game quits: ExitProcess(%u) from %p", code, __builtin_return_address(0));
     real_ExitProcess(code);
 }
@@ -73,6 +79,17 @@ static LONG WINAPI on_exception(EXCEPTION_POINTERS *e)
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
+// Objects of kind 0x35 (made by 0x4236c0) get touch handler 0x4234a0, which looks the toucher up in the player
+// table by its player byte (+0x20f). A non-player (-1) that gets that far read junk as a pointer and crashed
+// (Taz boss 1, seconds after the test win). Skip exactly that case: the handler's own early outs stay.
+static int __cdecl player_touch(BYTE *t, BYTE *obj)
+{
+    if (*(signed char *)(t + 0x20f) < 0 && !*(DWORD *)(t + 0x1d8) && !(t[0x1f8] & 8) &&
+        *(int *)(*(BYTE **)(t + 0x1c8) + 0xb0) != 0x19 && *(int *)(obj + 0x1fc) == 0x35 && **(BYTE **)(obj + 0x1e8))
+        return 0;
+    return ((int(__cdecl *)(BYTE *, BYTE *))0x4234a0)(t, obj);
+}
+
 void asserts_patch(void)
 {
     AddVectoredExceptionHandler(1, on_exception);
@@ -89,4 +106,8 @@ void asserts_patch(void)
 
     static const BYTE orig[] = { 0xa1, 0xf0, 0x4a, 0x6f, 0x00 }; // mov eax, [0x6f4af0]
     write_jump(ASSERT_HANDLER, orig, sizeof orig, 0xe9, on_assert);
+
+    static const BYTE touch_handler[] = { 0xa0, 0x34, 0x42, 0x00 }; // push 0x4234a0
+    void *touch = player_touch;
+    write_code((BYTE *)0x4236ea, touch_handler, &touch, 4);
 }

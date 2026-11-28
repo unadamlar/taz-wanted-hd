@@ -85,7 +85,8 @@ cropped to where only the textures differ.</sub>
 3. Click Play now, or start the game as usual.
 
 Windows may say "Windows protected your PC" because the installer isn't signed: More info > Run
-anyway. To remove the mod, run the installer again and click Uninstall.
+anyway. The installer sets one flag in your `taz.exe` so the game can use 4 GB of memory instead of 2. To remove the mod, run the
+installer again and click Uninstall, which also puts `taz.exe` back exactly as it was.
 
 To install by hand, download `taz-wanted-hd-<version>.zip` instead and copy `d3d8.dll` and
 the `taz-hd` folder into the game folder, next to `taz.exe`.

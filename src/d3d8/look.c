@@ -1,0 +1,686 @@
+// Look level 4 (tests=1 and look=4, or a taz-hd\look file holding 4 or 0): sorts the game's draws for hd.c, which
+// renders the level's look data on the Direct3D 9 device. A taz-hd\measure file (N) logs the next N frames' timing.
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "proxy.h"
+#include "game.h"
+#include "hd.h"
+
+// Shader tokens (vs_1_1), for the copy of each lit character shader.
+enum { RT_TEMP, RT_INPUT, RT_CONST, RT_ADDR, RT_RASTOUT, RT_ATTROUT, RT_TEXCRDOUT };
+#define REG(t, n) ((DWORD)(t) << 28 | (DWORD)(n))
+#define r(n) REG(RT_TEMP, n)
+#define c(n) REG(RT_CONST, n)
+#define oT(n) REG(RT_TEXCRDOUT, n)
+#define D(reg, mask) (0x80000000u | (reg) | (DWORD)(mask) << 16)
+#define S(reg) (0x80000000u | (reg) | 0xe40000u)
+enum { MOV = 1, MAD = 4, DP3 = 8, DP4 = 9 };
+
+struct rec { IDirect3DVertexBuffer8 *vb; DWORD shader; UINT stride, start, count; D3DPRIMITIVETYPE type; float m[96][4]; };
+
+static int level, loaded_scene = -1;
+#define PLANET_LOOK 30 // an unused scene number: Planet X's own look data
+#define CONTINUE_LOOK 31 // another: the game-over room every level shares
+#define FRONTEND 1
+static struct rec *recs; static UINT nrecs, cap_recs;     // this frame's character draws, for their sun map
+static HRESULT (WINAPI *draw_real)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT);
+static struct { int frames, want; UINT64 look, tsc; double present_ms; UINT world, game, pieces, merged; LARGE_INTEGER last; } m;
+static UINT stat_world, stat_game;
+
+// Costume pieces the game attaches to characters (a helmet, a hat) are world draws, made by FUN_0055fb50 from the
+// attachment lists (solid at 0x477f1c, see-through at 0x477fca): they get the characters' paint and stay out of the bloom.
+static int attached;
+static int __cdecl draw_attached(void *instance, int a, int b)
+{
+    attached = 1;
+    int r = ((int(__cdecl *)(void *, int, int))0x55fb50)(instance, a, b);
+    attached = 0;
+    return r;
+}
+
+void look_install(void *dp)
+{
+    draw_real = dp;
+    redirect_call((BYTE *)0x477f1c, (void *)0x55fb50, draw_attached);
+    redirect_call((BYTE *)0x477fca, (void *)0x55fb50, draw_attached);
+    char v[8];
+    settings_get("look", "0", v, sizeof v);
+    level = settings.tests && atoi(v) ? 4 : 0;
+}
+
+// The CPU's cycle counter: under Wine QueryPerformanceCounter is a system call, and two per draw were a fifth of the frame.
+static UINT64 ticks(void) { return __builtin_ia32_rdtsc(); }
+
+static void drop_recs(void)
+{
+    for (UINT i = 0; i < nrecs; i++) IDirect3DVertexBuffer8_Release(recs[i].vb);
+    nrecs = 0;
+}
+
+// A world draw leaves our shaders bound for the next one: putting the game's back after each cost Direct3D 9 a full
+// rebind per draw (0.9 ms a frame in the city hub). Any other draw puts them back first (quick_restore).
+static int quick_bound;
+
+// Before a device Reset: everything in the default pool goes, or Reset fails. Reloaded by look_frame.
+void look_reset(IDirect3DDevice8 *dev)
+{
+    quick_bound = 0;
+    hd_reset();
+    drop_recs();
+    merge_device_reset();
+}
+
+static DWORD avail_mb(void)
+{
+    MEMORYSTATUS s;
+    s.dwLength = sizeof s;
+    GlobalMemoryStatus(&s);
+    return (DWORD)(s.dwAvailVirtual >> 20);
+}
+
+// --- matrices (row-vector, as Direct3D) ---------------------------------------------------------
+static void mul4(float o[4][4], const float a[4][4], const float b[4][4])
+{
+    float t[4][4];
+    for (int i = 0; i < 4; i++)
+        for (int j = 0; j < 4; j++) t[i][j] = a[i][0] * b[0][j] + a[i][1] * b[1][j] + a[i][2] * b[2][j] + a[i][3] * b[3][j];
+    memcpy(o, t, sizeof t);
+}
+static void rows_of(float o[4][4], const float a[4][4]) // transpose: shader rows for clip = M p
+{
+    for (int i = 0; i < 4; i++)
+        for (int j = 0; j < 4; j++) o[i][j] = a[j][i];
+}
+static float dot3(const float *a, const float *b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+
+static struct rec *add_rec(void)
+{
+    if (nrecs == cap_recs) {
+        struct rec *grown = realloc(recs, (cap_recs = cap_recs ? cap_recs * 2 : 1024) * sizeof *recs);
+        if (!grown) return NULL;
+        recs = grown;
+    }
+    return &recs[nrecs++];
+}
+
+// --- level 4: the game's draws sorted for hd.c --------------------------------------------------
+static int suspended;              // F11 is on HD or Original: everything stays loaded, nothing of ours draws
+static int remaster(void) { return level && !suspended && hd_loaded(); }
+int look_remaster_available(void) { return level && hd_loaded(); }
+int look_enabled(void) { return level; }
+void look_set_remaster(int on) { suspended = !on; }
+int look_redirected(void) { return remaster() && hd_redirected(); }
+
+void look_target_set(IDirect3DDevice8 *dev, int on_bb)
+{
+    if (remaster()) hd_rebind(d3d9_device(dev), on_bb);
+}
+
+static void depth_batch(IDirect3DDevice8 *dev, IDirect3DBaseTexture8 *tex, UINT nverts, UINT first, UINT tris)
+{
+    textures_bind_own(dev, 0, textures_effective(tex));
+    hd_merge_draw(d3d9_device(dev), nverts, first, tris);
+}
+
+// Once a frame, with the camera set: the sun map if it isn't built, then depth and AO.
+static void prepass(IDirect3DDevice8 *dev)
+{
+    struct IDirect3DDevice9 *d = d3d9_device(dev);
+    hd_camera(d);
+    if (hd_shadow_needed() && (merge_ready() || loaded_scene == PLANET_LOOK)) {
+        hd_shadow_begin(d);
+        merge_each(dev, depth_batch);
+        hd_shadow_end(d);
+    }
+    hd_prepass_begin(d);
+    merge_each(dev, depth_batch);
+    hd_prepass_end(d);
+    merge_state_changed();
+}
+
+// The lit pass of each character shader gets a copy that also outputs world position (oT2) and normal
+// (oT3), from the skinned r0 and r2 through the model's world rows in c60-c62.
+#define NCHAR 32
+static struct { DWORD game, lit; int outline, bones; } chars[NCHAR];
+static int ncopying;
+int look_copying_shader(void) { return ncopying; }
+
+void look_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *decl, const DWORD *fn)
+{
+    static const DWORD ramp[] = { MOV, 0xe0020001, 0xa0ff0030 };             // mov oT1.y, c48.w
+    static const DWORD push[] = { MAD, 0x80070000, 0x80e40002, 0xa0ff0031 }; // mad r0.xyz, r2, c49.w, r0
+    DWORD out[1200];
+    int n = 0, lit = 0, outline = 0;
+    int skin = 0, pos = 0, nor = 2, placed = 0;
+    for (; n < 1024 && fn[n] != 0xffff; n++) {
+        out[n] = fn[n];
+        if (fn[n] == DP4 && (fn[n + 1] & 0x70000000) == REG(RT_RASTOUT, 0) && (fn[n + 3] & 0x70001fff) == c(92)) pos = fn[n + 2] & 0x7ff;
+        if (fn[n] == DP3 && (fn[n + 2] & 0x70000000) == REG(RT_TEMP, 0) && (fn[n + 3] & 0x70001fff) == c(48)) nor = fn[n + 2] & 0x7ff;
+        skin += n >= 2 && fn[n - 2] == DP4 && (fn[n] & 0xf0001fff) == 0x90000000; // dp4 r, v0, c[a0 + row]
+        placed |= n >= 2 && fn[n - 2] == DP4 && (fn[n] & 0xf0001fff) == 0x90000006; // an HD model's per-bone copy reads v6.. instead
+        lit |= !memcmp(fn + n, ramp, sizeof ramp);
+        outline |= !memcmp(fn + n, push, sizeof push);
+    }
+    if ((!lit && !outline && !skin && !placed) || fn[n] != 0xffff) return;
+    int slot = -1;
+    for (int i = 0; i < NCHAR && slot < 0; i++) if (!chars[i].game) slot = i;
+    if (slot < 0) return;
+    chars[slot].game = h, chars[slot].outline = outline, chars[slot].lit = 0, chars[slot].bones = skin / 3;
+    if (outline) return;
+    if (!lit) { // the plain kind has no normal: skin one
+        nor = 2;
+        for (int k = 0; k < (placed ? 3 : skin / 3); k++) {
+            out[n++] = MOV, out[n++] = D(REG(RT_ADDR, 0), 1), out[n++] = 0x80000000u | REG(RT_INPUT, 2) | (DWORD)(k * 0x55) << 16;
+            for (int row = 0; row < 3; row++)
+                out[n++] = DP3, out[n++] = D(r(3), 1 << row), out[n++] = S(REG(RT_INPUT, 3)), out[n++] = S(c(row)) | 0x2000;
+            DWORD w = 0x80000000u | REG(RT_INPUT, 1) | (DWORD)(k * 0x55) << 16;
+            if (!k) out[n++] = 5, out[n++] = D(r(2), 7), out[n++] = S(r(3)), out[n++] = w;     // mul
+            else out[n++] = MAD, out[n++] = D(r(2), 7), out[n++] = S(r(3)), out[n++] = w, out[n++] = S(r(2));
+        }
+    }
+    for (int row = 0; row < 3; row++) {
+        out[n++] = DP4, out[n++] = D(oT(2), 1 << row), out[n++] = S(r(pos)), out[n++] = S(c(60 + row));
+    }
+    for (int row = 0; row < 3; row++) {
+        out[n++] = DP3, out[n++] = D(oT(3), 1 << row), out[n++] = S(r(nor)), out[n++] = S(c(60 + row));
+    }
+    out[n++] = MOV, out[n++] = D(oT(4), 7), out[n++] = S(REG(RT_INPUT, 0));   // bind pose, for the fur
+    out[n++] = MOV, out[n++] = D(oT(5), 7), out[n++] = S(REG(RT_INPUT, 3));
+    out[n] = 0xffff;
+    ncopying++;
+    if (FAILED(IDirect3DDevice8_CreateVertexShader(dev, decl, out, &chars[slot].lit, 0))) chars[slot].lit = 0, log_line("look: no lit copy of shader %#lx", h);
+    ncopying--;
+}
+
+void look_shader_deleted(IDirect3DDevice8 *dev, DWORD h)
+{
+    for (int i = 0; i < NCHAR; i++) {
+        if (chars[i].game != h) continue;
+        if (chars[i].lit) IDirect3DDevice8_DeleteVertexShader(dev, chars[i].lit);
+        chars[i].game = chars[i].lit = 0;
+    }
+}
+
+static int cam_on;
+static D3DMATRIX real_view, real_proj; // the game's own camera, also while the test camera replaces it
+
+// Inverse of the camera's clip rows, for turning a character's c92-c95 into its world rows.
+static int invert(const float in[4][4], float out[4][4])
+{
+    float a[4][8];
+    for (int y = 0; y < 4; y++)
+        for (int x = 0; x < 8; x++) a[y][x] = x < 4 ? in[y][x] : (x - 4 == y);
+    for (int col = 0; col < 4; col++) {
+        int piv = col;
+        for (int y = col + 1; y < 4; y++) if (fabsf(a[y][col]) > fabsf(a[piv][col])) piv = y;
+        if (a[piv][col] == 0) return 0;
+        for (int x = 0; x < 8; x++) { float tmp = a[col][x]; a[col][x] = a[piv][x]; a[piv][x] = tmp; }
+        float d = a[col][col];
+        for (int x = 0; x < 8; x++) a[col][x] /= d;
+        for (int y = 0; y < 4; y++)
+            if (y != col) {
+                float k = a[y][col];
+                for (int x = 0; x < 8; x++) a[y][x] -= k * a[col][x];
+            }
+    }
+    for (int y = 0; y < 4; y++) memcpy(out[y], a[y] + 4, 16);
+    return 1;
+}
+
+static void model_rows(const float wvp[4][4], float rows[4][4])
+{
+    float vp[4][4], vc[4][4], inv[4][4];
+    mul4(vp, (const float (*)[4])&real_view, (const float (*)[4])&real_proj);
+    rows_of(vc, vp);
+    if (!invert(vc, inv)) { memset(rows, 0, 64); rows[0][0] = rows[1][1] = rows[2][2] = rows[3][3] = 1; return; }
+    for (int y = 0; y < 4; y++)
+        for (int x = 0; x < 4; x++)
+            rows[y][x] = inv[y][0] * wvp[0][x] + inv[y][1] * wvp[1][x] + inv[y][2] * wvp[2][x] + inv[y][3] * wvp[3][x];
+}
+
+int look_char_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
+                   HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT), HRESULT *hr)
+{
+    if (!remaster() || !hd_redirected()) return 0;
+    DWORD vs = 0;
+    IDirect3DDevice8_GetVertexShader(dev, &vs);
+    for (int i = 0; i < NCHAR; i++) {
+        if (chars[i].game != vs) continue;
+        if (chars[i].outline) return *hr = D3D_OK, 1; // no black outline in this light
+        if (!chars[i].lit) return 0;
+        static float last[4][4], rows[4][4];
+        float wvp[4][4];
+        IDirect3DDevice8_GetVertexShaderConstant(dev, 92, wvp, 4);
+        if (memcmp(last, wvp, 64)) memcpy(last, wvp, 64), model_rows(wvp, rows);
+        struct IDirect3DDevice9 *d = d3d9_device(dev);
+        DWORD op;
+        IDirect3DDevice8_GetTextureStageState(dev, 0, D3DTSS_COLOROP, &op);
+        float style[4];
+        IDirect3DTexture8 *fur = style_look(dev, style);
+        hd_char_begin(d, rows[0], op == D3DTOP_SELECTARG2 || !textures_bound(0) ? 0 : 1, op == D3DTOP_SELECTARG1 ? 0 : 1, op == D3DTOP_MODULATE2X ? 2 : 1, style, d3d9_texture(fur));
+        if (cam_on) { // the test camera: place the character through it
+            float vp[4][4], clip[4][4], moved[4][4];
+            mul4(vp, (const float (*)[4])hd_view(), (const float (*)[4])hd_proj());
+            rows_of(clip, vp);
+            for (int a = 0; a < 4; a++)
+                for (int b = 0; b < 4; b++) moved[a][b] = clip[a][0] * rows[0][b] + clip[a][1] * rows[1][b] + clip[a][2] * rows[2][b] + clip[a][3] * rows[3][b];
+            IDirect3DDevice8_SetVertexShaderConstant(dev, 92, moved, 4);
+        }
+        IDirect3DDevice8_SetVertexShader(dev, chars[i].lit);
+        *hr = draw(dev, type, start, count);
+        IDirect3DDevice8_SetVertexShader(dev, vs);
+        if (cam_on) IDirect3DDevice8_SetVertexShaderConstant(dev, 92, wvp, 4);
+        hd_char_end(d);
+        return 1;
+    }
+    return 0;
+}
+
+static void record_char(IDirect3DDevice8 *dev, DWORD shader, D3DPRIMITIVETYPE type, UINT start, UINT count)
+{
+    DWORD cull;
+    IDirect3DVertexBuffer8 *vb;
+    UINT stride;
+    IDirect3DDevice8_GetRenderState(dev, D3DRS_CULLMODE, &cull);
+    if (cull == D3DCULL_CW || FAILED(IDirect3DDevice8_GetStreamSource(dev, 0, &vb, &stride)) || !vb) return;
+    struct rec *e = add_rec();
+    if (!e) { IDirect3DVertexBuffer8_Release(vb); return; }
+    e->vb = vb, e->shader = shader, e->stride = stride, e->start = start, e->count = count, e->type = type;
+    IDirect3DDevice8_GetVertexShaderConstant(dev, 0, e->m, 96);
+}
+
+// The characters' sun map for the next frame, from the draws recorded in this one.
+static void char_shadows(IDirect3DDevice8 *dev)
+{
+    if (!nrecs) return;
+    struct IDirect3DDevice9 *d = d3d9_device(dev);
+    float vp[4][4], vc[4][4], inv[4][4], ctr[3] = { 0 }, best = 1e30f, eye[3];
+    const float *v = hd_view();
+    mul4(vp, (const float (*)[4])&real_view, (const float (*)[4])&real_proj);
+    rows_of(vc, vp);
+    for (int k = 0; k < 3; k++) eye[k] = -(v[12] * v[k * 4] + v[13] * v[k * 4 + 1] + v[14] * v[k * 4 + 2]);
+    if (invert(vc, inv)) {
+        for (UINT i = 0; i < nrecs; i++) {
+            struct rec *e = &recs[i];
+            for (int y = 0; y < 4; y++)
+                for (int x = 0; x < 4; x++)
+                    e->m[88 + y][x] = inv[y][0] * e->m[92][x] + inv[y][1] * e->m[93][x] + inv[y][2] * e->m[94][x] + inv[y][3] * e->m[95][x];
+            float dd = 0;
+            for (int k = 0; k < 3; k++) dd += powf(e->m[88 + k][3] - eye[k], 2);
+            if (dd < best) best = dd, ctr[0] = e->m[88][3], ctr[1] = e->m[89][3], ctr[2] = e->m[90][3];
+        }
+        DWORD old = 0;
+        IDirect3DDevice8_GetVertexShader(dev, &old);
+        IDirect3DDevice8_BeginScene(dev);
+        hd_cmap_begin(d, ctr);
+        const float (*clip)[4] = (const float (*)[4])hd_cmap_clip();
+        for (UINT i = 0; i < nrecs; i++) {
+            struct rec *e = &recs[i];
+            float lc[4][4];
+            for (int a = 0; a < 4; a++)
+                for (int b = 0; b < 4; b++) lc[a][b] = clip[a][0] * e->m[88][b] + clip[a][1] * e->m[89][b] + clip[a][2] * e->m[90][b] + clip[a][3] * e->m[91][b];
+            IDirect3DVertexBuffer8_AddRef(e->vb);
+            if (IDirect3DVertexBuffer8_Release(e->vb) <= 1) continue; // freed by a scene change since: drawing it crashes in DXVK
+            int bones = 3;
+            for (int c = 0; c < NCHAR; c++) if (chars[c].game == e->shader) bones = chars[c].bones;
+            hd_cmap_draw(d, d3d9_vb(e->vb), e->stride, e->type, e->start, e->count, e->m[0], lc[0], bones);
+        }
+        hd_cmap_end(d);
+        IDirect3DDevice8_EndScene(dev);
+        IDirect3DDevice8_SetVertexShader(dev, old);
+        merge_state_changed();
+    }
+    drop_recs();
+}
+
+// Test aid: a taz-hd\look-cam file "ex ey ez tx ty tz p00 p11" replaces the game's camera at the Remaster look, so
+// shots match the Blender views; an empty file ends it.
+static D3DMATRIX cam_view_m;
+static float cam_p00, cam_p11;
+
+static void read_camera(void)
+{
+    FILE *f = settings.tests ? fopen("taz-hd\\look-cam", "r") : NULL;
+    if (!f) return;
+    float e[3], t[3], z[3], x[3], y[3];
+    cam_on = fscanf(f, "%f %f %f %f %f %f %f %f", &e[0], &e[1], &e[2], &t[0], &t[1], &t[2], &cam_p00, &cam_p11) == 8;
+    fclose(f);
+    DeleteFileA("taz-hd\\look-cam");
+    if (!cam_on) return;
+    for (int k = 0; k < 3; k++) z[k] = t[k] - e[k];
+    float l = sqrtf(dot3(z, z));
+    for (int k = 0; k < 3; k++) z[k] /= l;
+    x[0] = z[2], x[1] = 0, x[2] = -z[0]; // up (0, 1, 0) x z
+    l = sqrtf(dot3(x, x));
+    for (int k = 0; k < 3; k++) x[k] /= l;
+    y[0] = z[1] * x[2] - z[2] * x[1], y[1] = z[2] * x[0] - z[0] * x[2], y[2] = z[0] * x[1] - z[1] * x[0];
+    float m[4][4] = { { x[0], y[0], z[0], 0 }, { x[1], y[1], z[1], 0 }, { x[2], y[2], z[2], 0 }, { -dot3(x, e), -dot3(y, e), -dot3(z, e), 1 } };
+    memcpy(&cam_view_m, m, 64);
+}
+
+const D3DMATRIX *look_camera(D3DTRANSFORMSTATETYPE t, const D3DMATRIX *m, D3DMATRIX *tmp)
+{
+    if (t == D3DTS_VIEW && !(m->_11 == 1 && m->_22 == 1 && m->_33 == 1 && !m->_41 && !m->_42 && !m->_43)) real_view = *m;
+    if (t == D3DTS_PROJECTION && m->_34 == 1) real_proj = *m;
+    if (!cam_on || !remaster()) return m;
+    if (t == D3DTS_PROJECTION && m->_34 == 1) return *tmp = *m, tmp->_11 = cam_p00, tmp->_22 = cam_p11, tmp;
+    if (t == D3DTS_VIEW && !(m->_11 == 1 && m->_22 == 1 && m->_33 == 1 && !m->_41 && !m->_42 && !m->_43)) return &cam_view_m;
+    return m;
+}
+
+static DWORD glowing; // the game's destination blend while one of its glows draws through ours
+static int char_drawing; // a character draw, which writes alpha 0
+static int backdrop;
+
+void look_after_draw(IDirect3DDevice8 *dev)
+{
+    if (char_drawing) hd_char_alpha(d3d9_device(dev), 0), char_drawing = 0;
+    if (glowing) hd_glow_end(d3d9_device(dev), glowing), glowing = 0;
+}
+
+// A game draw with a solid replacement: drawn at the game's own transform, so it follows whatever the game does.
+static int solid_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count)
+{
+    DWORD fvf;
+    IDirect3DVertexBuffer8 *vb = NULL;
+    UINT stride = 0, n = type == D3DPT_TRIANGLESTRIP ? count + 2 : type == D3DPT_TRIANGLELIST ? count * 3 : 0;
+    BYTE *v;
+    UINT64 tex = textures_bound_hash(0);
+    if (api || !n || !hd_solid_texture(tex)) return 0;
+    IDirect3DDevice8_GetVertexShader(dev, &fvf);
+    if (fvf != 0x152 || FAILED(IDirect3DDevice8_GetStreamSource(dev, 0, &vb, &stride)) || !vb) return 0;
+    UINT64 key = 0xcbf29ce484222325ULL;
+    int ok = stride == 36 && SUCCEEDED(IDirect3DVertexBuffer8_Lock(vb, start * 36, n * 36, &v, D3DLOCK_READONLY));
+    if (ok) {
+        for (UINT i = 0; i < n * 36; i += 36) {
+            for (int b = 0; b < 12; b++) key = (key ^ v[i + b]) * 0x100000001b3ULL;
+            for (int b = 28; b < 36; b++) key = (key ^ v[i + b]) * 0x100000001b3ULL;
+        }
+        IDirect3DVertexBuffer8_Unlock(vb);
+    }
+    IDirect3DVertexBuffer8_Release(vb);
+    int proto = ok ? hd_solid_proto(key, tex) : -1;
+    if (proto < 0) return 0;
+    float w[4][4], rows[3][4];
+    IDirect3DDevice8_GetTransform(dev, D3DTS_WORLD, (D3DMATRIX *)w);
+    for (int i = 0; i < 3; i++)
+        for (int j = 0; j < 4; j++) rows[i][j] = w[j][i];
+    if (!hd_solid_claim(proto, rows[0])) return 1;
+    merge_flush(dev);
+    if (hd_prepass_needed()) prepass(dev);
+    hd_solid_draw(d3d9_device(dev), proto, rows[0]);
+    merge_state_changed();
+    return 1;
+}
+
+// The floating logs share the replaced trees' bark, but only they draw it through a world matrix.
+static int moving_bark(IDirect3DDevice8 *dev, UINT64 raw)
+{
+    D3DMATRIX w;
+    return raw == 0x744855ebde27c1b5ULL && hd_hidden(raw) && SUCCEEDED(IDirect3DDevice8_GetTransform(dev, D3DTS_WORLD, &w)) && (w._41 || w._42 || w._43);
+}
+
+// A placed object the look replaced: only its draws go, the same texture elsewhere stays.
+static int swapped_object(IDirect3DDevice8 *dev, UINT64 raw)
+{
+    D3DMATRIX w;
+    return hd_swapped(raw, NULL) && SUCCEEDED(IDirect3DDevice8_GetTransform(dev, D3DTS_WORLD, &w)) && hd_swapped(raw, &w._41);
+}
+
+static void quick_restore(IDirect3DDevice8 *dev)
+{
+    if (!quick_bound) return;
+    quick_bound = 0;
+    DWORD vs;
+    IDirect3DDevice8_GetVertexShader(dev, &vs);
+    hd_world_quick_end(d3d9_device(dev));
+    IDirect3DDevice8_SetVertexShader(dev, vs);
+}
+
+// The 3D picture is complete: what is still held back, then bloom and tone mapping.
+static void finish(IDirect3DDevice8 *dev)
+{
+    struct IDirect3DDevice9 *d = d3d9_device(dev);
+    hd_solid_flush(d);
+    merge_flush(dev);
+    if (!hd_additions_done()) hd_additions(d);
+    hd_post(d);
+    merge_state_changed();
+}
+
+void look_preview_end(IDirect3DDevice8 *dev)
+{
+    quick_restore(dev);
+    if (remaster() && hd_redirected()) finish(dev);
+}
+
+static int draw4(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count)
+{
+    struct IDirect3DDevice9 *d = d3d9_device(dev);
+    if (!merge_on_backbuffer() || hd_post_done()) return quick_restore(dev), 0;
+    if (merge_is_2d(dev)) { quick_restore(dev); // the HUD and menus: finish the 3D picture under them
+        if (loaded_scene == FRONTEND && !api && !hd_post_done() && hd_hidden(textures_bound_hash(0))) { // its painted sky, drawn with no depth test
+            hd_redirect(d);
+            return 0;
+        }
+        if (!hd_redirected()) { // no 3D yet: a paused frame's sky, or a screen the game composes itself (a paper book)
+            UINT64 h2 = textures_bound_hash(0);
+            backdrop |= h2 && !hd_hidden(h2);
+            return 0;
+        }
+        finish(dev);
+        return 0;
+    }
+    if (backdrop) return quick_restore(dev), 0;   // tone mapping would paint over the 2D already on the back buffer
+    hd_redirect(d);
+    if (!hd_redirected()) return quick_restore(dev), 0;
+    hd_sky(d);
+    if (solid_draw(dev, api, type, start, count)) return 1;
+    if (loaded_scene != PLANET_LOOK && merge_draw(dev, api, type, start, count)) return 1; // a few hundred draws: nothing to merge
+    DWORD shader, zwrite, blend, fog, src, dst, op;
+    IDirect3DDevice8_GetRenderState(dev, D3DRS_ALPHABLENDENABLE, &blend);
+    IDirect3DDevice8_GetRenderState(dev, D3DRS_SRCBLEND, &src);
+    IDirect3DDevice8_GetRenderState(dev, D3DRS_DESTBLEND, &dst);
+    IDirect3DDevice8_GetTextureStageState(dev, 0, D3DTSS_COLOROP, &op);
+    // Replacements are opaque: they only need drawing before what blends over them. Flushed at every other draw,
+    // a bed of flowers interleaved with its stems paid a state save per flower (3 ms for 176).
+    if (blend) hd_solid_flush(d);
+    // The tutorial book's halo is one big alpha-blended quad of the ribbon's texture: it is what hazes the view up close.
+    UINT64 sprite = api == 2 && blend && src == D3DBLEND_SRCALPHA && dst == D3DBLEND_INVSRCALPHA ? textures_bound_hash(0) : 0;
+    int halo = sprite == 0x78c161107296791dULL || sprite == 0x23416f5ebf5678ffULL;
+    if (halo || (blend && src == D3DBLEND_SRCALPHA && dst == D3DBLEND_ONE && textures_bound(0) && (op == D3DTOP_MODULATE || op == D3DTOP_MODULATE2X))) {
+        quick_restore(dev);
+        if (!hd_additions_done()) { // sprites go over the finished world
+            if (hd_prepass_needed()) prepass(dev);
+            hd_additions(d), merge_state_changed();
+        }
+        hd_glow_begin(d, op == D3DTOP_MODULATE2X ? 2 : 1, halo ? 0.3f : 1.7f);
+        glowing = dst;
+        return 0;
+    }
+    IDirect3DDevice8_GetVertexShader(dev, &shader);
+    if (IS_VERTEX_SHADER(shader)) {
+        hd_char_alpha(d, 1), char_drawing = 1; // every character draw, ours or the game's (eyes, teeth), stays out of the bloom
+        hd_invalidate();
+        if (hd_prepass_needed()) prepass(dev);
+        if (!hd_additions_done()) hd_additions(d), merge_state_changed();
+        if (api == 0) record_char(dev, shader, type, start, count);
+        return 0;
+    }
+    if ((shader & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW) return 0;
+    UINT64 raw = textures_bound_hash(0);
+    if (raw && (hd_shade(raw) || swapped_object(dev, raw))) return 1;
+    // A cutscene pack's own copy of something the level hides is that cutscene's prop.
+    UINT64 h = raw && hd_hidden(raw) && cutscene_playing() && textures_from_cutscene(textures_bound(0)) ? 0 : raw;
+    int bark = moving_bark(dev, raw);
+    if (h && hd_hidden(h) && !bark) return 1;
+    IDirect3DDevice8_GetRenderState(dev, D3DRS_ZWRITEENABLE, &zwrite);
+    IDirect3DDevice8_GetRenderState(dev, D3DRS_FOGENABLE, &fog);
+    if (!zwrite && !fog && !blend && hd_hidden(raw)) return 1; // its sky, also a cutscene pack's copy of it
+    if (hd_prepass_needed()) prepass(dev);
+    if (blend && !hd_additions_done()) hd_additions(d), merge_state_changed();
+    if (api != 0 || shader != 0x152) return quick_restore(dev), 0;
+    if (loaded_scene == PLANET_LOOK) quick_restore(dev);
+    if (loaded_scene == PLANET_LOOK && hd_space_begin(d, raw)) { // a redrawn backdrop panel, still at the game's slow turn
+        draw_real(dev, type, start, count);
+        hd_space_end(d);
+        merge_state_changed();
+        return 1;
+    }
+    if (loaded_scene == PLANET_LOOK && !zwrite && !fog) { // Planet X's painted space: unlit, lifted so the tone curve keeps it
+        if (blend || op != D3DTOP_MODULATE2X) return 0;
+        IDirect3DDevice8_SetTextureStageState(dev, 0, D3DTSS_COLOROP, D3DTOP_MODULATE4X);
+        draw_real(dev, type, start, count);
+        IDirect3DDevice8_SetTextureStageState(dev, 0, D3DTSS_COLOROP, op);
+        return 1;
+    }
+    DWORD op0 = op, a1, op1, tt;
+    IDirect3DDevice8_GetTextureStageState(dev, 0, D3DTSS_COLORARG1, &a1);
+    IDirect3DDevice8_GetTextureStageState(dev, 1, D3DTSS_COLOROP, &op1);
+    IDirect3DDevice8_GetTextureStageState(dev, 0, D3DTSS_TEXTURETRANSFORMFLAGS, &tt);
+    if (op0 != D3DTOP_MODULATE2X || a1 != D3DTA_TEXTURE || op1 != D3DTOP_DISABLE || !textures_bound(0) || tt) return quick_restore(dev), 0;
+    float w[4][4], rows[3][4];
+    IDirect3DDevice8_GetTransform(dev, D3DTS_WORLD, (D3DMATRIX *)w);
+    for (int i = 0; i < 3; i++)
+        for (int j = 0; j < 4; j++) rows[i][j] = w[j][i];
+    if (attached) {
+        quick_restore(dev);
+        float style[4];
+        IDirect3DTexture8 *fur = style_look(dev, style);
+        hd_char_alpha(d, 1), char_drawing = 1;
+        hd_prop_begin(d, rows[0], style, d3d9_texture(fur));
+        draw_real(dev, type, start, count);
+        hd_char_end(d);
+        IDirect3DDevice8_SetVertexShader(dev, shader);
+        return 1;
+    }
+    hd_world_quick(d, rows[0], h);
+    if (bark) hd_world_float(d, -4055.5f); // the pond's surface
+    draw_real(dev, type, start, count);
+    quick_bound = 1;
+    stat_world++;
+    return 1;
+}
+
+// Before each game draw. Returns 1 to skip it.
+int look_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count)
+{
+    stat_game++;
+    DWORD vs = 0;
+    if (quick_bound && (api || !remaster() || (IDirect3DDevice8_GetVertexShader(dev, &vs), vs != 0x152))) quick_restore(dev);
+    if (!remaster()) return 0;
+    UINT64 t0 = ticks();
+    int result = draw4(dev, api, type, start, count);
+    m.look += ticks() - t0;
+    return result;
+}
+
+int look_hidden(UINT64 h) { return hd_hidden(h) || hd_shade(h); }
+
+// The merged static world, between the draws around it.
+void look_merge_begin(IDirect3DDevice8 *dev, IDirect3DVertexBuffer8 *vb, IDirect3DIndexBuffer8 *ib)
+{
+    struct IDirect3DDevice9 *d = d3d9_device(dev);
+    hd_camera(d);
+    if (hd_prepass_needed()) prepass(dev);
+    hd_world_begin(d, NULL);
+    hd_merge_buffers(d, d3d9_vb(vb), d3d9_ib(ib));
+}
+
+void look_merge_texture(IDirect3DDevice8 *dev, IDirect3DBaseTexture8 *tex, UINT64 hash)
+{
+    textures_bind_own(dev, 0, textures_effective(tex));
+    hd_world_material(d3d9_device(dev), hash);
+}
+
+void look_merge_draw(IDirect3DDevice8 *dev, UINT nverts, UINT first, UINT tris)
+{
+    hd_merge_draw(d3d9_device(dev), nverts, first, tris);
+    stat_world++;
+}
+
+void look_merge_end(IDirect3DDevice8 *dev)
+{
+    struct IDirect3DDevice9 *d = d3d9_device(dev);
+    hd_world_end(d);
+    if (!hd_additions_done()) hd_additions(d);
+    merge_state_changed();
+}
+
+// The doors between hubs lead to Planet X, the same model placed far below each of the four hubs' levels.
+// The continue screen's room sits at the same far point in every level.
+static int look_scene(int scene)
+{
+    float eye_x = -(real_view._41 * real_view._11 + real_view._42 * real_view._12 + real_view._43 * real_view._13);
+    float eye_y = -(real_view._41 * real_view._21 + real_view._42 * real_view._22 + real_view._43 * real_view._23);
+    float eye_z = -(real_view._41 * real_view._31 + real_view._42 * real_view._32 + real_view._43 * real_view._33);
+    if (scene >= 2 && fabsf(eye_x - 75000) < 5000 && fabsf(eye_y - 75900) < 5000 && fabsf(eye_z - 74900) < 5000) return CONTINUE_LOOK;
+    return (scene == 3 || scene == 8 || scene == 13 || scene == 18) && eye_y < -60000 ? PLANET_LOOK : scene;
+}
+
+// At Present: level and data, the characters' sun map, measurements.
+void look_frame(IDirect3DDevice8 *dev)
+{
+    FILE *f = settings.tests ? fopen("taz-hd\\look", "r") : NULL;
+    if (f) {
+        int n = level;
+        fscanf(f, "%d", &n);
+        fclose(f);
+        DeleteFileA("taz-hd\\look");
+        n = n ? 4 : 0;
+        if (n != level) log_line("look: level %d", n), merge_reset();
+        level = n;
+    }
+    if ((f = settings.tests ? fopen("taz-hd\\measure", "r") : NULL)) {
+        int n = 300;
+        fscanf(f, "%d", &n);
+        fclose(f);
+        DeleteFileA("taz-hd\\measure");
+        memset(&m, 0, sizeof m);
+        m.frames = -30, m.want = n;
+    }
+    if (settings.tests && level && GetFileAttributesA("taz-hd\\look-reload") != INVALID_FILE_ATTRIBUTES && hd_loaded()) // rereads the look data; hd_frame_end
+        hd_unload(), merge_reset(), loaded_scene = -1;                                                               // deletes the file and reloads the shaders
+    quick_restore(dev);
+    UINT64 t0 = ticks();
+    hd_set_paused(settings.exe_known && GAME_STATE == 3);
+    merge_frame(dev);
+    int scene = settings.exe_known ? look_scene(SCENE) : -1;
+    struct IDirect3DDevice9 *d = d3d9_device(dev);
+    if (level) read_camera(), hd_frame_end(d);
+    if (hd_loaded() && (scene != loaded_scene || !level)) hd_unload(), merge_reset(), loaded_scene = -1;
+    if (level && !hd_loaded() && scene >= 1 && (scene != loaded_scene || hd_lost())) {
+        loaded_scene = scene; // tried once per scene: a scene without data stays on HD
+        // Planet X's data is where it sits in the Taz hub
+        hd_set_origin(scene != PLANET_LOOK || SCENE == 18 ? 0 : 42619.57f, scene != PLANET_LOOK ? 0 : SCENE == 3 ? 81649.812f : SCENE == 8 ? 73662.359f : SCENE == 13 ? 51583.773f : 0, 0);
+        if (hd_load(d, scene)) merge_reset();
+    }
+    if (scene < 1) loaded_scene = -1;
+    if (remaster()) char_shadows(dev);
+    else drop_recs();
+    m.look += ticks() - t0;
+    LARGE_INTEGER t;
+    QueryPerformanceCounter(&t);
+    if (m.frames < 0 && ++m.frames == 0) m.last = t, m.tsc = ticks(), m.look = 0, m.world = m.game = m.pieces = m.merged = 0;
+    else if (m.frames >= 0 && m.last.QuadPart) {
+        m.frames++, m.world += stat_world, m.game += stat_game, m.pieces += merge_stat_pieces, m.merged += merge_stat_draws;
+        if (m.frames == m.want) {
+            LARGE_INTEGER fq;
+            QueryPerformanceFrequency(&fq);
+            double ms = (t.QuadPart - m.last.QuadPart) * 1000.0 / fq.QuadPart / m.frames, per_tick = ms * m.frames / (ticks() - m.tsc);
+            log_line("look: measured level %d%s: %.2f ms/frame (%.1f fps), look code %.2f ms, Present %.2f ms, %u world draws, game issued %u draws, %u of them merged into %u, address space free %lu MB",
+                     level, remaster() ? "" : " (F11 away)", ms, 1000 / ms, m.look * per_tick / m.frames, m.present_ms / m.frames, m.world / m.frames, m.game / m.frames,
+                     m.pieces / m.frames, m.merged / m.frames, avail_mb());
+            m.last.QuadPart = 0;
+        }
+    }
+    stat_world = stat_game = merge_stat_pieces = merge_stat_draws = 0;
+}
+
+void look_present_ms(double ms)
+{
+    backdrop = 0; // here, so the mod's own messages drawn at Present don't count as the game's 2D screen
+    if (m.frames > 0 && m.last.QuadPart) m.present_ms += ms;
+}

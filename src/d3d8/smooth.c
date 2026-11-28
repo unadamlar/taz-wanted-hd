@@ -38,6 +38,7 @@ static int nshaders;
 
 static HRESULT (WINAPI *real_CreateVertexShader)(IDirect3DDevice8 *, CONST DWORD *, CONST DWORD *, DWORD *, DWORD);
 static HRESULT (WINAPI *real_CreateVertexBuffer)(IDirect3DDevice8 *, UINT, DWORD, DWORD, D3DPOOL, IDirect3DVertexBuffer8 **);
+static HRESULT (WINAPI *real_DeleteVertexShader)(IDirect3DDevice8 *, DWORD);
 
 static void flush(void)
 {
@@ -52,15 +53,28 @@ static void flush(void)
 static HRESULT WINAPI hook_CreateVertexShader(IDirect3DDevice8 *dev, CONST DWORD *decl, CONST DWORD *fn, DWORD *h, DWORD usage)
 {
     HRESULT hr = real_CreateVertexShader(dev, decl, fn, h, usage);
+    if (look_copying_shader()) return hr;
+    if (SUCCEEDED(hr) && decl && !memcmp(decl + 0, smooth_decl, 7 * sizeof *decl)) look_shader_created(dev, *h, decl, fn);
     if (SUCCEEDED(hr) && decl && !memcmp(decl, smooth_decl, sizeof smooth_decl) && nshaders < 16) shaders[nshaders++] = *h, style_shader_created(*h, fn), mesh_shader_created(dev, *h, fn);
     return hr;
+}
+
+// The game deletes and remakes its shaders on a device reset. A handle is a pointer under d3d8to9, so none may be kept.
+static HRESULT WINAPI hook_DeleteVertexShader(IDirect3DDevice8 *dev, DWORD h)
+{
+    for (int i = 0; i < nshaders; i++)
+        if (shaders[i] == h) shaders[i--] = shaders[--nshaders];
+    look_shader_deleted(dev, h);
+    style_shader_deleted(h);
+    mesh_shader_deleted(dev, h);
+    return real_DeleteVertexShader(dev, h);
 }
 
 // A new buffer at the address of one we cached means the old one is gone.
 static HRESULT WINAPI hook_CreateVertexBuffer(IDirect3DDevice8 *dev, UINT len, DWORD usage, DWORD fvf, D3DPOOL pool, IDirect3DVertexBuffer8 **vb)
 {
     HRESULT hr = real_CreateVertexBuffer(dev, len, usage, fvf, pool, vb);
-    if (SUCCEEDED(hr)) mesh_forget(*vb);
+    if (SUCCEEDED(hr)) mesh_forget(*vb), merge_vb_created(*vb);
     if (SUCCEEDED(hr) && !creating) // ours can land at a freed buffer's address too; that's no reason to drop the cache
         for (int i = 0; i < nmeshes; i++)
             if (meshes[i].src == *vb) { flush(); break; }
@@ -394,4 +408,5 @@ void smooth_install(IDirect3DDevice8 *dev)
     IDirect3DDevice8Vtbl *vt = dev->lpVtbl;
     patch((void **)&vt->CreateVertexShader, hook_CreateVertexShader, (void **)&real_CreateVertexShader);
     patch((void **)&vt->CreateVertexBuffer, hook_CreateVertexBuffer, (void **)&real_CreateVertexBuffer);
+    patch((void **)&vt->DeleteVertexShader, hook_DeleteVertexShader, (void **)&real_DeleteVertexShader);
 }

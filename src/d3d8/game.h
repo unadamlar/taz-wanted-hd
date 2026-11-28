@@ -2,6 +2,7 @@
 // code that runs every frame checks settings.exe_known before touching them.
 #pragma once
 #define SCENE (*(const BYTE *)0x704cf0)          // 0, 1: menus; from 2: in play
+#define GAME_STATE (*(const int *)0x6c8c60)     // 1 playing, 3 paused
 #define PLAYER (*(BYTE **)0x6c8c80)              // player one's actor
 #define GAME ((void *)0x6c8c18)                  // the game object its scene change takes
 #define GAME_WINDOW (*(HWND *)0x753724)

@@ -52,19 +52,20 @@ static void op(DWORD o, DWORD d, DWORD s0, DWORD s1, DWORD s2, int n) // n opera
 #define OP3(o, d, a, b, cc) op(o, d, a, b, cc, 3)
 
 // Skinning as the game's shaders do it: up to 3 bones (palette offsets in v2, weights in v1), world
-// position in r0 (w = 1), unit normal in r2.
-static void skin(void)
+// position in r0 (w = 1), unit normal in r2. With places (mesh.c): six bones, each moving its own.
+static void skin(int places)
 {
-    for (int k = 0; k < 3; k++) {
-        OP1(MOV, D(a0, X), SR(v(2), k));
-        for (int row = 0; row < 3; row++) OP2(DP4, D(r(1), 1 << row), S(v(0)), S(c(row)) | REL);
+    for (int k = 0; k < (places ? 6 : 3); k++) {
+        int w = k < 3 ? 1 : 12, part = k % 3;
+        OP1(MOV, D(a0, X), SR(v(k < 3 ? 2 : 13), part));
+        for (int row = 0; row < 3; row++) OP2(DP4, D(r(1), 1 << row), places ? S(v(6 + k)) : S(v(0)), S(c(row)) | REL);
         for (int row = 0; row < 3; row++) OP2(DP3, D(r(3), 1 << row), S(v(3)), S(c(row)) | REL);
         if (!k) {
             OP2(MUL, D(r(0), XYZ), S(r(1)), SR(v(1), 0));
             OP2(MUL, D(r(2), XYZ), S(r(3)), SR(v(1), 0));
         } else {
-            OP3(MAD, D(r(0), XYZ), S(r(1)), SR(v(1), k), S(r(0)));
-            OP3(MAD, D(r(2), XYZ), S(r(3)), SR(v(1), k), S(r(2)));
+            OP3(MAD, D(r(0), XYZ), S(r(1)), SR(v(w), part), S(r(0)));
+            OP3(MAD, D(r(2), XYZ), S(r(3)), SR(v(w), part), S(r(2)));
         }
     }
     OP1(MOV, D(r(0), W), SR(v(0), 3));
@@ -114,11 +115,11 @@ static void tuft(void)
     OP2(MUL, D(r(3), Y), SR(r(3), 1), SR(r(5), 0));
 }
 
-static void make_lit_vs(void)
+static void make_lit_vs(int places)
 {
     len = 0;
     code[len++] = 0xfffe0101;
-    skin();
+    skin(places);
     finish(49, 50);                                         // r4.xyz = to camera, r5.w = 1 / distance
     OP2(MUL, D(r(4), XYZ), S(r(4)), SR(r(5), 3));           // V
     OP2(ADD, D(r(6), XYZ), S(c(48)), S(r(4)));
@@ -137,11 +138,11 @@ static void make_lit_vs(void)
     code[len++] = 0xffff;
 }
 
-static void make_outline_vs(void)
+static void make_outline_vs(int places)
 {
     len = 0;
     code[len++] = 0xfffe0101;
-    skin();
+    skin(places);
     OP2(DP3, D(r(3), X), S(r(2)), S(c(80)));
     OP3(MAD, D(r(3), X), SR(r(3), 0), SR(c(81), 0), SR(c(81), 1));
     OP2(MAX, D(r(3), X), SR(r(3), 0), SR(c(81), 2));
@@ -288,19 +289,21 @@ static IDirect3DTexture8 *make_eye(IDirect3DDevice8 *dev)
 
 static struct { IDirect3DTexture8 *light, *shine; } looks[STYLES];
 static IDirect3DTexture8 *fur, *eye;
-static DWORD lit_vs, outline_vs, ps, lit_shader, outline_shader;
+static DWORD lit_vs[2], outline_vs[2], ps, lit_shader, outline_shader; // [1]: for models with per-bone places
 static int failed;
 static float light[4] = { 0.7f, 0.2f, -0.7f, 0 };
 int style_player; // set by mesh.c while it draws player one's model
 
 static int ready(IDirect3DDevice8 *dev)
 {
-    if (lit_vs || failed) return !failed;
+    if (lit_vs[0] || failed) return !failed;
     failed = 1;
-    make_lit_vs();
-    if (FAILED(IDirect3DDevice8_CreateVertexShader(dev, smooth_decl, code, &lit_vs, 0))) return log_line("style: lit shader failed"), 0;
-    make_outline_vs();
-    if (FAILED(IDirect3DDevice8_CreateVertexShader(dev, smooth_decl, code, &outline_vs, 0))) return log_line("style: outline shader failed"), 0;
+    for (int p = 0; p < 2; p++) {
+        make_lit_vs(p);
+        if (FAILED(IDirect3DDevice8_CreateVertexShader(dev, p ? mesh_places_decl : smooth_decl, code, &lit_vs[p], 0))) return log_line("style: lit shader failed"), 0;
+        make_outline_vs(p);
+        if (FAILED(IDirect3DDevice8_CreateVertexShader(dev, p ? mesh_places_decl : smooth_decl, code, &outline_vs[p], 0))) return log_line("style: outline shader failed"), 0;
+    }
     make_ps();
     if (FAILED(IDirect3DDevice8_CreatePixelShader(dev, code, &ps))) return log_line("style: pixel shader failed"), 0;
     static BYTE px[LW * LH * 4];
@@ -320,7 +323,7 @@ static int ready(IDirect3DDevice8 *dev)
             }
         looks[s].shine = make_texture(dev, LW, 16, 1, px);
     }
-    fur = make_fur(dev);
+    if (!fur) fur = make_fur(dev);
     eye = make_eye(dev);
     failed = 0;
     log_line("style: shaders and lookups ready");
@@ -336,6 +339,12 @@ void style_shader_created(DWORD h, const DWORD *fn)
         if (!memcmp(fn + i, ramp, sizeof ramp)) lit_shader = h;
         if (!memcmp(fn + i, push, sizeof push)) outline_shader = h;
     }
+}
+
+void style_shader_deleted(DWORD h)
+{
+    if (lit_shader == h) lit_shader = 0;
+    if (outline_shader == h) outline_shader = 0;
 }
 
 // Player one's vertex buffer: actor +0x130 -> +0x3c -> +0.
@@ -400,22 +409,50 @@ static void set_tufts(IDirect3DDevice8 *dev, float height)
 
 #define TUFT 24.0f
 
+// How the Remaster look shades this draw: the band's offset and slope, fur strength and highlight, by Taz Style and
+// which of Taz's textures is bound (other characters have none of them, so no fur). Returns the fur map.
+IDirect3DTexture8 *style_look(IDirect3DDevice8 *dev, float out[4])
+{
+    static const float band[STYLES][2] = { { 0.22f, 1.9f }, { 0.02f, 9 }, { 0.5f, 0.85f }, { 0.22f, 1.9f } };
+    static const float furry[STYLES] = { 0.8f, 0, 0.2f, 1.25f };
+    int s = style_player ? settings.taz_style : CURRENT, kind = texture_kind(textures_bound_hash(0));
+    if (s < 0 || s >= STYLES) s = CURRENT;
+    out[0] = band[s][0], out[1] = band[s][1];
+    out[2] = (kind == 2 || kind == 4 ? 1 : kind == 3 ? 0.4f : 0) * furry[s];
+    out[3] = kind == 5 || (kind == 1 && s == SOFT) ? 1.0f : s == SOFT && kind ? 0.06f : 0;
+    if (!fur) fur = make_fur(dev); // not ready(): its shaders would register as the game's character shaders
+    return fur;
+}
+
 HRESULT style_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
                    HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT))
 {
     int s = settings.taz_style;
     DWORD vs = 0;
-    if (!style_player || s <= CURRENT || s >= STYLES || FAILED(IDirect3DDevice8_GetVertexShader(dev, &vs))
-        || (vs != lit_shader && vs != outline_shader) || !ready(dev))
+    HRESULT lit;
+    int styled = style_player && s > CURRENT && s < STYLES;
+    IDirect3DDevice8_GetVertexShader(dev, &vs);
+    int bent = mesh_places_kind(vs), outline = vs == outline_shader || bent == 2;
+    if (look_redirected() && !(styled && outline)) { // the world's light, in every style; the eye keeps its redrawn catchlight
+        IDirect3DBaseTexture8 *game = textures_bound(0);
+        int swap = styled && texture_kind(textures_bound_hash(0)) == 5 && ready(dev);
+        if (swap) textures_bind_own(dev, 0, (IDirect3DBaseTexture8 *)eye);
+        int done = look_char_draw(dev, type, start, count, draw, &lit);
+        if (swap) IDirect3DDevice8_SetTexture(dev, 0, game);
+        if (done) return lit;
+    }
+    if (!style_player || s <= CURRENT || s >= STYLES || (vs != lit_shader && !outline && bent != 1) || !ready(dev))
         return draw(dev, type, start, count);
     HRESULT hr;
-    if (vs == outline_shader) {
+    if (outline) {
         float c[3][4] = { { light[0], light[1], light[2], 0 } };
         if (s == SOFT) memcpy(c[1], (float[4]){ -0.15f, 0.35f, 0.2f, 0 }, 16), memcpy(c[2], (float[4]){ 0.12f, 0.06f, 0.05f, 1 }, 16);
         else memcpy(c[1], (float[4]){ -0.4f, 0.8f, 0.45f, 0 }, 16), memcpy(c[2], (float[4]){ 0.05f, 0.02f, 0.02f, 1 }, 16);
+        if (look_redirected()) // in the world's light the ink is a thin dark brown, not black
+            memcpy(c[1], (float[4]){ -0.2f, 0.42f, 0.26f, 0 }, 16), memcpy(c[2], (float[4]){ 0.16f, 0.08f, 0.05f, 1 }, 16);
         IDirect3DDevice8_SetVertexShaderConstant(dev, 80, c, 3);
         set_tufts(dev, s == FUR && *kind_of(dev, start, count) == 2 ? TUFT : 0);
-        IDirect3DDevice8_SetVertexShader(dev, outline_vs);
+        IDirect3DDevice8_SetVertexShader(dev, outline_vs[bent != 0]);
         hr = draw(dev, type, start, count);
         IDirect3DDevice8_SetVertexShader(dev, vs);
         return hr;
@@ -454,7 +491,7 @@ HRESULT style_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UIN
     }
     IDirect3DBaseTexture8 *game = textures_bound(0);
     if (kind == 5) textures_bind_own(dev, 0, (IDirect3DBaseTexture8 *)eye);
-    IDirect3DDevice8_SetVertexShader(dev, lit_vs);
+    IDirect3DDevice8_SetVertexShader(dev, lit_vs[bent != 0]);
     IDirect3DDevice8_SetPixelShader(dev, ps);
     hr = draw(dev, type, start, count);
     IDirect3DDevice8_SetPixelShader(dev, 0);

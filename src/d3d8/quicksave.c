@@ -1,7 +1,8 @@
 // Quicksave (F5) and quickload (F9). Between two frames, copies all the game's own memory: its one
 // heap block (bInitHeap, allocated once at startup) and taz.exe's globals; quickload copies it back.
 // Textures and sound buffers live outside that memory and are replaced when a level loads or the
-// display is reset, so a quicksave only loads in the same level, before any new textures were created.
+// display is reset, so a quicksave only loads in the same level, while the game has made and freed no texture:
+// the saved memory would point at a freed one (the zoo boss frees a screen effect's render target after a goal).
 #include <string.h>
 #include "proxy.h"
 #include "game.h"
@@ -83,7 +84,7 @@ static void copy_all(int load)
 
 // A cutscene (level intro or outro) is on screen: one of the game's four cutscene slots is past loading.
 // Its sound and models stream in from other threads; a quickload during a boss outro froze the game.
-static int cutscene_playing(void)
+int cutscene_playing(void)
 {
     if (outro_music_held()) return 1;
     for (int i = 0; i < 4; i++) {
@@ -112,7 +113,7 @@ static void quicksave(void)
     DWORD t = GetTickCount();
     copy_all(0);
     saved_scene = SCENE;
-    saved_textures = textures_created;
+    saved_textures = textures_changed;
     log_line("quicksave: scene %d, %lu KB in %lu ms", saved_scene, (saved_heap_size + GLOBALS_SIZE) >> 10, GetTickCount() - t);
     overlay_toast("Quicksaved");
 }
@@ -131,15 +132,16 @@ static void quickload(void)
 {
     if (saved_scene < 0) { overlay_toast("No quicksave yet"); return; }
     if (cutscene_playing()) { overlay_toast("No quickload during a cutscene"); return; }
-    if (SCENE != saved_scene || textures_created != saved_textures || HEAP_BASE != saved_heap_base) {
-        log_line("quickload refused: scene %d (saved %d), textures %lu (saved %lu)", SCENE, saved_scene, textures_created, saved_textures);
+    if (SCENE != saved_scene || textures_changed != saved_textures || HEAP_BASE != saved_heap_base) {
+        log_line("quickload refused: scene %d (saved %d), textures %lu (saved %lu)", SCENE, saved_scene, textures_changed, saved_textures);
+        overlay_toast(SCENE == saved_scene ? "Quicksave lost: the level moved on since" : "Quicksave lost: level or display changed since");
         saved_scene = -1; // that level or display is gone; its quicksave can't come back
-        overlay_toast("Quicksave lost: level or display changed since");
         return;
     }
     stop_newer_sounds();
     DWORD t = GetTickCount();
     copy_all(1);
+    controls_quickloaded();
     log_line("quickload: scene %d in %lu ms", saved_scene, GetTickCount() - t);
     overlay_toast("Quickloaded");
 }

@@ -2,6 +2,12 @@
 #include <windows.h>
 #include <d3d8.h>
 
+IDirect3D8 *d3d8to9_create(void);
+struct IDirect3DDevice9 *d3d9_device(IDirect3DDevice8 *dev); // the real device under d3d8to9
+struct IDirect3DVertexBuffer9 *d3d9_vb(IDirect3DVertexBuffer8 *vb);
+struct IDirect3DIndexBuffer9 *d3d9_ib(IDirect3DIndexBuffer8 *ib);
+struct IDirect3DTexture9 *d3d9_texture(IDirect3DTexture8 *t);
+#define IS_VERTEX_SHADER(handle) ((handle) & 0x80000000) // otherwise an FVF code
 void log_line(const char *fmt, ...);
 void patch(void **slot, void *hook, void **orig);
 void textures_install(IDirect3DDevice8 *dev);
@@ -10,7 +16,7 @@ void textures_frame(void);
 void textures_dump_recent(void);
 void widescreen_patch(void);
 
-struct settings { int hd_textures, hd_models, vsync, antialiasing, fps_limit, smooth, wasd, mouse, draw; float menu_speed; int exe_known, passthrough, taz_style, tests; };
+struct settings { int hd_textures, hd_models, vsync, antialiasing, fps_limit, smooth, wasd, mouse, draw; float menu_speed; int exe_known, passthrough, taz_style, tests, aim_assist; };
 extern struct settings settings;
 void settings_load(void);
 void settings_frame(void);
@@ -37,7 +43,7 @@ void quicksave_patch(void);
 void outro_patch(void);
 int outro_music_held(void);
 void overlay_toast(const char *msg);
-extern DWORD textures_created; // Direct3D textures taz.exe has created so far
+extern DWORD textures_changed; // Direct3D textures taz.exe has created or freed so far
 void widescreen_apply(void);
 void textures_apply(void);
 void textures_reset(IDirect3DDevice8 *dev);
@@ -61,9 +67,11 @@ void menu_patch(void);
 void drawdist_patch(void);
 void drawdist_frame(void);
 void preview_patch(void);
+IDirect3DSurface8 *preview_surface(void);
 void smooth_install(IDirect3DDevice8 *dev);
 void controls_patch(void);
 void controls_frame(void);
+void controls_quickloaded(void);
 void controls_apply(void);
 int controls_row_count(void);
 int controls_capturing(void);
@@ -76,18 +84,71 @@ HRESULT smooth_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UI
                     HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT));
 void capture_frame(void);
 void capture_scene(void);
+extern int scene_requests; // scene changes and level reloads so far (asserts.c)
 void capture_draw(IDirect3DDevice8 *dev, IDirect3DVertexBuffer8 *vb, D3DPRIMITIVETYPE type, UINT start, UINT count);
+extern int capture_world_on;
+void look_install(void *draw);
+int look_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count);
+void look_frame(IDirect3DDevice8 *dev);
+void look_after_draw(IDirect3DDevice8 *dev);
+void look_present_ms(double ms);
+const D3DMATRIX *look_camera(D3DTRANSFORMSTATETYPE t, const D3DMATRIX *m, D3DMATRIX *tmp);
+int look_remaster_available(void);
+int look_enabled(void);
+int settings_remaster_chosen(void);
+void look_set_remaster(int on);
+void look_target_set(IDirect3DDevice8 *dev, int on_bb);
+void look_preview_end(IDirect3DDevice8 *dev);
+int look_redirected(void);
+void look_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *decl, const DWORD *fn);
+void look_shader_deleted(IDirect3DDevice8 *dev, DWORD h);
+int look_copying_shader(void);
+int look_char_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
+                   HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT), HRESULT *hr);
+void look_reset(IDirect3DDevice8 *dev);
+int look_hidden(UINT64 hash);
+int cutscene_playing(void);
+void look_merge_begin(IDirect3DDevice8 *dev, IDirect3DVertexBuffer8 *vb, IDirect3DIndexBuffer8 *ib);
+void look_merge_texture(IDirect3DDevice8 *dev, IDirect3DBaseTexture8 *tex, UINT64 hash);
+void look_merge_draw(IDirect3DDevice8 *dev, UINT nverts, UINT first, UINT tris);
+void look_merge_end(IDirect3DDevice8 *dev);
+void merge_install(IDirect3DDevice8 *dev);
+int merge_draw(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT start, UINT count);
+void merge_flush(IDirect3DDevice8 *dev);
+void merge_frame(IDirect3DDevice8 *dev);
+void merge_reset(void);
+void merge_device_reset(void);
+int merge_on_backbuffer(void);
+void merge_state_changed(void);
+void merge_stage_state(DWORD stage, DWORD type, DWORD value);
+int merge_is_2d(IDirect3DDevice8 *dev);
+int merge_ready(void);
+int textures_from_cutscene(IDirect3DBaseTexture8 *t);
+void merge_each(IDirect3DDevice8 *dev, void (*batch)(IDirect3DDevice8 *, IDirect3DBaseTexture8 *, UINT, UINT, UINT));
+void merge_vb_created(IDirect3DVertexBuffer8 *vb);
+void merge_texture_gone(IDirect3DBaseTexture8 *t);
+extern int merge_stat_pieces, merge_stat_draws;
+IDirect3DBaseTexture8 *textures_effective(IDirect3DBaseTexture8 *game);
+int textures_scrolling(IDirect3DBaseTexture8 *t);
+void capture_world(IDirect3DDevice8 *dev, int api, D3DPRIMITIVETYPE type, UINT count, UINT first, UINT nverts, UINT start_index,
+                   const void *data, UINT stride, const void *idx, D3DFORMAT fmt);
 UINT64 textures_bound_hash(DWORD stage);
 IDirect3DBaseTexture8 *textures_bound(DWORD stage);
 int smooth_character(IDirect3DDevice8 *dev);
 void mesh_forget(IDirect3DVertexBuffer8 *vb);
 void mesh_shader_created(IDirect3DDevice8 *dev, DWORD h, const DWORD *fn);
+void mesh_shader_deleted(IDirect3DDevice8 *dev, DWORD h);
 HRESULT mesh_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
                   HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT));
 extern DWORD presents; // frames shown so far
+extern int game_quit;  // the game itself called ExitProcess
 extern const DWORD smooth_decl[8];
 extern int style_player;
 void style_shader_created(DWORD h, const DWORD *fn);
+void style_shader_deleted(DWORD h);
 int style_is_player(IDirect3DVertexBuffer8 *vb);
+extern const DWORD mesh_places_decl[17];
+int mesh_places_kind(DWORD vs);
+IDirect3DTexture8 *style_look(IDirect3DDevice8 *dev, float out[4]);
 HRESULT style_draw(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE type, UINT start, UINT count,
                    HRESULT (WINAPI *draw)(IDirect3DDevice8 *, D3DPRIMITIVETYPE, UINT, UINT));

@@ -20,6 +20,8 @@ mkdir -p "$out/taz-hd/meshes"
 cp extracted/meshes/out/*.bin "$out/taz-hd/meshes/"
 sed "s/VERSION/$v/" package/README.txt > "$out/README.txt"
 cp LICENSE "$out/LICENSE.txt"
+mkdir -p "$out/taz-hd/licenses" # d3d8to9 is compiled into the DLL; its BSD-2 notice ships with it
+cp third_party/d3d8to9/LICENSE.md "$out/taz-hd/licenses/d3d8to9-LICENSE.txt"
 (cd "$out" && zip -qr -0 "../taz-wanted-hd-$v.zip" .) # PNG and JPEG don't compress further
 tools/pack-installer.py build/installer.exe "$out" "$out-setup.exe"
 ls -la "$out.zip"

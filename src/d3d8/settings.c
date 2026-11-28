@@ -76,6 +76,7 @@ void settings_load(void)
     settings.draw = GetPrivateProfileIntA("taz-hd", "draw_distance", 4, INI);
     if (settings.draw != 1 && settings.draw != 2) settings.draw = 4;
     settings.mouse = GetPrivateProfileIntA("taz-hd", "mouse_sensitivity", 5, INI);
+    settings.aim_assist = GetPrivateProfileIntA("taz-hd", "aim_assist", 0, INI);
     GetPrivateProfileStringA("taz-hd", "controls", "wasd", res, sizeof res, INI);
     settings.wasd = _stricmp(res, "classic") != 0;
     settings.antialiasing = GetPrivateProfileIntA("taz-hd", "antialiasing", 4, INI);
@@ -120,6 +121,7 @@ static struct item items[] = {
     { "Controls", "WASD and mouse, or the original keys", "controls", "wasd", { "wasd", "classic" }, 2, 0, PAUSE | KEYS },
     { "Controls", "Keys, mouse look and layout", "keys", "", { "" }, 0, 0, FRONT },
     { "Mouse Look", "Camera speed when turning with the mouse", "mouse_sensitivity", "5", { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }, 11, 0, PAUSE | KEYS },
+    { "Aim Assist", "Last boss: a spit close to Mecha-Tweety goes straight at him", "aim_assist", "0", { "0", "1" }, 2, 0, KEYS },
     { "Menu Text Speed", "How fast menu text slides in. 1x is the original speed", "menu_text_speed", "3", { "1", "2", "3", "4" }, 4, 0, FRONT },
 };
 
@@ -222,6 +224,7 @@ void setting_step(int i, int dir)
     else if (!strcmp(it->key, "taz_style")) settings.taz_style = style_index(v);
     else if (!strcmp(it->key, "draw_distance")) settings.draw = atoi(v);
     else if (!strcmp(it->key, "mouse_sensitivity")) settings.mouse = atoi(v);
+    else if (!strcmp(it->key, "aim_assist")) settings.aim_assist = atoi(v);
     else if (!strcmp(it->key, "controls")) settings.wasd = strcmp(v, "classic") != 0, controls_apply();
     else if (!strcmp(it->key, "hd_textures")) settings.hd_textures = atoi(v), textures_apply();
     else if (!strcmp(it->key, "antialiasing")) settings.antialiasing = atoi(v), display_change(0, 0, settings.vsync);
@@ -232,21 +235,31 @@ void setting_step(int i, int dir)
     }
 }
 
-// F11 flips between the game's own graphics (original textures, models and draw distance, no smoothing) and
-// the mod's, for comparing. Saved settings are left alone; the menus show the saved values.
+// F11 cycles three looks for comparing: Remaster (the level's look data), HD (the mod's textures and models on
+// the game's renderer) and Original 2002. Nothing is saved and nothing reloads; a scene without look data
+// shows HD for Remaster and keeps the choice for the next scene that has it.
+enum { REMASTER, HD, ORIGINAL };
+
+static int chosen = REMASTER;
+int settings_remaster_chosen(void) { return chosen == REMASTER && look_enabled(); }
+
 void settings_frame(void)
 {
-    static int original, hd_textures, smooth, hd_models, taz_style, draw;
-    if (key_pressed(VK_F11)) {
-        if ((original = !original)) {
+    static int shown = HD, hd_textures, smooth, hd_models, taz_style, draw;
+    int can = look_remaster_available(), now = chosen == REMASTER && !can ? HD : chosen, pressed = key_pressed(VK_F11);
+    if (pressed) chosen = now = now == REMASTER ? HD : now == HD ? ORIGINAL : can ? REMASTER : HD;
+    if (now != shown) {
+        if (now == ORIGINAL) {
             hd_textures = settings.hd_textures, smooth = settings.smooth, hd_models = settings.hd_models, taz_style = settings.taz_style, draw = settings.draw;
             settings.hd_textures = settings.smooth = settings.hd_models = settings.taz_style = 0;
             settings.draw = 1;
-        } else {
+        } else if (shown == ORIGINAL) {
             settings.hd_textures = hd_textures, settings.smooth = smooth, settings.hd_models = hd_models, settings.taz_style = taz_style, settings.draw = draw;
         }
-        textures_apply();
-        overlay_toast(original ? "Original graphics (F11)" : "HD graphics (F11)");
-        log_line("graphics: %s", original ? "original" : "hd");
+        if (now == ORIGINAL || shown == ORIGINAL) textures_apply();
+        shown = now;
+        log_line("graphics: %s", now == REMASTER ? "remaster" : now == HD ? "hd" : "original");
     }
+    look_set_remaster(now == REMASTER);
+    if (pressed) overlay_toast(now == REMASTER ? "Remaster (F11)" : now == HD ? "HD (F11)" : "Original 2002 (F11)");
 }

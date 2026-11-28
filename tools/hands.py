@@ -38,6 +38,7 @@ bm = bmesh.new()
 bm.from_mesh(me)
 deform = bm.verts.layers.deform.active
 uvl = bm.loops.layers.uv.active
+coll = bm.loops.layers.float_color.get('col')  # vertex colours: new faces take the nearest old corner's
 new_faces = []
 
 def build(side):
@@ -66,10 +67,10 @@ def build(side):
         R = min(rs[len(rs) // 2], 6.0) * 1.08  # in game the old fingers look puffier than their corners: smoothing rounds them outwards
         wide = min(R, 0.5 * gap)  # side by side fingers keep a gap
         # Texture coordinates from the nearest point of the old finger, material from its faces.
-        loops = [(l.vert.co.copy(), l[uvl].uv.copy()) for f in bm.faces for l in f.loops if owner(l.vert) in (gindex[prox], gindex[dist]) and side * l.vert.co.x > 140]
+        loops = [(l.vert.co.copy(), l[uvl].uv.copy(), l[coll].copy() if coll else None) for f in bm.faces for l in f.loops if owner(l.vert) in (gindex[prox], gindex[dist]) and side * l.vert.co.x > 140]
         mat = Counter(f.material_index for f in bm.faces if any(owner(v) == gindex[prox] for v in f.verts)).most_common(1)[0][0]
-        def uv_at(p):
-            return min(loops, key=lambda q: (q[0] - p).length_squared)[1]
+        def near(p):
+            return min(loops, key=lambda q: (q[0] - p).length_squared)
         def radius(x, j1=j1, j2=j2, tip=tip, R=R):  # out of the palm, a knuckle, a gentle taper, a second knuckle, a rounded tip
             r = R * (0.72 + 0.28 * smoothstep(j1 - 5, j1 + 1, x))
             r *= 1 - 0.15 * smoothstep(j1, tip, x)
@@ -109,7 +110,10 @@ def build(side):
             faces.append(bm.faces.new((rings[0][(s + 1) % SIDES], rings[0][s], base)))
         for f in faces:
             f.material_index, f.smooth = mat, True
-            for l in f.loops: l[uvl].uv = uv_at(l.vert.co)
+            for l in f.loops:
+                q = near(l.vert.co)
+                l[uvl].uv = q[1]
+                if coll: l[coll] = q[2]
         new_faces.extend(faces)
         shapes.append((gindex[prox], gindex[dist], c, d, across, up, radius, wide / R, weights))
     # Remove the old fingers, then close the palm where they were.
@@ -133,7 +137,11 @@ def build(side):
                 if wt > 1e-3: v[deform][g] = wt
     edges = [e for e in bm.edges if e.is_boundary and all(side * v.co.x > 140 for v in e.verts)]
     filled = bmesh.ops.holes_fill(bm, edges=edges, sides=0)['faces']
-    for f in filled: f.smooth = True
+    for f in filled:
+        f.smooth = True
+        for l in f.loops:  # the palm closed over: the colour of a corner of the same point
+            other = next((m for m in l.vert.link_loops if m.face not in filled), None)
+            if coll and other: l[coll] = other[coll].copy()
     new_faces.extend(filled)
 
 for side in (1, -1):

@@ -25,7 +25,9 @@ What it does
 
 Install (Windows 10 or 11)
 The easy way is the one-file installer from the same download page (taz-wanted-hd-VERSION-setup.exe):
-run it and it finds your game and copies the mod in. From this zip, by hand:
+run it and it finds your game and copies the mod in. It also sets one flag in your taz.exe so the
+game can use 4 GB of memory instead of 2; this changes the file's checksum, and uninstalling puts
+it back exactly. From this zip, by hand (the game then keeps its 2 GB limit, which is enough today):
 1. Copy d3d8.dll and the taz-hd folder into the game folder, next to taz.exe.
 2. Run taz.exe.
 
@@ -108,7 +110,7 @@ The retail PC release, taz.exe dated 2002-07-22
 With another taz.exe you get a one-time warning; HD textures and videos still work.
 
 Uninstall
-Windows installer: run it again and click Uninstall. Linux: ./install.sh --uninstall. Or delete
+Windows installer: run it again and click Uninstall, which also restores taz.exe. Linux: ./install.sh --uninstall. Or delete
 d3d8.dll, taz-hd.ini and the taz-hd folder from the game folder.
 
 Problems
@@ -119,3 +121,4 @@ Upscaling: Real-ESRGAN (Xintao Wang et al., BSD 3-Clause).
 Taz: Wanted is (c) Warner Bros. Entertainment, developed by Blitz Games and published by
 Infogrames. This is an unofficial fan project, not affiliated with or endorsed by them.
 The mod's own code is under the MIT license (LICENSE.txt).
+Direct3D 9 layer: d3d8to9 by Patrick Mours (BSD 2-Clause, taz-hd/licenses/d3d8to9-LICENSE.txt).

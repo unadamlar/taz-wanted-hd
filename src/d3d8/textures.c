@@ -22,8 +22,8 @@
 #define UPLOADS_PER_FRAME 16
 #define MAX_LEVELS 16
 
-struct tex_entry { IDirect3DTexture8 *tex; UINT64 hash; BYTE *bits; INT pitch; int updates, counted; };
-struct rep_entry { UINT64 hash; IDirect3DTexture8 *rep; int users, asked; }; // users: live game textures with this fingerprint
+struct tex_entry { IDirect3DTexture8 *tex; UINT64 hash; BYTE *bits; INT pitch; int updates, counted, cutscene; };
+struct rep_entry { UINT64 hash; IDirect3DTexture8 *rep, *own; int users, asked; }; // own: a loading screen's Remaster version; users: live game textures with this fingerprint
 // A name can point at part of a bigger image (splash screens are split into tiles).
 struct name_entry { UINT64 hash; char *path; UINT x, y, w, h, full_w, full_h; };
 
@@ -33,6 +33,7 @@ struct job {
     UINT64 hash;
     char path[MAX_PATH];
     const struct name_entry *crop;
+    int own; // fills rep_entry.own
     BYTE *dump; // non-NULL: write these BGRA pixels to path instead of loading
     UINT levels, w[MAX_LEVELS], h[MAX_LEVELS];
     BYTE *px[MAX_LEVELS];
@@ -45,7 +46,7 @@ static int ntexs, nreps;
 static CRITICAL_SECTION lock;
 static IDirect3DDevice8 *device;
 static int dumping, dumped, replaced, freed, rebind;
-static struct job *todo, *done;
+static struct job *todo, *tiles, *done, *tiles_done; // tiles: a loading screen, decoded and uploaded before the level queued behind it
 static HANDLE work;
 static double decode_ms;
 static DWORD frame_no; // Presents so far
@@ -99,6 +100,7 @@ static void unuse(struct tex_entry *e)
     e->counted = 0;
     if (!r || --r->users > 0) return;
     r->users = 0;
+    if (r->own) IDirect3DTexture8_Release(r->own), r->own = NULL;
     if (r->rep) {
         IDirect3DTexture8_Release(r->rep);
         r->rep = NULL;
@@ -189,6 +191,22 @@ static BYTE *crop(BYTE *px, UINT *w, UINT *h, const struct name_entry *n)
     return out;
 }
 
+// One split image's tiles come in a row, HD and Remaster alternating: each is decoded once.
+static struct { BYTE *px; UINT w, h; char path[MAX_PATH]; } whole[2];
+
+static BYTE *read_tile(const char *path, int own, UINT *w, UINT *h)
+{
+    if (strcmp(path, whole[own].path)) {
+        free(whole[own].px);
+        whole[own].px = image_read(path, &whole[own].w, &whole[own].h);
+        strcpy(whole[own].path, whole[own].px ? path : "");
+    }
+    size_t n = (size_t)whole[own].w * whole[own].h * 4;
+    BYTE *px = whole[own].px ? malloc(n) : NULL;
+    if (px) memcpy(px, whole[own].px, n), *w = whole[own].w, *h = whole[own].h;
+    return px;
+}
+
 // Decode thread: the only thread that touches WIC, so COM setup stays out of the game's threads.
 static DWORD WINAPI worker(void *arg)
 {
@@ -197,10 +215,12 @@ static DWORD WINAPI worker(void *arg)
         WaitForSingleObject(work, INFINITE);
         for (;;) {
             EnterCriticalSection(&lock);
-            struct job *j = todo;
-            if (j) todo = j->next;
+            struct job **from = tiles ? &tiles : &todo, *j = *from;
+            if (j) *from = j->next;
             LeaveCriticalSection(&lock);
             if (!j) break;
+            if (!j->crop)
+                for (int k = 0; k < 2; k++) free(whole[k].px), whole[k].px = NULL, whole[k].path[0] = 0;
 
             if (j->dump) {
                 if (png_write(j->path, j->w[0], j->h[0], j->dump)) dumped++;
@@ -212,7 +232,7 @@ static DWORD WINAPI worker(void *arg)
             LARGE_INTEGER t0, t1, freq;
             QueryPerformanceCounter(&t0);
             UINT w, h;
-            BYTE *px = image_read(j->path, &w, &h);
+            BYTE *px = j->crop ? read_tile(j->path, j->own, &w, &h) : image_read(j->path, &w, &h);
             if (!px) log_line("could not read %s", j->path);
             if (px && j->crop) px = crop(px, &w, &h, j->crop);
             for (j->levels = 0; px && j->levels < MAX_LEVELS; j->levels++) {
@@ -230,8 +250,9 @@ static DWORD WINAPI worker(void *arg)
             decode_ms += (t1.QuadPart - t0.QuadPart) * 1000.0 / freq.QuadPart;
 
             EnterCriticalSection(&lock);
-            j->next = done;
-            done = j;
+            struct job **to = j->crop ? &tiles_done : &done;
+            j->next = *to;
+            *to = j;
             LeaveCriticalSection(&lock);
         }
     }
@@ -257,8 +278,9 @@ static void queue(struct job *j)
 {
     start_worker();
     EnterCriticalSection(&lock);
-    j->next = todo;
-    todo = j;
+    struct job **to = j->crop ? &tiles : &todo;
+    j->next = *to;
+    *to = j;
     LeaveCriticalSection(&lock);
     SetEvent(work);
 }
@@ -294,32 +316,45 @@ static void queue_dump(UINT64 hash, const D3DSURFACE_DESC *d, const BYTE *bits, 
     queue(j);
 }
 
-static void queue_load(UINT64 hash, const struct name_entry *n)
+static int queue_file(UINT64 hash, const char *path, const struct name_entry *n, int own)
 {
-    char path[MAX_PATH];
-    snprintf(path, sizeof path, REPLACE_DIR "\\%s", n ? n->path : "");
-    if (!n || GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) {
-        n = NULL;
-        snprintf(path, sizeof path, REPLACE_DIR "\\%016llx.png", hash);
-        if (GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) return;
-    }
     struct job *j = calloc(1, sizeof *j);
-    if (!j) return;
+    if (!j) return 0;
     j->hash = hash;
     strcpy(j->path, path);
     j->crop = n && n->full_w ? n : NULL;
+    j->own = own;
     queue(j);
+    return 1;
+}
+
+// Returns how many files were queued. The newest is decoded first, so a loading screen's Remaster version goes last.
+static int queue_load(UINT64 hash, const struct name_entry *n)
+{
+    char path[MAX_PATH];
+    int queued = 0;
+    const struct name_entry *named = n;
+    snprintf(path, sizeof path, REPLACE_DIR "\\%s", n ? n->path : "");
+    if (!n || GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) {
+        named = NULL;
+        snprintf(path, sizeof path, REPLACE_DIR "\\%016llx.png", hash);
+    }
+    if (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) queued = queue_file(hash, path, named, 0);
+    if (n && !strncmp(n->path, "splshscr", 8) && look_enabled()) {
+        snprintf(path, sizeof path, "taz-hd\\look\\screens\\%s", n->path);
+        if (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) queued += queue_file(hash, path, n, 1);
+    }
+    return queued;
 }
 
 // Called once per frame on the render thread: uploads a few finished replacements.
-void textures_frame(void)
+static void upload(void)
 {
-    frame_no++;
     if (!real_CreateTexture) return;
     for (int n = 0; n < UPLOADS_PER_FRAME; n++) {
         EnterCriticalSection(&lock);
-        struct job *j = done;
-        if (j) done = j->next;
+        struct job **from = tiles_done ? &tiles_done : &done, *j = *from;
+        if (j) *from = j->next;
         LeaveCriticalSection(&lock);
         if (!j) break;
 
@@ -335,8 +370,9 @@ void textures_frame(void)
             }
             EnterCriticalSection(&lock);
             struct rep_entry *r = rep_lookup(j->hash, NULL);
-            if (r) r->asked = 0;
-            if (r && r->users > 0 && !r->rep) r->rep = t, t = NULL;
+            if (r && r->asked) r->asked--;
+            IDirect3DTexture8 **slot = r ? (j->own ? &r->own : &r->rep) : NULL;
+            if (slot && r->users > 0 && !*slot) *slot = t, t = NULL;
             rebind = 1; // the original may be bound right now
             LeaveCriticalSection(&lock);
             if (t) IDirect3DTexture8_Release(t); // its texture went away while it loaded
@@ -348,6 +384,12 @@ void textures_frame(void)
             free(j->px[l]);
         free(j);
     }
+}
+
+void textures_frame(void)
+{
+    frame_no++;
+    upload();
 }
 
 static DWORD WINAPI load_missing(void *arg)
@@ -410,7 +452,8 @@ static void load_names(void)
     log_line("%d texture names from %s", n, NAMES_FILE);
 }
 
-static void fingerprint(IDirect3DTexture8 *t, struct tex_entry *e)
+// Returns the entry of a loading screen tile now being decoded.
+static struct rep_entry *fingerprint(IDirect3DTexture8 *t, struct tex_entry *e)
 {
     D3DSURFACE_DESC d;
     UINT bpp;
@@ -419,7 +462,7 @@ static void fingerprint(IDirect3DTexture8 *t, struct tex_entry *e)
     e->counted = 0;
     if (FAILED(IDirect3DTexture8_GetLevelDesc(t, 0, &d)) || !(bpp = bytes_per_pixel(d.Format))) {
         unuse(&old);
-        return;
+        return NULL;
     }
 
     UINT64 h = 0xcbf29ce484222325ULL;
@@ -439,9 +482,13 @@ static void fingerprint(IDirect3DTexture8 *t, struct tex_entry *e)
     struct rep_entry *r = busy && !n ? NULL : rep_lookup(e->hash, &fresh);
     if (r) r->users++, e->counted = 1;
     unuse(&old); // after counting this one, so an unchanged texture keeps its replacement
-    if (!r) return;
+    if (!r) return NULL;
     if (dumping && fresh && !busy) queue_dump(e->hash, &d, e->bits, e->pitch);
-    if (settings.hd_textures && !r->rep && !r->asked) r->asked = 1, queue_load(e->hash, n);
+    if (settings.hd_textures && !r->rep && !r->asked) {
+        int queued = queue_load(e->hash, n);
+        r->asked = n && n->full_w ? queued : 1; // a tile with no file has nothing to wait for
+    }
+    return n && n->full_w && r->asked ? r : NULL;
 }
 
 static IDirect3DBaseTexture8 *replacement_for(IDirect3DBaseTexture8 *bt)
@@ -450,7 +497,7 @@ static IDirect3DBaseTexture8 *replacement_for(IDirect3DBaseTexture8 *bt)
     EnterCriticalSection(&lock);
     struct tex_entry *e = tex_lookup((IDirect3DTexture8 *)bt, 0);
     struct rep_entry *r = e && e->hash ? rep_lookup(e->hash, NULL) : NULL;
-    IDirect3DBaseTexture8 *rep = r ? (IDirect3DBaseTexture8 *)r->rep : NULL;
+    IDirect3DBaseTexture8 *rep = r ? (IDirect3DBaseTexture8 *)(r->own && settings_remaster_chosen() ? r->own : r->rep) : NULL;
     LeaveCriticalSection(&lock);
     return rep;
 }
@@ -474,18 +521,21 @@ static HRESULT WINAPI hook_LockRect(IDirect3DTexture8 *t, UINT level, D3DLOCKED_
 static HRESULT WINAPI hook_UnlockRect(IDirect3DTexture8 *t, UINT level)
 {
     if (level == 0) {
+        struct rep_entry *tile = NULL;
         EnterCriticalSection(&lock);
         struct tex_entry *e = tex_lookup(t, 0);
         if (e && e->bits) {
-            fingerprint(t, e);
+            tile = fingerprint(t, e);
             e->bits = NULL;
         }
         LeaveCriticalSection(&lock);
+        // The loading screen is drawn right after its tiles: without this it first shows the old art.
+        for (DWORD t0 = GetTickCount(); tile && tile->asked && GetTickCount() - t0 < 400; Sleep(1)) upload();
     }
     return real_UnlockRect(t, level);
 }
 
-DWORD textures_created;
+DWORD textures_changed;
 
 static ULONG WINAPI hook_Release(IDirect3DTexture8 *t)
 {
@@ -493,10 +543,40 @@ static ULONG WINAPI hook_Release(IDirect3DTexture8 *t)
     if (!n) {
         EnterCriticalSection(&lock);
         struct tex_entry *e = tex_lookup(t, 0);
-        if (e) unuse(e), tex_remove(e);
+        if (e) textures_changed++, unuse(e), tex_remove(e); // only the game's own textures have an entry
         LeaveCriticalSection(&lock);
+        merge_texture_gone((IDirect3DBaseTexture8 *)t);
     }
     return n;
+}
+
+// The game reads paks one after another on its main thread, so the last one opened owns the textures being created.
+static HANDLE (WINAPI *real_CreateFileA)(LPCSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE);
+static DWORD load_thread;
+static int cutscene_pak;
+
+static HANDLE WINAPI hook_CreateFileA(LPCSTR name, DWORD access, DWORD share, LPSECURITY_ATTRIBUTES sec, DWORD how, DWORD flags, HANDLE tmpl)
+{
+    const char *dot = name ? strrchr(name, '.') : NULL;
+    if (dot && !_stricmp(dot, ".pc") && GetCurrentThreadId() == load_thread) {
+        const char *slash = strrchr(name, '\\');
+        char pak[64];
+        lstrcpynA(pak, slash ? slash + 1 : name, sizeof pak);
+        _strlwr(pak);
+        // _ecs: a level's own ending; done: the hub's scene after that level is won.
+        cutscene_pak = strstr(pak, "intro") || strstr(pak, "outro") || strstr(pak, "startgame") ||
+                       strstr(pak, "done") || strstr(pak, "_ecs") || strstr(pak, "endofgame");
+    }
+    return real_CreateFileA(name, access, share, sec, how, flags, tmpl);
+}
+
+int textures_from_cutscene(IDirect3DBaseTexture8 *t)
+{
+    EnterCriticalSection(&lock);
+    struct tex_entry *e = t ? tex_lookup((IDirect3DTexture8 *)t, 0) : NULL;
+    int cut = e && e->cutscene;
+    LeaveCriticalSection(&lock);
+    return cut;
 }
 
 static HRESULT WINAPI hook_CreateTexture(IDirect3DDevice8 *dev, UINT w, UINT h, UINT levels, DWORD usage,
@@ -513,11 +593,11 @@ static HRESULT WINAPI hook_CreateTexture(IDirect3DDevice8 *dev, UINT w, UINT h, 
         }
         BYTE *caller = __builtin_return_address(0);
         int game = caller >= exe && caller < exe_end;
-        textures_created += game;
+        textures_changed += game;
         EnterCriticalSection(&lock);
         struct tex_entry *e = tex_lookup(*tex, 0);
         if (e) unuse(e), tex_remove(e); // a freed texture's address can be reused; forget what was there
-        if (game) tex_lookup(*tex, 1);
+        if (game && (e = tex_lookup(*tex, 1))) e->cutscene = cutscene_pak;
         LeaveCriticalSection(&lock);
     }
     return hr;
@@ -595,6 +675,15 @@ static int bind_replacement(IDirect3DDevice8 *dev, DWORD stage, IDirect3DBaseTex
     return rep != NULL;
 }
 
+// The texture a draw of the game's texture really shows, following the HD switch.
+IDirect3DBaseTexture8 *textures_effective(IDirect3DBaseTexture8 *game)
+{
+    IDirect3DBaseTexture8 *rep = replacement_for(game);
+    return rep ? rep : game;
+}
+
+int textures_scrolling(IDirect3DBaseTexture8 *t) { return scroller_of(t) >= 0; }
+
 // Binds one of the mod's own textures (or none), which have no replacements and aren't the game's
 // binding: what the game bound stays on record.
 void textures_bind_own(IDirect3DDevice8 *dev, DWORD stage, IDirect3DBaseTexture8 *t)
@@ -608,11 +697,13 @@ IDirect3DBaseTexture8 *textures_bound(DWORD stage)
     return stage < STAGES ? bound[stage] : NULL;
 }
 
-// Fingerprint of the game's texture bound at stage (0 if none or unknown).
+// Fingerprint of the game's texture bound at stage (0 if none or unknown); for a scrolling one, its big texture's.
 UINT64 textures_bound_hash(DWORD stage)
 {
     EnterCriticalSection(&lock);
-    struct tex_entry *e = stage < STAGES && bound[stage] ? tex_lookup((IDirect3DTexture8 *)bound[stage], 0) : NULL;
+    IDirect3DBaseTexture8 *t = stage < STAGES ? bound[stage] : NULL;
+    if (t && scroll_stage[stage] >= 0) t = (IDirect3DBaseTexture8 *)scrolls[scroll_stage[stage]].big;
+    struct tex_entry *e = t ? tex_lookup((IDirect3DTexture8 *)t, 0) : NULL;
     UINT64 h = e ? e->hash : 0;
     LeaveCriticalSection(&lock);
     return h;
@@ -676,6 +767,7 @@ static HRESULT WINAPI hook_DeleteStateBlock(IDirect3DDevice8 *dev, DWORD token)
 static HRESULT WINAPI hook_ApplyStateBlock(IDirect3DDevice8 *dev, DWORD token)
 {
     HRESULT hr = real_ApplyStateBlock(dev, token);
+    merge_state_changed();
     for (int i = 0; SUCCEEDED(hr) && i < BLOCKS; i++) {
         if (blocks[i].token != token) continue;
         for (DWORD stage = 0; stage < STAGES; stage++)
@@ -732,48 +824,55 @@ static void after_draw(IDirect3DDevice8 *dev, int mask, struct saved *saved)
     }
 }
 
-#define DRAW(call)                                  \
+#define WORLD(...) if (capture_world_on) capture_world(__VA_ARGS__)
+#define DRAW(record, call)                          \
     struct saved saved[STAGES];                     \
     int mask = before_draw(dev, saved);             \
-    HRESULT hr = call;                              \
+    record;                                         \
+    HRESULT hr = look_draw(dev, api, t, start, count) ? D3D_OK : call; \
+    look_after_draw(dev);                           \
     if (mask) after_draw(dev, mask, saved);         \
     return hr
 
 static HRESULT WINAPI hook_DrawPrimitive(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE t, UINT start, UINT count)
 {
-    DRAW((t == D3DPT_TRIANGLESTRIP || t == D3DPT_TRIANGLELIST) ? mesh_draw(dev, t, start, count, real_DrawPrimitive) : real_DrawPrimitive(dev, t, start, count));
+    const int api = 0;
+    DRAW(WORLD(dev, 0, t, count, start, 0, 0, NULL, 0, NULL, 0), (t == D3DPT_TRIANGLESTRIP || t == D3DPT_TRIANGLELIST) ? mesh_draw(dev, t, start, count, real_DrawPrimitive) : real_DrawPrimitive(dev, t, start, count));
 }
 
 static HRESULT WINAPI hook_DrawIndexedPrimitive(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE t, UINT min, UINT n, UINT start, UINT count)
 {
-    DRAW(real_DrawIndexedPrimitive(dev, t, min, n, start, count));
+    const int api = 1;
+    DRAW(WORLD(dev, 1, t, count, min, n, start, NULL, 0, NULL, 0), real_DrawIndexedPrimitive(dev, t, min, n, start, count));
 }
 
 static HRESULT WINAPI hook_DrawPrimitiveUP(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE t, UINT count, CONST void *data, UINT stride)
 {
-    DRAW(real_DrawPrimitiveUP(dev, t, count, data, stride));
+    const int api = 2, start = 0;
+    DRAW(WORLD(dev, 2, t, count, 0, 0, 0, data, stride, NULL, 0), real_DrawPrimitiveUP(dev, t, count, data, stride));
 }
 
 static HRESULT WINAPI hook_DrawIndexedPrimitiveUP(IDirect3DDevice8 *dev, D3DPRIMITIVETYPE t, UINT min, UINT n, UINT count,
                                                   CONST void *idx, D3DFORMAT fmt, CONST void *data, UINT stride)
 {
-    DRAW(real_DrawIndexedPrimitiveUP(dev, t, min, n, count, idx, fmt, data, stride));
+    const int api = 3, start = 0;
+    DRAW(WORLD(dev, 3, t, count, min, n, 0, data, stride, idx, fmt), real_DrawIndexedPrimitiveUP(dev, t, min, n, count, idx, fmt, data, stride));
 }
 
 // The game never asks for mip filtering because its textures have no mips; ours do.
 static HRESULT WINAPI hook_SetTextureStageState(IDirect3DDevice8 *dev, DWORD stage, D3DTEXTURESTAGESTATETYPE type, DWORD value)
 {
+    merge_stage_state(stage, type, value);
     if (type == D3DTSS_MIPFILTER && value == D3DTEXF_NONE) value = D3DTEXF_LINEAR;
     return real_SetTextureStageState(dev, stage, type, value);
 }
 
-// After a device Reset: the game recreated all its textures, so every texture we tracked is gone.
+// After a device Reset. Textures the game released before it already left the table (hook_Release); the
+// ones still listed survived it (a splash screen can) and keep their replacements, which are managed.
 void textures_reset(IDirect3DDevice8 *dev)
 {
     EnterCriticalSection(&lock);
-    memset(texs, 0, sizeof texs);
-    ntexs = 0;
-    for (int i = 0; i < TABLE; i++) reps[i].users = 0; // counted again as the game refills them
+    log_line("textures: %d survive the reset", ntexs);
     LeaveCriticalSection(&lock);
     memset(scrolls, 0, sizeof scrolls);
     memset(bound, 0, sizeof bound);
@@ -800,6 +899,8 @@ void textures_install(IDirect3DDevice8 *dev)
     if (n < 6) log_line("paper book pages: %d of 6 render target sites patched (unknown exe)", n);
     start_worker();
     device = dev;
+    load_thread = GetCurrentThreadId();
+    real_CreateFileA = patch_import("KERNEL32.dll", "CreateFileA", hook_CreateFileA);
     DWORD attr = GetFileAttributesA(DUMP_DIR);
     dumping = attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY);
     log_line("texture dump %s", dumping ? "on (" DUMP_DIR ")" : "off (create " DUMP_DIR " to enable)");
@@ -821,6 +922,7 @@ void textures_install(IDirect3DDevice8 *dev)
     patch((void **)&vt->DrawPrimitiveUP, hook_DrawPrimitiveUP, (void **)&real_DrawPrimitiveUP);
     patch((void **)&vt->DrawIndexedPrimitiveUP, hook_DrawIndexedPrimitiveUP, (void **)&real_DrawIndexedPrimitiveUP);
     patch((void **)&vt->SetTextureStageState, hook_SetTextureStageState, (void **)&real_SetTextureStageState);
+    look_install(real_DrawPrimitive);
 
     // All textures share one vtable; a throwaway texture gives us access to it.
     IDirect3DTexture8 *probe;
